@@ -1,0 +1,195 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root,
+  .light {
+    /* ==========================================================================
+       Surface A: Executive Calm (Light Mode)
+       ========================================================================== */
+    color-scheme: light;
+
+    /* Backgrounds */
+    --surface-bg: #F7F3E8; /* Warm Ivory Canvas */
+    --surface-panel: #FCF9F2; /* Refined Warm Card */
+    --surface-card: #FCF9F2; /* Refined Warm Card */
+    --surface-elevated: #EFE9D8; /* Sand Elevation */
+    --surface-muted: #EFE9D8; /* Sand Inset / Well */
+    --surface-overlay: rgba(247, 243, 232, 0.9);
+
+    /* Typography */
+    --surface-text: #0F1622; /* Deep Obsidian Ink */
+    --text-main: #0F1622;
+    --surface-text-secondary: #5C5343; /* Warm Muted Bronze */
+    --text-muted: #5C5343;
+    --surface-text-muted: #5C5343; /* Low-emphasis Metadata */
+    --surface-text-inverted: #F5F0E6; /* Ivory Silk on Dark Insets */
+
+    /* Borders & Dividers */
+    --surface-border: #C6A664; /* Champagne Gold Border */
+    --surface-border-subtle: rgba(198, 166, 100, 0.25);
+    --surface-border-strong: #C6A664;
+
+    /* Executive Brand & Overseer Accents */
+    --surface-accent: #C6A664; /* Champagne Gold Accent */
+    --surface-accent-hover: #D4B475;
+    --surface-accent-gold: #C6A664; /* Brushed Champagne Gold */
+    --surface-accent-gold-hover: #D4B475;
+
+    /* Semantic Indicators (Monochromatic Luxury Duotone) */
+    --semantic-success: #C6A664;
+    --semantic-action: #C6A664;
+    --semantic-warning: #C6A664;
+    --semantic-alert: #C6A664;
+    --semantic-info: #C6A664;
+
+    /* Strict Overseer Decorative & Focus Tokens */
+    --overseer-shield: #FCF9F2;
+    --overseer-badge-bg: rgba(198, 166, 100, 0.1);
+    --overseer-badge-border: rgba(198, 166, 100, 0.3);
+    --overseer-glow: 0 0 24px rgba(198, 166, 100, 0.15);
+    --surface-ring: rgba(198, 166, 100, 0.35);
+
+    /* Scrollbar */
+    --scrollbar-track: rgba(239, 233, 216, 0.6);
+    --scrollbar-thumb: rgba(92, 83, 67, 0.3);
+    --scrollbar-thumb-hover: rgba(198, 166, 100, 0.65);
+  }
+
+  .dark {
+    /* ==========================================================================
+       Surface B: Tactical Operator (Dark Mode)
+       ========================================================================== */
+    color-scheme: dark;
+
+    /* Backgrounds */
+    --surface-bg: #0B121C; /* Deep Sovereign Canvas */
+    --surface-panel: #0F1824; /* Midnight Tactical Card */
+    --surface-card: #0F1824; /* Midnight Tactical Card */
+    --surface-elevated: #162030; /* Tactical Inset Well */
+    --surface-muted: #162030; /* Tactical Recessed Well */
+    --surface-overlay: rgba(11, 18, 28, 0.9);
+
+    /* Typography */
+    --surface-text: #F5F0E6; /* Ivory Silk Primary */
+    --text-main: #F5F0E6;
+    --surface-text-secondary: #8A94A6; /* Muted Steel */
+    --text-muted: #8A94A6;
+    --surface-text-muted: #5C5343; /* Warm Bronze Muted */
+    --surface-text-inverted: #0F1622; /* Soft Ink on Light Badges */
+
+    /* Borders & Dividers */
+    --surface-border: rgba(198, 166, 100, 0.25); /* Champagne Gold Tactical Divider */
+    --surface-border-subtle: rgba(198, 166, 100, 0.15);
+    --surface-border-strong: #C6A664;
+
+    /* Executive Brand & Overseer Accents */
+    --surface-accent: #C6A664; /* Champagne Gold */
+    --surface-accent-hover: #D4B475;
+    --surface-accent-gold: #D4B475; /* Polished Gold */
+    --surface-accent-gold-hover: #E2C485;
+
+    /* Semantic Telemetry (Monochromatic Luxury Duotone) */
+    --semantic-success: #D4B475;
+    --semantic-action: #C6A664;
+    --semantic-warning: #D4B475;
+    --semantic-alert: #C6A664;
+    --semantic-info: #D4B475;
+
+    /* Strict Overseer Decorative & Focus Tokens */
+    --overseer-shield: #0F1824;
+    --overseer-badge-bg: rgba(212, 180, 117, 0.1);
+    --overseer-badge-border: rgba(212, 180, 117, 0.3);
+    --overseer-glow: 0 0 28px rgba(198, 166, 100, 0.2);
+    --surface-ring: rgba(198, 166, 100, 0.4);
+
+    /* Scrollbar */
+    --scrollbar-track: rgba(15, 24, 36, 0.5);
+    --scrollbar-thumb: rgba(138, 148, 166, 0.4);
+    --scrollbar-thumb-hover: rgba(212, 180, 117, 0.65);
+  }
+
+  body {
+    background-color: var(--surface-bg, #0B121C);
+    color: var(--surface-text, #F5F0E6);
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "SF Pro Display",
+      "Inter",
+      sans-serif;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      "SF Mono",
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      monospace;
+  }
+}
+
+@theme {
+  --color-surface-bg: var(--surface-bg);
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-card: var(--surface-card);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-border: var(--surface-border);
+  --color-surface-border-subtle: var(--surface-border-subtle);
+  --color-surface-border-strong: var(--surface-border-strong);
+  --color-surface-text: var(--surface-text);
+  --color-surface-text-secondary: var(--surface-text-secondary);
+  --color-surface-text-muted: var(--surface-text-muted);
+  --color-text-main: var(--text-main);
+  --color-text-muted: var(--text-muted);
+  --color-surface-accent: var(--surface-accent);
+  --color-surface-gold: var(--surface-accent-gold);
+  --color-semantic-success: var(--semantic-success);
+  --color-semantic-action: var(--semantic-action);
+  --color-semantic-warning: var(--semantic-warning);
+  --color-semantic-alert: var(--semantic-alert);
+}
+
+/* Adaptive scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, rgba(15, 24, 36, 0.5));
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, rgba(138, 148, 166, 0.4));
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, rgba(198, 166, 100, 0.65));
+}
+
+/* Canonical Gold CTA Button */
+.cta-gold-btn,
+.btn-gold-cta {
+  background: linear-gradient(to right, #D4B475, #C6A664, #A88948);
+  color: #0B121C;
+  font-weight: 700;
+  border: 1px solid #D4B475;
+  box-shadow: 0 2px 12px rgba(198, 166, 100, 0.25);
+  transition: filter 0.15s ease-in-out;
+}
+
+.cta-gold-btn:hover,
+.btn-gold-cta:hover {
+  filter: brightness(1.1);
+}

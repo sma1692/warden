@@ -1,0 +1,31 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-01-01T00:00:00Z",
+  "projects": {
+    "my-project": {
+      "name": "my-project",
+      "description": "Example multi-repo project",
+      "discoveredAt": "2026-01-01T00:00:00Z",
+      "folders": [
+        {
+          "path": "/path/to/your/workspace/my-project/web-client",
+          "name": "web-client",
+          "role": "frontend",
+          "languages": ["TypeScript"],
+          "frameworksAndLibraries": ["React", "Vite"],
+          "entrypoints": ["src/main.tsx"],
+          "assignedLead": "frontend-lead"
+        },
+        {
+          "path": "/path/to/your/workspace/my-project/api-server",
+          "name": "api-server",
+          "role": "backend",
+          "languages": ["TypeScript", "Node.js"],
+          "frameworksAndLibraries": ["Express"],
+          "entrypoints": ["src/index.ts"],
+          "assignedLead": "backend-lead"
+        }
+      ]
+    }
+  }
+}

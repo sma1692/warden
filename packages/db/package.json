@@ -1,0 +1,36 @@
+{
+  "name": "@commando/db",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./seed-agents": "./src/seed-agents.ts",
+    "./client": "./src/client.ts",
+    "./store": "./src/store.ts",
+    "./sync": "./src/sync.ts"
+  },
+  "scripts": {
+    "migrate": "node ../../scripts/migrate-md-to-db.ts --ddl-only",
+    "ingest": "node ../../scripts/migrate-md-to-db.ts",
+    "seed": "node ../../scripts/migrate-md-to-db.ts --seed-only",
+    "sync": "node ../../scripts/sync-md-db.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.3",
+    "pg": "^8.13.1",
+    "pgvector": "^0.2.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "drizzle-kit": "^0.30.1",
+    "typescript": "^5.7.2"
+  }
+}

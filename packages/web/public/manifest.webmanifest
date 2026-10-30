@@ -1,0 +1,50 @@
+{
+  "name": "DynamoCommando — 1-Man Unicorn AI Workforce OS",
+  "short_name": "Commando",
+  "description": "Production Multi-Agent Workforce Command Center: Live Employee Floor, Multimodal Chat, Standups & Ephemeral Docker Previews.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#060911",
+  "theme_color": "#060911",
+  "categories": ["productivity", "developer", "business"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Workforce Floor",
+      "short_name": "Floor",
+      "description": "Live AI employee tracker, Docker sandboxes & token telemetry",
+      "url": "/?tab=floor",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Needs Your Reply Gates",
+      "short_name": "Approvals",
+      "description": "Resolve pending CEO questions, Standup sign-off & Idle Backlog Pings",
+      "url": "/?tab=chat",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "12:00 PM IST Standup & Backlog",
+      "short_name": "Standup",
+      "description": "Daily Standup MoM & P0/P1/P2 Kanban Sprint Board",
+      "url": "/?tab=backlog",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dynamic Agent Studio",
+      "short_name": "Studio",
+      "description": "4-Tier Org Chart & AI Employee Provisioner",
+      "url": "/?tab=studio",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    }
+  ]
+}

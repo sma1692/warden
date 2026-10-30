@@ -1,0 +1,47 @@
+# Local project registry & auto-discovered topology (contains local filesystem paths)
+projects.yaml
+.state/topology-cache.json
+.state/dynamocommando-db.json
+.state/mirror/
+.state/tokens/
+.state/users.json
+.state/auth-secret
+.claude/settings.json
+.claude/settings.local.json
+
+# Generated project contracts, persistent project/repo context, per-agent memory, inter-agent chats, standups, and project worklists
+contracts/*.md
+!contracts/TEMPLATE.md
+context/*
+!context/TEMPLATE.md
+!context/REPO_TEMPLATE.md
+memory/*
+!memory/TEMPLATE.md
+chats/*
+!chats/TEMPLATE.md
+standups/*.md
+!standups/TEMPLATE.md
+worklist/inbox.md
+worklist/todo/*.md
+worklist/done/*.md
+
+# Environment, secrets, and OS/build artifacts
+.env*
+!.env.example
+*.pem
+*.key
+.DS_Store
+node_modules/
+dist*/
+*.tsbuildinfo
+*.zip
+*.log
+
+# Generated OSS export copies (published from their own repos by scripts/export-oss-md.mjs)
+.state/export-*/
+# Local browser profiles, per-machine state and scratch files
+.state/brave-data/
+.state/chrome-data/
+.state/onboarded.json
+.state/commit-msg.txt
+saved-changes.diff

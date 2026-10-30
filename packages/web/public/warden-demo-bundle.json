@@ -1,0 +1,133 @@
+{
+  "company": {
+    "name": "NovaPulse",
+    "domain": "novapulse.io",
+    "stage": "Seed ($4.5M raised) — 3 Years Post-Launch",
+    "founder": "Alex Rivera",
+    "verticals": [
+      "TECH",
+      "SEO_AEO",
+      "SOCIAL"
+    ],
+    "description": "Omni-channel commerce, SEO/AEO citation engine, digital marketing automation, and AI customer support platform."
+  },
+  "projects": [
+    {
+      "id": "pulse-core",
+      "name": "pulse-core",
+      "vertical": "TECH",
+      "description": "Core web & mobile SaaS dashboard, billing checkout, and real-time analytics."
+    },
+    {
+      "id": "pulse-infra",
+      "name": "pulse-infra",
+      "vertical": "TECH",
+      "description": "Multi-region cloud deployment, edge caching, and automated uptime monitoring."
+    },
+    {
+      "id": "pulse-seo",
+      "name": "pulse-seo",
+      "vertical": "SEO_AEO",
+      "description": "Programmatic SEO pages, schema.org JSON-LD injection, and ChatGPT/Perplexity citation tracking."
+    },
+    {
+      "id": "pulse-social",
+      "name": "pulse-social",
+      "vertical": "SOCIAL",
+      "description": "Digital marketing campaigns, LinkedIn/X founder threads, and short-form video scheduling."
+    },
+    {
+      "id": "pulse-support",
+      "name": "pulse-support",
+      "vertical": "TECH",
+      "description": "24/7 WhatsApp & email customer support triage bot with SLA escalation."
+    }
+  ],
+  "agents": [
+    {
+      "id": "warden",
+      "role": "Chief of Staff (Root)",
+      "level": "Root",
+      "vertical": "TECH",
+      "supervisor": "CEO"
+    },
+    {
+      "id": "cto",
+      "role": "Head of Technology & Infra",
+      "level": "L0",
+      "vertical": "TECH",
+      "supervisor": "warden"
+    },
+    {
+      "id": "cbo",
+      "role": "Chief Growth, SEO & Marketing Officer",
+      "level": "L0",
+      "vertical": "SEO_AEO",
+      "supervisor": "warden"
+    },
+    {
+      "id": "pm",
+      "role": "Product & Support Operations Manager",
+      "level": "L1",
+      "vertical": "TECH",
+      "supervisor": "cto"
+    },
+    {
+      "id": "tech_lead",
+      "role": "Principal Systems & App Architect",
+      "level": "L1",
+      "vertical": "TECH",
+      "supervisor": "cto"
+    },
+    {
+      "id": "infra_head",
+      "role": "Cloud & Reliability Lead",
+      "level": "L1",
+      "vertical": "TECH",
+      "supervisor": "cto"
+    },
+    {
+      "id": "aeo_lead",
+      "role": "Head of SEO & Answer Engine Optimization",
+      "level": "L1",
+      "vertical": "SEO_AEO",
+      "supervisor": "cbo"
+    },
+    {
+      "id": "social_lead",
+      "role": "Head of Digital Marketing & Social",
+      "level": "L1",
+      "vertical": "SOCIAL",
+      "supervisor": "cbo"
+    },
+    {
+      "id": "frontend_dev",
+      "role": "Senior Web & Mobile UI Engineer",
+      "level": "L2",
+      "vertical": "TECH",
+      "supervisor": "tech_lead"
+    },
+    {
+      "id": "backend_dev",
+      "role": "API, Billing & Support Bot Engineer",
+      "level": "L2",
+      "vertical": "TECH",
+      "supervisor": "tech_lead"
+    },
+    {
+      "id": "aeo_specialist",
+      "role": "LLM Citation & Technical SEO Specialist",
+      "level": "L2",
+      "vertical": "SEO_AEO",
+      "supervisor": "aeo_lead"
+    },
+    {
+      "id": "social_creator",
+      "role": "Campaign Copy & Short-Form Video Agent",
+      "level": "L2",
+      "vertical": "SOCIAL",
+      "supervisor": "social_lead"
+    }
+  ],
+  "exportedAt": "2026-10-27T08:49:55.891Z"
+}

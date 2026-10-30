@@ -1,0 +1,27 @@
+{
+  "name": "@commando/sandbox",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./PermissionGuard": "./src/PermissionGuard.ts",
+    "./PreviewRouter": "./src/PreviewRouter.ts",
+    "./PlaywrightQAGate": "./src/PlaywrightQAGate.ts",
+    "./PushitExecutor": "./src/PushitExecutor.ts",
+    "./SandboxManager": "./src/SandboxManager.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.50.0",
+    "playwright-core": "^1.50.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

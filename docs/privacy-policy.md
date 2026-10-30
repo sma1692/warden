@@ -2,7 +2,7 @@
 
 Last updated: 27 October 2026
 
-Warden is an AI chief-of-staff assistant built by TREE(4). You can chat with it on the web dashboard and on WhatsApp. This policy explains what data Warden handles and why.
+Warden is an AI chief-of-staff assistant built by NovaPulse. You can chat with it on the web dashboard and on WhatsApp. This policy explains what data Warden handles and why.
 
 ## What we collect
 

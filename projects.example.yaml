@@ -1,0 +1,27 @@
+# ============================================================================
+# WARDEN - Multi-Project Subagent Command Center Registry
+# ============================================================================
+# Copy this file to `projects.yaml` (gitignored) and add your local repo paths.
+# ============================================================================
+
+projects:
+  demo-game:
+    description: "Example product project: web game client, REST API server, and companion UI"
+    folders:
+      - /path/to/demo-game/game-client
+      - /path/to/demo-game/game-api
+      - /path/to/demo-game/companion-ui
+
+  example-api:
+    description: "Example backend service with its own tech_lead and pm"
+    folders:
+      - /path/to/example-api
+
+  infra-tools:
+    description: "Multi-cloud DevOps, cost minimization, backup/prune, and cross-project build/deploy CLI (managed by infra_head -> infra_jr)"
+    department: "infra"
+    folders:
+      - /path/to/infra-tools
+
+shared_search_roots:
+  - /path/to/organization/root

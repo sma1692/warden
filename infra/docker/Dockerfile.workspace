@@ -1,0 +1,266 @@
+# ==============================================================================
+# DYNAMO COMMANDO — Ephemeral Agent Workspace Base Image (`commando-workspace:latest`)
+# ==============================================================================
+# Provides an isolated, zero-permission-prompt execution environment on GCP or
+# local Docker for backend, frontend, WebXR/WebGL, and cloud infra agents:
+# - Base: Microsoft Playwright v1.50.0 (Ubuntu 24.04 Noble) with Chromium & WebGL
+# - Runtime: Node.js 22 LTS, Python 3, Git, ripgrep, jq, curl, rsync, openssh-client
+# - Cloud & Deploy CLIs: Cloudflare Wrangler, PM2
+# - Built-in Entrypoint & QA Helpers:
+#     * /usr/local/bin/commando-entrypoint.sh (30s CPU/RAM heartbeat + idle daemon)
+#     * /usr/local/bin/commando-webgl-qa.mjs (Headless Chromium + SwiftShader WebGL QA)
+# ==============================================================================
+
+FROM mcr.microsoft.com/playwright:v1.50.0-noble
+
+LABEL org.opencontainers.image.title="commando-workspace"
+LABEL org.opencontainers.image.description="DynamoCommando Ephemeral Agent Sandbox with Node 22, Python 3, Playwright Chromium + SwiftShader WebGL, and Wrangler"
+ARG IMAGE_VENDOR="Commando"
+LABEL org.opencontainers.image.vendor="${IMAGE_VENDOR}"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    NODE_ENV=development \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    FORCE_COLOR=1 \
+    COMMANDO_SANDBOX=1 \
+    WORKSPACE_ROOT=/workspace
+
+# 1. Install system utilities, Python 3, ripgrep, jq, rsync, and Mesa/EGL/GLES for headless WebGL
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    jq \
+    ripgrep \
+    rsync \
+    openssh-client \
+    python3 \
+    python3-pip \
+    python3-venv \
+    build-essential \
+    procps \
+    iproute2 \
+    libgl1 \
+    libegl1 \
+    libgles2 \
+    libgbm1 \
+    libdrm2 \
+    libxkbcommon0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Ensure Node 22 LTS + global developer & cloud CLIs (Wrangler, PM2, tsx, TypeScript)
+RUN npm install -g \
+    npm@latest \
+    tsx@^4.19.2 \
+    typescript@^5.7.2 \
+    wrangler@^3.114.17 \
+    pm2@^5.4.3 \
+    vite@^6.3.5 \
+    && npm cache clean --force
+
+# 3. Pre-configure Git identity for automated `pushit` commits.
+#    Override with --build-arg GIT_USER_NAME=... --build-arg GIT_USER_EMAIL=...
+ARG GIT_USER_NAME="S.M:A"
+ARG GIT_USER_EMAIL="commando-bot@users.noreply.github.com"
+RUN git config --system user.name "${GIT_USER_NAME}" \
+    && git config --system user.email "${GIT_USER_EMAIL}" \
+    && git config --system init.defaultBranch main \
+    && git config --system safe.directory "*" \
+    && git config --system advice.detachedHead false
+
+# 4. Create workspace & state directories
+RUN mkdir -p /workspace /var/log/commando /tmp/commando-qa
+
+# 5. Install in-container Headless Playwright + WebGL verification script
+RUN cat <<'EOF' > /usr/local/bin/commando-webgl-qa.mjs
+#!/usr/bin/env node
+/**
+ * In-container Playwright Headless Chromium + SwiftShader WebGL QA Runner
+ * Usage: node /usr/local/bin/commando-webgl-qa.mjs --url http://localhost:4173 --out /tmp/commando-qa/qa.png
+ */
+import { chromium } from 'playwright';
+
+const args = process.argv.slice(2);
+function getArg(flag, fallback) {
+  const idx = args.indexOf(flag);
+  return idx !== -1 && args[idx + 1] ? args[idx + 1] : fallback;
+}
+
+const targetUrl = getArg('--url', 'http://127.0.0.1:4173');
+const screenshotPath = getArg('--out', '/tmp/commando-qa/qa-screenshot.png');
+const timeoutMs = Number(getArg('--timeout', '25000'));
+
+const consoleErrors = [];
+const pageErrors = [];
+let httpStatus = 0;
+let domMountOk = false;
+let webglSupported = false;
+
+const startedAt = Date.now();
+let browser;
+
+try {
+  browser = await chromium.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--use-gl=angle',
+      '--use-angle=swiftshader',
+      '--enable-webgl',
+      '--ignore-gpu-blocklist',
+      '--enable-unsafe-swiftshader',
+      '--disable-dev-shm-usage'
+    ]
+  });
+
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: 1,
+    ignoreHTTPSErrors: true
+  });
+
+  const page = await context.newPage();
+
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      consoleErrors.push(msg.text());
+    }
+  });
+
+  page.on('pageerror', (err) => {
+    pageErrors.push(err?.message || String(err));
+  });
+
+  const response = await page.goto(targetUrl, {
+    waitUntil: 'networkidle',
+    timeout: timeoutMs
+  });
+
+  httpStatus = response ? response.status() : 0;
+  await page.waitForTimeout(1500);
+
+  const probe = await page.evaluate(() => {
+    const rootCandidates = [
+      document.querySelector('#root'),
+      document.querySelector('#app'),
+      document.querySelector('canvas'),
+      document.body
+    ];
+    const hasMountedContent = rootCandidates.some(
+      (el) => el && (el.children.length > 0 || (el.textContent && el.textContent.trim().length > 0) || el.tagName === 'CANVAS')
+    );
+
+    let hasWebGL = false;
+    try {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      hasWebGL = Boolean(gl);
+    } catch {
+      hasWebGL = false;
+    }
+
+    return { hasMountedContent, hasWebGL };
+  });
+
+  domMountOk = probe.hasMountedContent;
+  webglSupported = probe.hasWebGL;
+
+  await page.screenshot({ path: screenshotPath, fullPage: false });
+
+  const passed =
+    httpStatus >= 200 &&
+    httpStatus < 400 &&
+    domMountOk &&
+    consoleErrors.length === 0 &&
+    pageErrors.length === 0;
+
+  process.stdout.write(
+    JSON.stringify({
+      passed,
+      httpStatus,
+      domMountOk,
+      webglSupported,
+      consoleErrors,
+      pageErrors,
+      screenshotPath,
+      durationMs: Date.now() - startedAt
+    }) + '\n'
+  );
+  process.exit(passed ? 0 : 1);
+} catch (err) {
+  process.stdout.write(
+    JSON.stringify({
+      passed: false,
+      httpStatus,
+      domMountOk,
+      webglSupported,
+      consoleErrors,
+      pageErrors: [...pageErrors, err?.message || String(err)],
+      screenshotPath,
+      durationMs: Date.now() - startedAt
+    }) + '\n'
+  );
+  process.exit(1);
+} finally {
+  if (browser) {
+    await browser.close().catch(() => {});
+  }
+}
+EOF
+
+# 6. Install container entrypoint script (emits 30s CPU/RAM heartbeat + keeps sandbox warm)
+RUN cat <<'EOF' > /usr/local/bin/commando-entrypoint.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+HEARTBEAT_FILE="/var/log/commando/heartbeat.json"
+RUN_ID="${COMMANDO_RUN_ID:-unknown}"
+AGENT_SLUG="${COMMANDO_AGENT_SLUG:-unknown}"
+
+emit_heartbeat() {
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local mem_used_kb=0
+  local mem_total_kb=0
+  if [ -r /proc/meminfo ]; then
+    mem_total_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo || echo 0)
+    local mem_avail_kb
+    mem_avail_kb=$(awk '/MemAvailable/ {print $2}' /proc/meminfo || echo 0)
+    mem_used_kb=$((mem_total_kb - mem_avail_kb))
+  fi
+  local load_avg="0.00"
+  if [ -r /proc/loadavg ]; then
+    load_avg=$(awk '{print $1}' /proc/loadavg || echo "0.00")
+  fi
+
+  cat <<JSON > "${HEARTBEAT_FILE}"
+{"runId":"${RUN_ID}","agentSlug":"${AGENT_SLUG}","timestamp":"${ts}","memUsedKb":${mem_used_kb},"memTotalKb":${mem_total_kb},"loadAvg1m":${load_avg}}
+JSON
+}
+
+# Start background 30-second heartbeat loop
+(
+  while true; do
+    emit_heartbeat || true
+    sleep 30
+  done
+) &
+
+trap 'kill $(jobs -p) 2>/dev/null || true; exit 0' SIGTERM SIGINT
+
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+else
+  # Keep ephemeral sandbox alive waiting for `docker exec` tool invocations
+  tail -f /dev/null &
+  wait $!
+fi
+EOF
+
+RUN chmod +x /usr/local/bin/commando-webgl-qa.mjs /usr/local/bin/commando-entrypoint.sh
+
+WORKDIR /workspace
+EXPOSE 4173 5173 8080 9001
+
+ENTRYPOINT ["/usr/local/bin/commando-entrypoint.sh"]

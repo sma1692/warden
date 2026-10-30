@@ -1,0 +1,69 @@
+# ==============================================================================
+# DYNAMO COMMANDO — Wildcard Live Preview Reverse Proxy (`infra/docker/Caddyfile`)
+# ==============================================================================
+# Routes live agent branch previews from:
+#   1. Production GCP Wildcard HTTPS: https://preview-{runId}.$PREVIEW_BASE_DOMAIN
+#   2. Local Dev Wildcard HTTP:       http://preview-{runId}.localhost
+# directly to the dynamic host preview port (15000–15999) managed by PreviewRouter,
+# or via the Control Plane Preview Proxy upstream map.
+#
+# Set PREVIEW_BASE_DOMAIN in the Caddy environment (e.g. commando.example.com).
+# ==============================================================================
+
+{
+	admin 0.0.0.0:2019
+	# On GCP production, Caddy automatically provisions Let's Encrypt / ZeroSSL
+	# wildcard certificates via Cloudflare DNS challenge when CF_API_TOKEN is set.
+}
+
+# 1. Production Wildcard Preview Router: https://preview-<runId>.$PREVIEW_BASE_DOMAIN
+*.{$PREVIEW_BASE_DOMAIN:preview.example.com} {
+	@preview host_regexp preview ^preview-([a-zA-Z0-9-]+)\.
+
+	handle @preview {
+		# Forward preview requests with the extracted runId header to the Control Plane
+		# PreviewRouter gateway (or directly to mapped container port via X-Commando-Run-Id)
+		reverse_proxy 127.0.0.1:4100 {
+			header_up X-Commando-Preview-Run-Id {re.preview.1}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# Main Control Plane & Dashboard PWA fallback (`https://$PREVIEW_BASE_DOMAIN`)
+	handle {
+		reverse_proxy 127.0.0.1:4000
+	}
+}
+
+# 2. Local Development Wildcard Preview Router: http://preview-<runId>.localhost
+http://*.localhost {
+	@local_preview host_regexp local_preview ^preview-([a-zA-Z0-9-]+)\.localhost$
+
+	handle @local_preview {
+		reverse_proxy 127.0.0.1:4100 {
+			header_up X-Commando-Preview-Run-Id {re.local_preview.1}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:4000
+	}
+}
+
+# 3. Direct Port-Encoded Preview Subdomain:
+#    https://preview-port-<runId>-<port>.$PREVIEW_BASE_DOMAIN -> 127.0.0.1:<port>
+#    Allows zero-hop routing directly to the container's allocated host port (15000-15999)!
+http://preview-port-*.localhost, https://preview-port-*.{$PREVIEW_BASE_DOMAIN:preview.example.com} {
+	@direct_port host_regexp direct_port ^preview-port-([a-zA-Z0-9-]+)-(15[0-9]{3})\.
+
+	handle @direct_port {
+		reverse_proxy 127.0.0.1:{re.direct_port.2} {
+			header_up X-Commando-Preview-Run-Id {re.direct_port.1}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+}

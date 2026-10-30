@@ -1,0 +1,44 @@
+{
+  "name": "warden",
+  "version": "0.0.9",
+  "private": true,
+  "type": "module",
+  "description": "Warden: Open-Source Autonomous Multi-Agent Command Center & Chief of Staff Framework",
+  "workspaces": [
+    "packages/db",
+    "packages/sandbox",
+    "packages/orchestrator",
+    "packages/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:db": "COMMANDO_SOURCE=db npm run dev",
+    "dev:md": "COMMANDO_SOURCE=md npm run dev",
+    "dev:api": "npm --workspace=@commando/orchestrator run dev",
+    "dev:api:db": "COMMANDO_SOURCE=db npm run dev:api",
+    "dev:web": "npm --workspace=@commando/web run dev",
+    "dev:ui": "npm --workspace=@commando/web run dev:ui",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "npm --workspace=@commando/db run migrate",
+    "db:ingest": "npm --workspace=@commando/db run ingest",
+    "db:sync": "node scripts/sync-md-db.ts",
+    "sync": "node scripts/sync-md-db.ts",
+    "sandbox:build-image": "docker build -f infra/docker/Dockerfile.workspace -t commando-workspace:latest .",
+    "standup": "node scripts/commando-vertex.mjs standup",
+    "standup:auto": "node scripts/commando-vertex.mjs standup --auto-execute",
+    "daemon": "node scripts/commando-vertex.mjs daemon",
+    "daemon:8h": "node scripts/commando-vertex.mjs daemon --interval=8h",
+    "chat": "node scripts/commando-vertex.mjs chat",
+    "ask": "node scripts/commando-vertex.mjs ask",
+    "build:kit": "node scripts/build-kit.mjs",
+    "onboard": "node scripts/onboard.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

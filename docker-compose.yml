@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: dynamocommando-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dynamocommando
+      POSTGRES_USER: commando
+      POSTGRES_PASSWORD: commando_secret
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - commando_pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commando -d dynamocommando"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  commando_pgdata:
+    name: dynamocommando_pgdata
