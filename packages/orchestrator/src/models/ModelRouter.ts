@@ -1,20 +1,22 @@
 /**
- * DYNAMO COMMANDO — Unified Multi-Provider Model & Embedding Router
- * (`dynamocommando.md` Sections 2, 3, 4.1, 4.7, 5.2 & `scripts/commando-vertex.mjs`)
+ * DYNAMO COMMANDO — Meta Muse Model & Embedding Router
+ * (`dynamocommando.md` Sections 2, 3, 4.1, 4.7, 5.2 & `scripts/commando-muse.mjs`)
  *
- * Supported Providers:
- * 1. `vertex` (Google Cloud Vertex AI / Gemini API):
- *    - `gemini-3.8-flash` (Argon High with `thinkingConfig: { includeThoughts: true, thinkingBudget: 4096 }`)
- *    - `gemini-3.8-flash`
- *    - `text-embedding-005` (768-dimensional semantic vectors)
- *    - Native Multimodal Attachments (`fileData` with `gs://...` and `inlineData` base64 for PNG/JPEG/WEBP/MP4/PDF)
- *    - Native Tool-Calling (`functionDeclarations` / `functionCall` / `functionResponse`)
- *    - Full `usageMetadata` extraction (`promptTokenCount`, `cachedContentTokenCount`, `thoughtsTokenCount`, `candidatesTokenCount`)
- * 2. `ollama` (GCP GPU VM or Local Ollama Cluster):
- *    - `${OLLAMA_BASE_URL}/api/chat` (`llama-3.3-70b`, `qwen2.5-coder:32b`, `deepseek-r1:70b`)
- *    - `${OLLAMA_BASE_URL}/api/embeddings` (`nomic-embed-text`, normalized to 768 dimensions)
- * 3. `huggingface` (vLLM / TGI OpenAI-Compatible Endpoint on GCP GPU VM):
- *    - `${HF_VLLM_BASE_URL}/chat/completions` with OpenAI-compatible tool-calling
+ * Supported Providers (Meta-only):
+ * 1. `meta_muse` (Meta Model API):
+ *    - `muse-wonder-1.0` (Tier 1 frontier reasoning with `include_reasoning`)
+ *    - `muse-spark-1.3` (Tier 2 high-speed coding & tool loops)
+ *    - `muse-light` / `muse-flash` (Tier 2 fast file appliers)
+ *    - `muse-glimmer-30b` (context compaction)
+ *    - `muse-image` (`/images/generations` creative visuals) & `muse-voice` (voice notes)
+ *    - `muse-embed-1.0` (`/embeddings`, normalized to 768 dimensions)
+ *    - Native Multimodal Attachments (`fileData` with `media://...` and `inlineData` base64 for PNG/JPEG/WEBP/MP4/PDF)
+ *    - Native Tool-Calling (`tools` / `tool_calls` with JSON arguments)
+ *    - Full `usage` extraction (`prompt_tokens`, `reasoning_tokens`, `completion_tokens`)
+ * 2. `ollama` (Local Ollama Cluster serving Meta open weights):
+ *    - `${OLLAMA_BASE_URL}/api/chat` (`llama-3.3-70b`, `muse-glimmer-30b`)
+ * 3. `huggingface` / `vllm` (Local vLLM chat-completions endpoint serving Meta open weights):
+ *    - `${HF_VLLM_BASE_URL}/chat/completions` with function tool-calling
  * 4. Intelligent Offline / Local-Dev Fallbacks:
  *    - Deterministic role-aware simulation when cloud/local credentials are unconfigured
  *    - Deterministic 768-dim semantic word + character trigram feature-hashing embedding fallback
@@ -23,7 +25,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execSync } from 'node:child_process';
 import {
   TokenTracker,
   TokenUsage,
@@ -34,7 +35,7 @@ import {
 import {
   ContextCompactor,
   ConversationTurnLike,
-  GeminiPartLike,
+  MusePartLike,
   contextCompactor as defaultContextCompactor,
 } from './ContextCompactor.js';
 import { getInfraProjectSlug, getTechProjects } from '../config/projectRegistry.js';
@@ -77,16 +78,13 @@ import { getInfraProjectSlug, getTechProjects } from '../config/projectRegistry.
 })();
 
 export type ModelProvider =
-  | 'vertex'
   | 'meta_muse'
-  | 'anthropic'
-  | 'openai'
   | 'ollama'
   | 'huggingface'
   | 'vllm';
 
 export type GlobalRoutingProfile =
-  | 'GCP_ZERO_COST'
+  | 'LOCAL_ZERO_COST'
   | 'META_MUSE_HACKATHON'
   | 'CUSTOM_HYBRID';
 
@@ -274,7 +272,7 @@ export class ProviderHttpError extends Error {
 
 /**
  * Multi-Token / Multi-Key Credit Pool & Automatic Failover Manager (`dynamocommando.md` Section 4.8.2).
- * Manages multiple API keys, service accounts, and credit buckets across all 6 model providers,
+ * Manages multiple API keys and credit buckets across Meta Muse cloud and local open-weights providers,
  * placing rate-limited (`429`), quota-exhausted (`402`/`403`), or failing (`5xx`) tokens on cooldown
  * and rotating to the next active token by `priorityOrder`.
  */
@@ -293,32 +291,6 @@ export class CredentialPoolManager {
 
   private seedDefaults(): void {
     const defaults: ProviderCredential[] = [
-      {
-        id: 'cred-vertex-gcp-primary',
-        provider: 'vertex',
-        label: 'GCP Vertex AI Primary ($0 Credit Pool — 1Yr)',
-        apiKey: process.env.GEMINI_API_KEY || process.env.VERTEX_API_KEY || 'gcp-adc-primary',
-        baseUrl: 'https://us-central1-aiplatform.googleapis.com/v1',
-        remainingBudgetUsd: 25000,
-        rpmLimit: 600,
-        tpmLimit: 4_000_000,
-        priorityOrder: 1,
-        isActive: true,
-        cooldownUntil: null,
-      },
-      {
-        id: 'cred-vertex-gemini-backup',
-        provider: 'vertex',
-        label: 'Gemini API Backup Key #2',
-        apiKey: process.env.GEMINI_BACKUP_API_KEY || '',
-        baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-        remainingBudgetUsd: 1000,
-        rpmLimit: 300,
-        tpmLimit: 2_000_000,
-        priorityOrder: 2,
-        isActive: true,
-        cooldownUntil: null,
-      },
       {
         id: 'cred-meta-muse-primary',
         provider: 'meta_muse',
@@ -346,35 +318,9 @@ export class CredentialPoolManager {
         cooldownUntil: null,
       },
       {
-        id: 'cred-anthropic-primary',
-        provider: 'anthropic',
-        label: 'Anthropic Claude Sonnet 4 Pool #1',
-        apiKey: process.env.ANTHROPIC_API_KEY || '',
-        baseUrl: 'https://api.anthropic.com/v1',
-        remainingBudgetUsd: 250,
-        rpmLimit: 120,
-        tpmLimit: 800_000,
-        priorityOrder: 1,
-        isActive: true,
-        cooldownUntil: null,
-      },
-      {
-        id: 'cred-openai-primary',
-        provider: 'openai',
-        label: 'OpenAI GPT-4.1 / o3 Pool #1',
-        apiKey: process.env.OPENAI_API_KEY || '',
-        baseUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, ''),
-        remainingBudgetUsd: 250,
-        rpmLimit: 180,
-        tpmLimit: 1_000_000,
-        priorityOrder: 1,
-        isActive: true,
-        cooldownUntil: null,
-      },
-      {
-        id: 'cred-ollama-gcp-gpu',
+        id: 'cred-ollama-local-gpu',
         provider: 'ollama',
-        label: 'GCP GPU VM Ollama Cluster (Self-Hosted)',
+        label: 'Local GPU Ollama Cluster (Self-Hosted)',
         apiKey: 'local-ollama-cluster',
         baseUrl: (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, ''),
         remainingBudgetUsd: 99999,
@@ -385,9 +331,9 @@ export class CredentialPoolManager {
         cooldownUntil: null,
       },
       {
-        id: 'cred-vllm-gcp-gpu',
+        id: 'cred-vllm-local-gpu',
         provider: 'huggingface',
-        label: 'GCP GPU VM HuggingFace vLLM Endpoint',
+        label: 'Local GPU HuggingFace vLLM Endpoint',
         apiKey: process.env.HF_API_KEY || 'local-vllm-cluster',
         baseUrl: (process.env.HF_VLLM_BASE_URL || 'http://localhost:8000/v1').replace(/\/+$/, ''),
         remainingBudgetUsd: 99999,
@@ -399,8 +345,8 @@ export class CredentialPoolManager {
       },
       {
         id: 'cred-local-llm-v1',
-        provider: 'openai',
-        label: 'Local OpenAI-Compatible Endpoint (Ollama / vLLM / Local)',
+        provider: 'vllm',
+        label: 'Local Chat-Completions Endpoint (Ollama / vLLM)',
         apiKey: 'local-key',
         baseUrl: (process.env.LOCAL_LLM_BASE_URL || 'http://localhost:11434/v1').replace(/\/+$/, ''),
         remainingBudgetUsd: 99999,
@@ -604,7 +550,7 @@ export type SupportedMultimodalMimeType =
 
 export interface MultimodalAttachment {
   type: SupportedMultimodalMimeType | string;
-  gcs_uri?: string | null;
+  media_uri?: string | null;
   public_url?: string;
   filename?: string;
   size_bytes?: number;
@@ -637,7 +583,7 @@ export interface ToolCallInvocation {
 export interface ChatTurnMessage {
   role: 'system' | 'user' | 'model' | 'assistant' | 'tool';
   content?: string;
-  parts?: GeminiPartLike[];
+  parts?: MusePartLike[];
   attachments?: MultimodalAttachment[];
   toolCallId?: string;
   toolName?: string;
@@ -645,7 +591,7 @@ export interface ChatTurnMessage {
   toolOutput?: unknown;
 }
 
-export interface VertexUsageMetadata {
+export interface MuseUsageMetadata {
   promptTokenCount: number;
   cachedContentTokenCount: number;
   thoughtsTokenCount: number;
@@ -695,7 +641,7 @@ export interface ModelGenerateResponse {
   toolCalls: ToolCallInvocation[];
   tool_calls: ToolCallInvocation[];
   usage: TokenUsage;
-  usageMetadata: VertexUsageMetadata;
+  usageMetadata: MuseUsageMetadata;
   duration_ms: number;
   simulated: boolean;
   compacted?: boolean;
@@ -716,19 +662,19 @@ const SUPPORTED_MULTIMODAL_MIMES = new Set<string>([
 ]);
 
 /**
- * Converts a `MultimodalAttachment` into a native Vertex AI / Gemini `part`
- * (`fileData` when `gcs_uri` starts with `gs://`, or `inlineData` with base64).
+ * Converts a `MultimodalAttachment` into a chat `part`
+ * (`fileData` when `media_uri` starts with `media://`, or `inlineData` with base64).
  */
-export function attachmentToGeminiPart(attachment: MultimodalAttachment): GeminiPartLike | null {
+export function attachmentToMusePart(attachment: MultimodalAttachment): MusePartLike | null {
   const mimeType = (attachment.type || 'image/png').toLowerCase();
   const normalizedMime = SUPPORTED_MULTIMODAL_MIMES.has(mimeType) ? mimeType : 'image/png';
 
-  // 1. Prefer native GCS URI (`gs://...`) for Vertex AI
-  if (attachment.gcs_uri && attachment.gcs_uri.startsWith('gs://')) {
+  // 1. Prefer native media URI (`media://...`) for Meta Muse
+  if (attachment.media_uri && attachment.media_uri.startsWith('media://')) {
     return {
       fileData: {
         mimeType: normalizedMime,
-        fileUri: attachment.gcs_uri,
+        fileUri: attachment.media_uri,
       },
     };
   }
@@ -903,7 +849,6 @@ export class ModelRouter {
   private readonly contextCompactor: ContextCompactor;
   public readonly credentialPool: CredentialPoolManager;
   private globalRoutingProfile: GlobalRoutingProfile;
-  private cachedGcloudToken: { token: string; expiresAt: number } | null = null;
 
   constructor(options?: {
     tokenTracker?: TokenTracker;
@@ -917,9 +862,9 @@ export class ModelRouter {
     const envProfile = (process.env.COMMANDO_ROUTING_PROFILE || '').toUpperCase();
     this.globalRoutingProfile =
       options?.routingProfile ||
-      (envProfile === 'META_MUSE_HACKATHON' || envProfile === 'CUSTOM_HYBRID'
+      (envProfile === 'LOCAL_ZERO_COST' || envProfile === 'CUSTOM_HYBRID'
         ? (envProfile as GlobalRoutingProfile)
-        : 'GCP_ZERO_COST');
+        : 'META_MUSE_HACKATHON');
   }
 
   public getRoutingProfile(): GlobalRoutingProfile {
@@ -937,7 +882,7 @@ export class ModelRouter {
 
   /**
    * 3-Tier Dynamic Model Resolution (`dynamocommando.md` Section 4.8.1):
-   * - Tier A: Global Routing Profile Override (`GCP_ZERO_COST` | `META_MUSE_HACKATHON` | `CUSTOM_HYBRID`)
+   * - Tier A: Global Routing Profile Override (`LOCAL_ZERO_COST` | `META_MUSE_HACKATHON` | `CUSTOM_HYBRID`)
    * - Tier B: Per-Agent Primary + Fallback (`fallback_provider`, `fallback_model_id`)
    * - Tier C: Per-Step Intra-Run Routing (`planning` | `tool_loop` | `compaction` | `creative_image` | `voice_note` | `default`)
    */
@@ -954,7 +899,7 @@ export class ModelRouter {
   }): ResolvedStepModelRoute {
     const cfg = this.getConfig();
     const routingProfile: GlobalRoutingProfile =
-      params.routingProfile || this.globalRoutingProfile || 'GCP_ZERO_COST';
+      params.routingProfile || this.globalRoutingProfile || 'META_MUSE_HACKATHON';
     const stepPhase: StepPhase = params.stepPhase || 'default';
     const agentSlug = (params.agent?.slug || params.agentId || '@warden').toLowerCase();
     const hierarchyLevel =
@@ -1008,10 +953,10 @@ export class ModelRouter {
         return {
           routingProfile,
           stepPhase,
-          primaryProvider: params.provider || 'vertex',
+          primaryProvider: params.provider || 'meta_muse',
           primaryModelId: params.modelId || cfg.proModel,
-          fallbackProvider: 'anthropic',
-          fallbackModelId: 'claude-3-7-sonnet-20250219',
+          fallbackProvider: 'meta_muse',
+          fallbackModelId: 'muse-spark-1.3',
           reason: 'Apply pass Tier 1 (Architect / L0-L1) high-reasoning model',
         };
       }
@@ -1026,33 +971,37 @@ export class ModelRouter {
           return {
             routingProfile,
             stepPhase,
-            primaryProvider: isV1 ? 'openai' : 'ollama',
+            primaryProvider: isV1 ? 'vllm' : 'ollama',
             primaryModelId: cfg.localLlmModel,
-            fallbackProvider: 'vertex',
+            fallbackProvider: 'meta_muse',
             fallbackModelId: cfg.defaultModel,
             reason: `Apply pass Tier 2 Fast File Applier routed to local LLM (${cfg.localLlmModel})`,
           };
         }
-        if (cfg.wardenL2ModelProvider === 'haiku') {
+        if (
+          cfg.wardenL2ModelProvider === 'muse-light' ||
+          cfg.wardenL2ModelProvider === 'muse-flash'
+        ) {
           return {
             routingProfile,
             stepPhase,
-            primaryProvider: 'anthropic',
-            primaryModelId: 'claude-3-5-haiku-20241022',
-            fallbackProvider: 'vertex',
+            primaryProvider: 'meta_muse',
+            primaryModelId:
+              cfg.wardenL2ModelProvider === 'muse-flash' ? 'muse-flash' : 'muse-light',
+            fallbackProvider: 'meta_muse',
             fallbackModelId: cfg.defaultModel,
-            reason: 'Apply pass Tier 2 Fast File Applier routed to Claude Haiku',
+            reason: 'Apply pass Tier 2 Fast File Applier routed to Muse Light',
           };
         }
-        // Default: gemini-flash
+        // Default: muse-spark
         return {
           routingProfile,
           stepPhase,
-          primaryProvider: 'vertex',
-          primaryModelId: process.env.COMMANDO_STUDIO_FLASH_MODEL || cfg.defaultModel,
-          fallbackProvider: 'vertex',
-          fallbackModelId: 'gemini-2.5-flash-lite',
-          reason: 'Apply pass Tier 2 Fast File Applier routed to Gemini Flash',
+          primaryProvider: 'meta_muse',
+          primaryModelId: cfg.defaultModel,
+          fallbackProvider: 'ollama',
+          fallbackModelId: 'muse-glimmer-30b',
+          reason: 'Apply pass Tier 2 Fast File Applier routed to Muse Spark',
         };
       }
     }
@@ -1098,8 +1047,8 @@ export class ModelRouter {
           stepPhase,
           primaryProvider: 'meta_muse',
           primaryModelId: 'muse-wonder-1.0',
-          fallbackProvider: 'vertex',
-          fallbackModelId: cfg.proModel,
+          fallbackProvider: 'meta_muse',
+          fallbackModelId: 'muse-spark-1.3',
           reason:
             stepPhase === 'planning'
               ? 'META_MUSE_HACKATHON Tier-C planning phase routed to muse-wonder-1.0'
@@ -1111,60 +1060,58 @@ export class ModelRouter {
         stepPhase,
         primaryProvider: 'meta_muse',
         primaryModelId: 'muse-spark-1.3',
-        fallbackProvider: 'vertex',
-        fallbackModelId: cfg.defaultModel,
+        fallbackProvider: 'ollama',
+        fallbackModelId: 'muse-glimmer-30b',
         reason: 'META_MUSE_HACKATHON Level 1/2 coding & tool loop routed to muse-spark-1.3',
       };
     }
 
-    // Tier A.2: GCP_ZERO_COST Global Profile
-    if (routingProfile === 'GCP_ZERO_COST') {
+    // Tier A.2: LOCAL_ZERO_COST Global Profile
+    if (routingProfile === 'LOCAL_ZERO_COST') {
       if (stepPhase === 'compaction') {
         return {
           routingProfile,
           stepPhase,
-          primaryProvider: 'vertex',
-          primaryModelId: cfg.defaultModel,
-          fallbackProvider: 'ollama',
-          fallbackModelId: 'qwen2.5-coder:32b',
-          reason: `GCP_ZERO_COST compaction routed to Vertex ${cfg.defaultModel}`,
+          primaryProvider: 'ollama',
+          primaryModelId: 'muse-glimmer-30b',
+          fallbackProvider: 'vllm',
+          fallbackModelId: 'meta-llama/Llama-3.3-70B-Instruct',
+          reason: 'LOCAL_ZERO_COST compaction routed to local muse-glimmer-30b',
         };
       }
       if (stepPhase === 'planning' || isExecutive || isLead) {
         return {
           routingProfile,
           stepPhase,
-          primaryProvider: 'vertex',
-          primaryModelId: cfg.proModel,
-          fallbackProvider: 'vertex',
-          fallbackModelId: cfg.defaultModel,
+          primaryProvider: 'ollama',
+          primaryModelId: 'llama-3.3-70b',
+          fallbackProvider: 'vllm',
+          fallbackModelId: 'meta-llama/Llama-3.3-70B-Instruct',
           reason:
             stepPhase === 'planning'
-              ? `GCP_ZERO_COST Tier-C planning phase routed to Vertex ${cfg.proModel}`
-              : `GCP_ZERO_COST executive/lead routed to Vertex ${cfg.proModel}`,
+              ? 'LOCAL_ZERO_COST Tier-C planning phase routed to local llama-3.3-70b'
+              : 'LOCAL_ZERO_COST executive/lead routed to local llama-3.3-70b',
         };
       }
       if (stepPhase === 'tool_loop') {
         return {
           routingProfile,
           stepPhase,
-          primaryProvider: 'vertex',
-          primaryModelId: cfg.defaultModel,
-          fallbackProvider: 'ollama',
-          fallbackModelId: 'qwen2.5-coder:32b',
-          reason: `GCP_ZERO_COST Tier-C tool_loop routed to Vertex ${cfg.defaultModel}`,
+          primaryProvider: 'ollama',
+          primaryModelId: 'llama-3.3-70b',
+          fallbackProvider: 'vllm',
+          fallbackModelId: 'meta-llama/Llama-3.3-70B-Instruct',
+          reason: 'LOCAL_ZERO_COST Tier-C tool_loop routed to local llama-3.3-70b',
         };
       }
-      const prefersOllama =
-        params.provider === 'ollama' || params.agent?.model_provider === 'ollama';
       return {
         routingProfile,
         stepPhase,
-        primaryProvider: prefersOllama ? 'ollama' : 'vertex',
-        primaryModelId: prefersOllama ? 'qwen2.5-coder:32b' : cfg.defaultModel,
-        fallbackProvider: 'vertex',
-        fallbackModelId: cfg.proModel,
-        reason: 'GCP_ZERO_COST Level 2 executor routed to zero-cost GCP model',
+        primaryProvider: 'ollama',
+        primaryModelId: 'llama-3.3-70b',
+        fallbackProvider: 'vllm',
+        fallbackModelId: 'meta-llama/Llama-3.3-70B-Instruct',
+        reason: 'LOCAL_ZERO_COST Level 2 executor routed to zero-cost local model',
       };
     }
 
@@ -1175,11 +1122,11 @@ export class ModelRouter {
       const fbProvider =
         params.fallbackProvider ||
         params.agent?.fallback_provider ||
-        (target.provider === 'vertex' ? 'ollama' : 'vertex');
+        (target.provider === 'meta_muse' ? 'ollama' : 'meta_muse');
       const fbModel =
         params.fallbackModelId ||
         params.agent?.fallback_model_id ||
-        (fbProvider === 'vertex' ? cfg.proModel : 'qwen2.5-coder:32b');
+        (fbProvider === 'meta_muse' ? cfg.proModel : 'llama-3.3-70b');
       return {
         routingProfile,
         stepPhase,
@@ -1192,7 +1139,7 @@ export class ModelRouter {
     }
 
     const baseProvider: ModelProvider =
-      params.provider || params.agent?.model_provider || 'vertex';
+      params.provider || params.agent?.model_provider || 'meta_muse';
     const baseModelId: string =
       params.modelId ||
       params.agent?.model_id ||
@@ -1207,32 +1154,23 @@ export class ModelRouter {
       if (baseProvider === 'meta_muse') {
         primaryModelId = 'muse-wonder-1.0';
         reason = 'Tier-C planning phase upgraded to muse-wonder-1.0';
-      } else if (baseProvider === 'vertex') {
-        primaryModelId = cfg.proModel;
-        reason = `Tier-C planning phase upgraded to ${cfg.proModel}`;
       }
     } else if (!params.modelId && stepPhase === 'tool_loop') {
       if (baseProvider === 'meta_muse') {
         primaryModelId = 'muse-spark-1.3';
         reason = 'Tier-C tool_loop routed to high-speed muse-spark-1.3';
-      } else if (baseProvider === 'vertex') {
-        primaryModelId = cfg.defaultModel;
-        reason = `Tier-C tool_loop routed to high-speed ${cfg.defaultModel}`;
       }
     } else if (!params.modelId && stepPhase === 'compaction') {
       if (baseProvider === 'meta_muse') {
         primaryModelId = 'muse-glimmer-30b';
         reason = 'Tier-C compaction routed to muse-glimmer-30b';
-      } else if (baseProvider === 'vertex') {
-        primaryModelId = cfg.defaultModel;
-        reason = `Tier-C compaction routed to ${cfg.defaultModel}`;
       }
     }
 
     const fallbackProvider: ModelProvider =
       params.fallbackProvider ||
       params.agent?.fallback_provider ||
-      (primaryProvider === 'vertex' ? 'ollama' : 'vertex');
+      (primaryProvider === 'meta_muse' ? 'ollama' : 'meta_muse');
     const fallbackModelId: string =
       params.fallbackModelId ||
       params.agent?.fallback_model_id ||
@@ -1252,54 +1190,36 @@ export class ModelRouter {
   public getDefaultModelForProvider(provider: ModelProvider): string {
     const cfg = this.getConfig();
     switch (provider) {
-      case 'vertex':
-        return cfg.proModel;
       case 'meta_muse':
         return 'muse-spark-1.3';
-      case 'anthropic':
-        return 'claude-sonnet-4-20250514';
-      case 'openai':
-        return 'gpt-4.1';
       case 'ollama':
-        return 'qwen2.5-coder:32b';
+        return 'llama-3.3-70b';
       case 'huggingface':
       case 'vllm':
-        return 'Qwen/Qwen2.5-Coder-32B-Instruct';
+        return 'meta-llama/Llama-3.3-70B-Instruct';
       default:
-        return cfg.proModel;
+        return cfg.defaultModel;
     }
   }
 
   private getConfig() {
     return {
-      gcpProject: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT_ID || '',
-      gcpLocation: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
-      geminiApiKey: process.env.GEMINI_API_KEY || process.env.VERTEX_API_KEY || '',
-      proModel: process.env.COMMANDO_PRO_MODEL || 'gemini-2.5-pro',
-      defaultModel: process.env.COMMANDO_DEFAULT_MODEL || 'gemini-2.5-flash',
+      proModel: process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0',
+      defaultModel: process.env.COMMANDO_DEFAULT_MODEL || 'muse-spark-1.3',
       wardenExecutionMode: (process.env.WARDEN_EXECUTION_MODE || 'case_2b').toLowerCase(),
-      wardenL2ModelProvider: (process.env.WARDEN_L2_MODEL_PROVIDER || 'gemini-flash').toLowerCase(),
+      wardenL2ModelProvider: (process.env.WARDEN_L2_MODEL_PROVIDER || 'muse-spark').toLowerCase(),
       localLlmBaseUrl: (
         process.env.LOCAL_LLM_BASE_URL ||
         process.env.OLLAMA_BASE_URL ||
         'http://localhost:11434/v1'
       ).replace(/\/+$/, ''),
-      localLlmModel: process.env.LOCAL_LLM_MODEL || 'qwen2.5-coder:14b',
-      embeddingModel: process.env.COMMANDO_EMBEDDING_MODEL || 'text-embedding-005',
+      localLlmModel: process.env.LOCAL_LLM_MODEL || 'llama-3.3-70b',
+      embeddingModel: process.env.COMMANDO_EMBEDDING_MODEL || 'muse-embed-1.0',
       metaMuseBaseUrl: (process.env.META_MUSE_BASE_URL || 'https://api.meta.ai/v1').replace(
         /\/+$/,
         ''
       ),
       metaMuseApiKey: process.env.META_MUSE_API_KEY || process.env.META_API_KEY || '',
-      anthropicBaseUrl: (
-        process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1'
-      ).replace(/\/+$/, ''),
-      anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
-      openaiBaseUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(
-        /\/+$/,
-        ''
-      ),
-      openaiApiKey: process.env.OPENAI_API_KEY || '',
       ollamaBaseUrl: (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, ''),
       hfVllmBaseUrl: (process.env.HF_VLLM_BASE_URL || 'http://localhost:8000/v1').replace(
         /\/+$/,
@@ -1309,45 +1229,11 @@ export class ModelRouter {
     };
   }
 
-  private isRealGcpProjectConfigured(project: string): boolean {
-    return Boolean(
-      project &&
-        project !== 'your-gcp-project-id' &&
-        project !== 'placeholder' &&
-        project !== 'none'
-    );
-  }
-
-  private getVertexAccessToken(): string | null {
-    if (process.env.VERTEX_ACCESS_TOKEN) {
-      return process.env.VERTEX_ACCESS_TOKEN;
-    }
-    if (this.cachedGcloudToken && this.cachedGcloudToken.expiresAt > Date.now()) {
-      return this.cachedGcloudToken.token;
-    }
-    try {
-      const token = execSync(
-        'gcloud auth application-default print-access-token 2>/dev/null || gcloud auth print-access-token 2>/dev/null',
-        { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }
-      ).trim();
-      if (token) {
-        this.cachedGcloudToken = {
-          token,
-          expiresAt: Date.now() + 45 * 60 * 1000, // Cache for 45 minutes
-        };
-        return token;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
   /**
    * Normalizes caller input (`prompt`, `messages`, or `contents` + `attachments`)
-   * into Gemini-compatible `contents` array.
+   * into a provider-neutral `ConversationTurnLike[]` array.
    */
-  private buildGeminiContents(req: ModelGenerateRequest): ConversationTurnLike[] {
+  private buildChatTurns(req: ModelGenerateRequest): ConversationTurnLike[] {
     if (Array.isArray(req.contents) && req.contents.length > 0) {
       const cloned = req.contents.map((c) => ({
         ...c,
@@ -1356,7 +1242,7 @@ export class ModelRouter {
       if (Array.isArray(req.attachments) && req.attachments.length > 0) {
         const lastTurn = cloned[cloned.length - 1];
         for (const att of req.attachments) {
-          const part = attachmentToGeminiPart(att);
+          const part = attachmentToMusePart(att);
           if (part && lastTurn.parts) {
             lastTurn.parts.push(part);
           }
@@ -1370,7 +1256,7 @@ export class ModelRouter {
     if (Array.isArray(req.messages) && req.messages.length > 0) {
       for (const msg of req.messages) {
         if (msg.role === 'system') continue; // Handled via systemInstruction
-        const parts: GeminiPartLike[] = [];
+        const parts: MusePartLike[] = [];
 
         if (Array.isArray(msg.parts) && msg.parts.length > 0) {
           parts.push(...msg.parts);
@@ -1401,9 +1287,9 @@ export class ModelRouter {
 
         if (Array.isArray(msg.attachments)) {
           for (const att of msg.attachments) {
-            const part = attachmentToGeminiPart(att);
+            const part = attachmentToMusePart(att);
             if (part) {
-              // If attachment uses gcs_uri instead of inlineData when using API key endpoint,
+              // If attachment uses media_uri instead of inlineData when using API key endpoint,
               // keep inlineData if available; otherwise attach part directly.
               parts.push(part);
             }
@@ -1420,10 +1306,10 @@ export class ModelRouter {
     }
 
     if (req.prompt) {
-      const promptParts: GeminiPartLike[] = [{ text: req.prompt }];
+      const promptParts: MusePartLike[] = [{ text: req.prompt }];
       if (Array.isArray(req.attachments)) {
         for (const att of req.attachments) {
-          const part = attachmentToGeminiPart(att);
+          const part = attachmentToMusePart(att);
           if (part) promptParts.push(part);
         }
       }
@@ -1438,7 +1324,7 @@ export class ModelRouter {
     ) {
       const lastTurn = turns[turns.length - 1];
       for (const att of req.attachments) {
-        const part = attachmentToGeminiPart(att);
+        const part = attachmentToMusePart(att);
         if (part && lastTurn.parts) {
           lastTurn.parts.push(part);
         }
@@ -1457,7 +1343,7 @@ export class ModelRouter {
 
   /**
    * Main entry point for multi-provider LLM generation across all 6 providers
-   * (`vertex`, `meta_muse`, `anthropic`, `openai`, `ollama`, `huggingface`/`vllm`)
+   * (`meta_muse`, `ollama`, `huggingface`/`vllm`)
    * with 3-tier dynamic routing, multi-token pool rotation, and automatic provider failover.
    */
   public async generate(req: ModelGenerateRequest): Promise<ModelGenerateResponse> {
@@ -1490,7 +1376,7 @@ export class ModelRouter {
         .join('\n\n') ||
       'You are an autonomous enterprise AI agent operating inside DynamoCommando.';
 
-    // Register / refresh deterministic Vertex AI Context Cache for this agent's system prompt
+    // Register / refresh deterministic Meta Muse Context Cache for this agent's system prompt
     const cacheEntry = this.contextCompactor.getOrCreateContextCache({
       agentId: req.agentId || '@warden',
       projectScope: req.projectScope || 'GLOBAL',
@@ -1499,7 +1385,7 @@ export class ModelRouter {
     });
 
     // Build conversation turns and run 60K automatic context compaction if needed
-    const rawTurns = this.buildGeminiContents(req);
+    const rawTurns = this.buildChatTurns(req);
     const compaction =
       req.autoCompact !== false
         ? await this.contextCompactor.compactIfNeeded({
@@ -1716,47 +1602,8 @@ export class ModelRouter {
       startMs,
     } = params;
 
-    if (provider === 'vertex') {
-      return this.callVertexGemini({
-        req,
-        modelId,
-        credential,
-        systemInstruction,
-        turns,
-        cacheHitTokens,
-        compacted,
-        startMs,
-      });
-    }
-
     if (provider === 'meta_muse') {
       return this.callMetaMuse({
-        req,
-        modelId,
-        credential,
-        systemInstruction,
-        turns,
-        cacheHitTokens,
-        compacted,
-        startMs,
-      });
-    }
-
-    if (provider === 'anthropic') {
-      return this.callAnthropicMessages({
-        req,
-        modelId,
-        credential,
-        systemInstruction,
-        turns,
-        cacheHitTokens,
-        compacted,
-        startMs,
-      });
-    }
-
-    if (provider === 'openai') {
-      return this.callOpenAIChat({
         req,
         modelId,
         credential,
@@ -1819,536 +1666,10 @@ export class ModelRouter {
   }
 
   /**
-   * Calls Google Cloud Vertex AI (`aiplatform.googleapis.com`) or Gemini API (`generativelanguage.googleapis.com`).
-   */
-  /**
-   * Normalizes model identifiers to real Gemini models available on Google Cloud / Gemini API.
-   */
-  public normalizeGeminiStudioModel(modelId: string): string {
-    const proEnv = process.env.COMMANDO_STUDIO_PRO_MODEL || process.env.COMMANDO_PRO_MODEL || '';
-    const proModel =
-      proEnv && !proEnv.includes('3.1-pro') && !proEnv.includes('argon')
-        ? proEnv
-        : 'gemini-2.5-pro';
-
-    const flashEnv =
-      process.env.COMMANDO_STUDIO_FLASH_MODEL || process.env.COMMANDO_DEFAULT_MODEL || '';
-    const flashModel =
-      flashEnv && !flashEnv.includes('3-flash')
-        ? flashEnv
-        : 'gemini-2.5-flash';
-
-    const lower = modelId.toLowerCase();
-    if (
-      lower.includes('3.1-pro') ||
-      lower.includes('argon') ||
-      lower.includes('pro') ||
-      lower.includes('thinking')
-    ) {
-      return proModel;
-    }
-    if (lower.includes('3-flash') || lower.includes('flash')) {
-      return flashModel;
-    }
-    return modelId;
-  }
-
-  /**
-   * Direct Gemini REST API caller using native fetch.
-   * Supports both Vertex AI Express keys (AQ.* via aiplatform.googleapis.com)
-   * and Google AI Studio keys (generativelanguage.googleapis.com).
-   * Automatically falls back across endpoint variations and candidate model identifiers.
-   */
-  public async callGeminiDirectRest(params: {
-    req: ModelGenerateRequest;
-    modelId: string;
-    apiKey: string;
-    systemInstruction: string;
-    turns: ConversationTurnLike[];
-    cacheHitTokens: number;
-    compacted: boolean;
-    startMs: number;
-    credentialId?: string;
-  }): Promise<ModelGenerateResponse> {
-    const {
-      req,
-      modelId,
-      apiKey,
-      systemInstruction,
-      turns,
-      cacheHitTokens,
-      compacted,
-      startMs,
-      credentialId,
-    } = params;
-
-    // 1. Sanitize & build Gemini contents schema: [{ role: 'user' | 'model', parts: [...] }]
-    const sanitizedTurns: Array<{ role: 'user' | 'model'; parts: GeminiPartLike[] }> = [];
-    for (const turn of turns) {
-      const role: 'user' | 'model' =
-        turn.role === 'model' || turn.role === 'assistant' ? 'model' : 'user';
-      const validParts: GeminiPartLike[] = [];
-      if (Array.isArray(turn.parts)) {
-        for (const p of turn.parts) {
-          if (p.text !== undefined && p.text !== '') {
-            validParts.push({ text: p.text });
-          } else if (p.inlineData || p.fileData || p.functionCall || p.functionResponse) {
-            validParts.push(p);
-          }
-        }
-      } else if (turn.content) {
-        validParts.push({ text: String(turn.content) });
-      }
-
-      if (validParts.length === 0) {
-        validParts.push({ text: ' ' });
-      }
-
-      if (sanitizedTurns.length > 0 && sanitizedTurns[sanitizedTurns.length - 1].role === role) {
-        sanitizedTurns[sanitizedTurns.length - 1].parts.push(...validParts);
-      } else {
-        sanitizedTurns.push({ role, parts: validParts });
-      }
-    }
-
-    if (sanitizedTurns.length === 0) {
-      sanitizedTurns.push({ role: 'user', parts: [{ text: req.prompt || 'Hello' }] });
-    }
-    if (sanitizedTurns[0].role !== 'user') {
-      sanitizedTurns.unshift({ role: 'user', parts: [{ text: 'Begin task' }] });
-    }
-
-    // 2. Candidate model identifiers in priority order
-    const initialModel = this.normalizeGeminiStudioModel(modelId);
-    const candidateModels = Array.from(
-      new Set([
-        initialModel,
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-2.5-pro',
-        'gemini-1.5-pro',
-        'gemini-1.5-flash',
-      ])
-    );
-
-    let lastErrorText = '';
-    let lastStatusCode = 500;
-
-    for (const candModel of candidateModels) {
-      // Determine endpoints to try: Vertex Express (AQ.) vs Google AI Studio
-      const endpoints: string[] = apiKey.startsWith('AQ.')
-        ? [
-            `https://aiplatform.googleapis.com/v1beta1/publishers/google/models/${candModel}:generateContent?key=${apiKey}`,
-            `https://generativelanguage.googleapis.com/v1beta/models/${candModel}:generateContent?key=${apiKey}`,
-          ]
-        : [
-            `https://generativelanguage.googleapis.com/v1beta/models/${candModel}:generateContent?key=${apiKey}`,
-            `https://aiplatform.googleapis.com/v1beta1/publishers/google/models/${candModel}:generateContent?key=${apiKey}`,
-          ];
-
-      for (const endpointUrl of endpoints) {
-        const buildBody = (includeThinking: boolean) => {
-          const genConfig: Record<string, unknown> = {
-            temperature: req.temperature ?? 0.2,
-          };
-          if (req.maxOutputTokens) {
-            genConfig.maxOutputTokens = req.maxOutputTokens;
-          }
-          if (includeThinking) {
-            genConfig.thinkingConfig = {
-              includeThoughts: true,
-              thinkingBudget: req.thinkingBudget ?? 2048,
-            };
-          }
-
-          const body: Record<string, unknown> = {
-            contents: sanitizedTurns,
-            generationConfig: genConfig,
-          };
-
-          if (systemInstruction.trim()) {
-            body.systemInstruction = {
-              parts: [{ text: systemInstruction.trim() }],
-            };
-          }
-
-          if (req.enableTools !== false && Array.isArray(req.tools) && req.tools.length > 0) {
-            body.tools = [{ functionDeclarations: req.tools }];
-          }
-
-          return body;
-        };
-
-        const tryWithThinking = Boolean(
-          req.enableThinking || candModel.includes('thinking') || candModel.includes('pro')
-        );
-
-        let res: Response | null = null;
-        try {
-          res = await fetch(endpointUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(buildBody(tryWithThinking)),
-            signal: AbortSignal.timeout(45_000),
-          });
-
-          // If thinkingConfig rejected with 400, retry once without thinkingConfig on this endpoint
-          if (res.status === 400 && tryWithThinking) {
-            const errClone = await res.clone().text();
-            if (errClone.toLowerCase().includes('thinking')) {
-              res = await fetch(endpointUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(buildBody(false)),
-                signal: AbortSignal.timeout(45_000),
-              });
-            }
-          }
-        } catch (fetchErr) {
-          lastErrorText = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-          continue;
-        }
-
-        if (!res.ok) {
-          lastStatusCode = res.status;
-          lastErrorText = await res.text();
-          // 404 (model not found on this endpoint) or 403 (service not enabled) or 400 -> try next
-          if (res.status === 404 || res.status === 403 || res.status === 400) {
-            continue;
-          }
-          // On other errors (e.g. 429 rate limit or 5xx), break to failover
-          throw new ProviderHttpError(
-            'vertex',
-            res.status,
-            `Gemini API HTTP ${res.status}: ${lastErrorText}`,
-            credentialId
-          );
-        }
-
-        const data = (await res.json()) as {
-          candidates?: Array<{
-            content?: {
-              parts?: GeminiPartLike[];
-            };
-            finishReason?: string;
-          }>;
-          usageMetadata?: {
-            promptTokenCount?: number;
-            cachedContentTokenCount?: number;
-            thoughtsTokenCount?: number;
-            candidatesTokenCount?: number;
-            totalTokenCount?: number;
-          };
-        };
-
-        const candidateParts = data.candidates?.[0]?.content?.parts || [];
-        const thinkingSegments: string[] = [];
-        const messageSegments: string[] = [];
-        const toolCalls: ToolCallInvocation[] = [];
-
-        for (const part of candidateParts) {
-          if (part.thought && part.text) {
-            thinkingSegments.push(part.text);
-          } else if (part.text) {
-            messageSegments.push(part.text);
-          }
-          if (part.functionCall) {
-            toolCalls.push({
-              id: `call_${crypto.randomUUID().slice(0, 8)}`,
-              name: part.functionCall.name,
-              args: (part.functionCall.args as Record<string, unknown>) || {},
-            });
-          }
-        }
-
-        const thinkingText = thinkingSegments.join('\n').trim();
-        const messageText = messageSegments.join('\n').trim();
-
-        const estIn = estimateTokens(
-          systemInstruction + sanitizedTurns.map((t) => JSON.stringify(t.parts)).join(' ')
-        );
-        const estThinking = estimateTokens(thinkingText);
-        const estOut = estimateTokens(messageText + JSON.stringify(toolCalls));
-
-        const promptTokenCount = data.usageMetadata?.promptTokenCount ?? estIn;
-        const cachedContentTokenCount =
-          data.usageMetadata?.cachedContentTokenCount ?? Math.min(promptTokenCount, cacheHitTokens);
-        const thoughtsTokenCount = data.usageMetadata?.thoughtsTokenCount ?? estThinking;
-        const candidatesTokenCount = data.usageMetadata?.candidatesTokenCount ?? estOut;
-        const totalTokenCount =
-          data.usageMetadata?.totalTokenCount ??
-          promptTokenCount + thoughtsTokenCount + candidatesTokenCount;
-
-        const durationMs = Math.max(1, Date.now() - startMs);
-        const budgetCheck = this.tokenTracker.recordStepUsage({
-          runId: req.runId,
-          agentId: req.agentId,
-          modelId: candModel,
-          tokens_in: promptTokenCount,
-          tokens_cached: cachedContentTokenCount,
-          tokens_thinking: thoughtsTokenCount,
-          tokens_out: candidatesTokenCount,
-          duration_ms: durationMs,
-          max_tokens_per_run: req.maxTokensPerRun,
-        });
-
-        return {
-          provider: 'vertex',
-          model_used: candModel,
-          modelId: candModel,
-          thinking_text: thinkingText,
-          thinkingText,
-          message_text: messageText,
-          text: messageText,
-          content: messageText,
-          toolCalls,
-          tool_calls: toolCalls,
-          usage: budgetCheck.stepUsage,
-          usageMetadata: {
-            promptTokenCount,
-            cachedContentTokenCount,
-            thoughtsTokenCount,
-            candidatesTokenCount,
-            totalTokenCount,
-          },
-          duration_ms: durationMs,
-          simulated: false,
-          compacted,
-          budgetCheck,
-          rawResponse: data,
-        };
-      }
-    }
-
-    throw new ProviderHttpError(
-      'vertex',
-      lastStatusCode,
-      `Gemini REST API invocation exhausted all candidate models and endpoints: ${lastErrorText}`,
-      credentialId
-    );
-  }
-
-  private async callVertexGemini(params: {
-    req: ModelGenerateRequest;
-    modelId: string;
-    credential?: ProviderCredential | null;
-    systemInstruction: string;
-    turns: ConversationTurnLike[];
-    cacheHitTokens: number;
-    compacted: boolean;
-    startMs: number;
-  }): Promise<ModelGenerateResponse> {
-    const cfg = this.getConfig();
-    const {
-      req,
-      modelId,
-      credential,
-      systemInstruction,
-      turns,
-      cacheHitTokens,
-      compacted,
-      startMs,
-    } = params;
-
-    const credKey =
-      credential?.apiKey && credential.apiKey !== 'gcp-adc-primary'
-        ? credential.apiKey
-        : cfg.geminiApiKey;
-
-    if (credKey) {
-      return this.callGeminiDirectRest({
-        req,
-        modelId,
-        apiKey: credKey,
-        systemInstruction,
-        turns,
-        cacheHitTokens,
-        compacted,
-        startMs,
-        credentialId: credential?.id,
-      });
-    }
-
-    if (this.isRealGcpProjectConfigured(cfg.gcpProject)) {
-      const token = this.getVertexAccessToken();
-      if (!token) {
-        return await this.buildDeterministicSimulation({
-          req,
-          provider: 'vertex',
-          modelId,
-          systemInstruction,
-          turns,
-          cacheHitTokens,
-          compacted,
-          startMs,
-        });
-      }
-      const actualModelId = this.normalizeGeminiStudioModel(modelId);
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      };
-      const host =
-        cfg.gcpLocation === 'global'
-          ? 'aiplatform.googleapis.com'
-          : `${cfg.gcpLocation}-aiplatform.googleapis.com`;
-      const url = `https://${host}/v1/projects/${cfg.gcpProject}/locations/${cfg.gcpLocation}/publishers/google/models/${actualModelId}:generateContent`;
-
-      const isProOrThinkingModel =
-        req.enableThinking ??
-        (actualModelId.includes('thinking'));
-
-      const generationConfig: Record<string, unknown> = {
-        temperature: req.temperature ?? 0.2,
-      };
-      if (req.maxOutputTokens) {
-        generationConfig.maxOutputTokens = req.maxOutputTokens;
-      }
-      if (isProOrThinkingModel) {
-        generationConfig.thinkingConfig = {
-          includeThoughts: true,
-          thinkingBudget: req.thinkingBudget ?? 2048,
-        };
-      }
-
-      const body: Record<string, unknown> = {
-        systemInstruction: {
-          parts: [{ text: systemInstruction }],
-        },
-        contents: turns,
-        generationConfig,
-      };
-
-      if (req.enableTools !== false && Array.isArray(req.tools) && req.tools.length > 0) {
-        body.tools = [{ functionDeclarations: req.tools }];
-      }
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new ProviderHttpError(
-          'vertex',
-          res.status,
-          `Vertex AI / Gemini HTTP ${res.status}: ${errText}`,
-          credential?.id
-        );
-      }
-
-      const data = (await res.json()) as {
-        candidates?: Array<{
-          content?: {
-            parts?: GeminiPartLike[];
-          };
-        }>;
-        usageMetadata?: {
-          promptTokenCount?: number;
-          cachedContentTokenCount?: number;
-          thoughtsTokenCount?: number;
-          candidatesTokenCount?: number;
-          totalTokenCount?: number;
-        };
-      };
-
-      const parts = data.candidates?.[0]?.content?.parts || [];
-      const thinkingSegments: string[] = [];
-      const messageSegments: string[] = [];
-      const toolCalls: ToolCallInvocation[] = [];
-
-      for (const part of parts) {
-        if (part.thought && part.text) {
-          thinkingSegments.push(part.text);
-        } else if (part.text) {
-          messageSegments.push(part.text);
-        }
-        if (part.functionCall) {
-          toolCalls.push({
-            id: `call_${crypto.randomUUID().slice(0, 8)}`,
-            name: part.functionCall.name,
-            args: (part.functionCall.args as Record<string, unknown>) || {},
-          });
-        }
-      }
-
-      const thinkingText = thinkingSegments.join('\n').trim();
-      const messageText = messageSegments.join('\n').trim();
-
-      const estIn = estimateTokens(
-        systemInstruction + turns.map((t) => JSON.stringify(t.parts || t.content || '')).join(' ')
-      );
-      const estThinking = estimateTokens(thinkingText);
-      const estOut = estimateTokens(messageText + JSON.stringify(toolCalls));
-
-      const promptTokenCount = data.usageMetadata?.promptTokenCount ?? estIn;
-      const cachedContentTokenCount =
-        data.usageMetadata?.cachedContentTokenCount ?? Math.min(promptTokenCount, cacheHitTokens);
-      const thoughtsTokenCount = data.usageMetadata?.thoughtsTokenCount ?? estThinking;
-      const candidatesTokenCount = data.usageMetadata?.candidatesTokenCount ?? estOut;
-      const totalTokenCount =
-        data.usageMetadata?.totalTokenCount ??
-        promptTokenCount + thoughtsTokenCount + candidatesTokenCount;
-
-      const durationMs = Math.max(1, Date.now() - startMs);
-      const budgetCheck = this.tokenTracker.recordStepUsage({
-        runId: req.runId,
-        agentId: req.agentId,
-        modelId,
-        tokens_in: promptTokenCount,
-        tokens_cached: cachedContentTokenCount,
-        tokens_thinking: thoughtsTokenCount,
-        tokens_out: candidatesTokenCount,
-        duration_ms: durationMs,
-        max_tokens_per_run: req.maxTokensPerRun,
-      });
-
-      return {
-        provider: 'vertex',
-        model_used: modelId,
-        modelId,
-        thinking_text: thinkingText,
-        thinkingText,
-        message_text: messageText,
-        text: messageText,
-        content: messageText,
-        toolCalls,
-        tool_calls: toolCalls,
-        usage: budgetCheck.stepUsage,
-        usageMetadata: {
-          promptTokenCount,
-          cachedContentTokenCount,
-          thoughtsTokenCount,
-          candidatesTokenCount,
-          totalTokenCount,
-        },
-        duration_ms: durationMs,
-        simulated: false,
-        compacted,
-        budgetCheck,
-        rawResponse: data,
-      };
-    } else {
-      return await this.buildDeterministicSimulation({
-        req,
-        provider: 'vertex',
-        modelId,
-        systemInstruction,
-        turns,
-        cacheHitTokens,
-        compacted,
-        startMs,
-      });
-    }
-  }
-
-  /**
    * First-Class Adapter for Meta Muse Model API (`https://api.meta.ai/v1`):
    * - `muse-wonder-1.0` (`@warden` / `@cto` frontier reasoning)
    * - `muse-spark-1.3` (Level 1/2 high-speed coding & tool loops)
-   * - `muse-glimmer-30b` (local / GCP GPU background watchdogs & context compaction)
+   * - `muse-glimmer-30b` (local background watchdogs & context compaction)
    * - `muse-image` (`@cmo` creative visual generation)
    * - `muse-voice` (voice notes & spoken briefings)
    */
@@ -2592,409 +1913,7 @@ export class ModelRouter {
   }
 
   /**
-   * First-Class Adapter for Anthropic Messages API (`https://api.anthropic.com/v1/messages`):
-   * - `claude-sonnet-4-20250514`, `claude-3-7-sonnet-latest`, `claude-opus-4-20250514`
-   */
-  private async callAnthropicMessages(params: {
-    req: ModelGenerateRequest;
-    modelId: string;
-    credential?: ProviderCredential | null;
-    systemInstruction: string;
-    turns: ConversationTurnLike[];
-    cacheHitTokens: number;
-    compacted: boolean;
-    startMs: number;
-  }): Promise<ModelGenerateResponse> {
-    const cfg = this.getConfig();
-    const {
-      req,
-      modelId,
-      credential,
-      systemInstruction,
-      turns,
-      cacheHitTokens,
-      compacted,
-      startMs,
-    } = params;
-
-    const apiKey = credential?.apiKey || cfg.anthropicApiKey;
-    const baseUrl = (
-      credential?.baseUrl ||
-      cfg.anthropicBaseUrl ||
-      'https://api.anthropic.com/v1'
-    ).replace(/\/+$/, '');
-
-    if (!apiKey) {
-      return await this.buildDeterministicSimulation({
-        req,
-        provider: 'anthropic',
-        modelId,
-        systemInstruction,
-        turns,
-        cacheHitTokens,
-        compacted,
-        startMs,
-      });
-    }
-
-    const anthropicMessages: Array<{ role: 'user' | 'assistant'; content: unknown }> = [];
-    for (const turn of turns) {
-      const blocks: Array<Record<string, unknown>> = [];
-      if (turn.content) {
-        blocks.push({ type: 'text', text: turn.content });
-      }
-      if (Array.isArray(turn.parts)) {
-        for (const p of turn.parts) {
-          if (p.text) {
-            blocks.push({ type: 'text', text: p.text });
-          } else if (p.inlineData?.data && p.inlineData.mimeType.startsWith('image/')) {
-            blocks.push({
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: p.inlineData.mimeType,
-                data: p.inlineData.data,
-              },
-            });
-          } else if (p.functionResponse) {
-            blocks.push({
-              type: 'text',
-              text: `[Tool ${p.functionResponse.name} Output]: ${JSON.stringify(p.functionResponse.response)}`,
-            });
-          }
-        }
-      }
-      anthropicMessages.push({
-        role: turn.role === 'model' ? 'assistant' : 'user',
-        content: blocks.length > 0 ? blocks : [{ type: 'text', text: '...' }],
-      });
-    }
-
-    const tools =
-      req.enableTools !== false && Array.isArray(req.tools) && req.tools.length > 0
-        ? req.tools.map((t) => ({
-            name: t.name,
-            description: t.description,
-            input_schema: t.parameters,
-          }))
-        : undefined;
-
-    const res = await fetch(`${baseUrl}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: modelId,
-        max_tokens: req.maxOutputTokens ?? 4096,
-        temperature: req.temperature ?? 0.2,
-        system: systemInstruction,
-        messages: anthropicMessages,
-        ...(tools ? { tools } : {}),
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new ProviderHttpError(
-        'anthropic',
-        res.status,
-        `Anthropic API HTTP ${res.status}: ${errText}`,
-        credential?.id
-      );
-    }
-
-    const data = (await res.json()) as {
-      content?: Array<{
-        type: string;
-        text?: string;
-        thinking?: string;
-        id?: string;
-        name?: string;
-        input?: Record<string, unknown>;
-      }>;
-      usage?: {
-        input_tokens?: number;
-        cache_read_input_tokens?: number;
-        output_tokens?: number;
-      };
-    };
-
-    const thinkingSegments: string[] = [];
-    const messageSegments: string[] = [];
-    const toolCalls: ToolCallInvocation[] = [];
-
-    for (const block of data.content || []) {
-      if (block.type === 'thinking' && block.thinking) {
-        thinkingSegments.push(block.thinking);
-      } else if (block.type === 'text' && block.text) {
-        messageSegments.push(block.text);
-      } else if (block.type === 'tool_use' && block.name) {
-        toolCalls.push({
-          id: block.id || `claude_${crypto.randomUUID().slice(0, 8)}`,
-          name: block.name,
-          args: block.input || {},
-        });
-      }
-    }
-
-    const thinkingText = thinkingSegments.join('\n').trim();
-    const messageText = messageSegments.join('\n').trim();
-    const tokensIn =
-      data.usage?.input_tokens ?? estimateTokens(systemInstruction + JSON.stringify(turns));
-    const tokensCached = data.usage?.cache_read_input_tokens ?? Math.min(tokensIn, cacheHitTokens);
-    const tokensThinking = estimateTokens(thinkingText);
-    const tokensOut = data.usage?.output_tokens ?? estimateTokens(messageText);
-    const durationMs = Math.max(1, Date.now() - startMs);
-
-    const budgetCheck = this.tokenTracker.recordStepUsage({
-      runId: req.runId,
-      agentId: req.agentId,
-      modelId,
-      tokens_in: tokensIn,
-      tokens_cached: tokensCached,
-      tokens_thinking: tokensThinking,
-      tokens_out: tokensOut,
-      duration_ms: durationMs,
-      max_tokens_per_run: req.maxTokensPerRun,
-    });
-
-    return {
-      provider: 'anthropic',
-      model_used: modelId,
-      modelId,
-      thinking_text: thinkingText,
-      thinkingText,
-      message_text: messageText,
-      text: messageText,
-      content: messageText,
-      toolCalls,
-      tool_calls: toolCalls,
-      usage: budgetCheck.stepUsage,
-      usageMetadata: {
-        promptTokenCount: tokensIn,
-        cachedContentTokenCount: tokensCached,
-        thoughtsTokenCount: tokensThinking,
-        candidatesTokenCount: tokensOut,
-        totalTokenCount: tokensIn + tokensThinking + tokensOut,
-      },
-      duration_ms: durationMs,
-      simulated: false,
-      compacted,
-      budgetCheck,
-      rawResponse: data,
-    };
-  }
-
-  /**
-   * First-Class Adapter for OpenAI Chat Completions API (`https://api.openai.com/v1/chat/completions`):
-   * - `gpt-4.1`, `gpt-4.1-mini`, `o3`, `o4-mini`
-   */
-  private async callOpenAIChat(params: {
-    req: ModelGenerateRequest;
-    modelId: string;
-    credential?: ProviderCredential | null;
-    systemInstruction: string;
-    turns: ConversationTurnLike[];
-    cacheHitTokens: number;
-    compacted: boolean;
-    startMs: number;
-  }): Promise<ModelGenerateResponse> {
-    const cfg = this.getConfig();
-    const {
-      req,
-      modelId,
-      credential,
-      systemInstruction,
-      turns,
-      cacheHitTokens,
-      compacted,
-      startMs,
-    } = params;
-
-    const baseUrl = (
-      credential?.baseUrl ||
-      cfg.openaiBaseUrl ||
-      'https://api.openai.com/v1'
-    ).replace(/\/+$/, '');
-
-    const isLocalEndpoint =
-      baseUrl.includes('localhost') ||
-      baseUrl.includes('127.0.0.1') ||
-      baseUrl.includes(':11434') ||
-      baseUrl.includes(':8000') ||
-      baseUrl.startsWith('http://local');
-
-    const apiKey =
-      credential?.apiKey ||
-      cfg.openaiApiKey ||
-      (isLocalEndpoint ? 'local-key' : '');
-
-    if (!apiKey) {
-      return await this.buildDeterministicSimulation({
-        req,
-        provider: 'openai',
-        modelId,
-        systemInstruction,
-        turns,
-        cacheHitTokens,
-        compacted,
-        startMs,
-      });
-    }
-
-    const messages: Array<{ role: string; content: string }> = [
-      { role: 'system', content: systemInstruction },
-    ];
-    for (const turn of turns) {
-      const text =
-        turn.content ||
-        (turn.parts || [])
-          .map((p) =>
-            p.text
-              ? p.text
-              : p.functionResponse
-                ? JSON.stringify(p.functionResponse.response)
-                : ''
-          )
-          .filter(Boolean)
-          .join('\n');
-      messages.push({
-        role: turn.role === 'model' ? 'assistant' : turn.role,
-        content: text,
-      });
-    }
-
-    const tools =
-      req.enableTools !== false && Array.isArray(req.tools) && req.tools.length > 0
-        ? req.tools.map((t) => ({
-            type: 'function',
-            function: {
-              name: t.name,
-              description: t.description,
-              parameters: t.parameters,
-            },
-          }))
-        : undefined;
-
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages,
-        tools,
-        temperature: req.temperature ?? 0.2,
-        max_tokens: req.maxOutputTokens ?? 4096,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new ProviderHttpError(
-        'openai',
-        res.status,
-        `OpenAI API HTTP ${res.status}: ${errText}`,
-        credential?.id
-      );
-    }
-
-    const data = (await res.json()) as {
-      choices?: Array<{
-        message?: {
-          content?: string;
-          reasoning_content?: string;
-          tool_calls?: Array<{
-            id?: string;
-            function?: {
-              name: string;
-              arguments: string;
-            };
-          }>;
-        };
-      }>;
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_tokens?: number;
-      };
-    };
-
-    const choiceMsg = data.choices?.[0]?.message;
-    const messageText = choiceMsg?.content || '';
-    const thinkingText = choiceMsg?.reasoning_content || '';
-
-    const toolCalls: ToolCallInvocation[] = [];
-    for (const tc of choiceMsg?.tool_calls || []) {
-      if (tc.function?.name) {
-        let parsedArgs: Record<string, unknown> = {};
-        try {
-          parsedArgs = JSON.parse(tc.function.arguments || '{}');
-        } catch {
-          parsedArgs = { raw: tc.function.arguments };
-        }
-        toolCalls.push({
-          id: tc.id || `oai_${crypto.randomUUID().slice(0, 8)}`,
-          name: tc.function.name,
-          args: parsedArgs,
-        });
-      }
-    }
-
-    const tokensIn =
-      data.usage?.prompt_tokens ?? estimateTokens(messages.map((m) => m.content).join('\n'));
-    const tokensThinking = estimateTokens(thinkingText);
-    const tokensOut = data.usage?.completion_tokens ?? estimateTokens(messageText);
-    const durationMs = Math.max(1, Date.now() - startMs);
-
-    const budgetCheck = this.tokenTracker.recordStepUsage({
-      runId: req.runId,
-      agentId: req.agentId,
-      modelId,
-      tokens_in: tokensIn,
-      tokens_cached: Math.min(tokensIn, cacheHitTokens),
-      tokens_thinking: tokensThinking,
-      tokens_out: tokensOut,
-      duration_ms: durationMs,
-      max_tokens_per_run: req.maxTokensPerRun,
-    });
-
-    return {
-      provider: 'openai',
-      model_used: modelId,
-      modelId,
-      thinking_text: thinkingText,
-      thinkingText,
-      message_text: messageText,
-      text: messageText,
-      content: messageText,
-      toolCalls,
-      tool_calls: toolCalls,
-      usage: budgetCheck.stepUsage,
-      usageMetadata: {
-        promptTokenCount: tokensIn,
-        cachedContentTokenCount: Math.min(tokensIn, cacheHitTokens),
-        thoughtsTokenCount: tokensThinking,
-        candidatesTokenCount: tokensOut,
-        totalTokenCount: tokensIn + tokensThinking + tokensOut,
-      },
-      duration_ms: durationMs,
-      simulated: false,
-      compacted,
-      budgetCheck,
-      rawResponse: data,
-    };
-  }
-
-  /**
-   * Calls Ollama `/api/chat` on GCP GPU VM or local cluster (`llama-3.3-70b`, `qwen2.5-coder:32b`, `muse-glimmer-30b`).
+   * Calls Ollama `/api/chat` on a local cluster serving Meta open weights (`llama-3.3-70b`, `muse-glimmer-30b`).
    */
   private async callOllamaChat(params: {
     req: ModelGenerateRequest;
@@ -3098,7 +2017,7 @@ export class ModelRouter {
     let thinkingText = '';
     let messageText = rawContent;
 
-    // Extract <think>...</think> blocks from reasoning models like deepseek-r1
+    // Extract <think>...</think> blocks from reasoning models
     const thinkMatch = rawContent.match(/<think>([\s\S]*?)<\/think>/i);
     if (thinkMatch) {
       thinkingText = thinkMatch[1].trim();
@@ -3160,7 +2079,7 @@ export class ModelRouter {
   }
 
   /**
-   * Calls HuggingFace vLLM / TGI OpenAI-Compatible `/chat/completions` endpoint on GCP GPU VM.
+   * Calls a local vLLM chat-completions endpoint serving Meta open weights.
    */
   private async callHuggingFaceVllm(params: {
     req: ModelGenerateRequest;
@@ -3356,25 +2275,24 @@ export class ModelRouter {
     const { req, provider, modelId, systemInstruction, turns, cacheHitTokens, compacted, startMs } =
       params;
 
-    // If a Gemini API key is configured, perform real Gemini inference
+    // If a Meta Muse API key is configured, attempt one real Muse inference
     // instead of returning canned mock simulation strings.
     const cfg = this.getConfig();
-    const geminiKey = process.env.GEMINI_API_KEY || process.env.VERTEX_API_KEY || cfg.geminiApiKey;
-    if (geminiKey) {
+    if (cfg.metaMuseApiKey) {
       try {
-        return await this.callGeminiDirectRest({
+        return await this.callMetaMuse({
           req,
           modelId,
-          apiKey: geminiKey,
+          credential: null,
           systemInstruction,
           turns,
           cacheHitTokens,
           compacted,
           startMs,
         });
-      } catch (geminiErr) {
+      } catch (museErr) {
         console.warn(
-          `[ModelRouter] Direct Gemini execution in simulation fallback failed (${geminiErr instanceof Error ? geminiErr.message : geminiErr}); falling back to offline canned response.`
+          `[ModelRouter] Direct Muse execution in simulation fallback failed (${museErr instanceof Error ? museErr.message : museErr}); falling back to offline canned response.`
         );
       }
     }
@@ -3396,7 +2314,7 @@ export class ModelRouter {
       (lastTurn?.parts?.filter((p) => p.fileData || p.inlineData).length || 0);
 
     const thinkingText = [
-      `[Argon High / ${modelId} Internal Reasoning — Agent: ${agentId} (${scope})]`,
+      `[Muse ${modelId} Internal Reasoning — Agent: ${agentId} (${scope})]`,
       `1. Context Loaded: Deterministic SQL init_prompt + project_contexts (${estimateTokens(systemInstruction)} tokens, cached=${cacheHitTokens} tokens).`,
       multimodalCount > 0
         ? `2. Multimodal Analysis: Inspected ${multimodalCount} attached visual/document payload(s) via native fileData/inlineData.`
@@ -3495,17 +2413,16 @@ export class ModelRouter {
 
   /**
    * Pinned Vector Embedding Pipeline (`dynamocommando.md` Section 4.8.3):
-   * Guarantees zero vector drift across chat model swaps (`vertex` <-> `meta_muse` <-> `anthropic` <-> `openai` <-> `ollama`).
+   * Guarantees zero vector drift across chat model swaps (`meta_muse` <-> `ollama` <-> `huggingface`).
    * Regardless of which chat/reasoning provider an agent is currently assigned to, `embedText` ALWAYS pins
    * `pgvector` embeddings to the standardized 768-dimensional pipeline:
-   * 1. Vertex AI `text-embedding-005` (or Gemini API key endpoint), OR
-   * 2. Ollama `nomic-embed-text` (normalized to 768 dimensions), OR
-   * 3. Deterministic 768-dim semantic trigram feature-hashing fallback when offline.
+   * 1. Meta Muse `/embeddings` (`muse-embed-1.0`), OR
+   * 2. Deterministic 768-dim semantic trigram feature-hashing fallback when offline.
    */
   public async embedText(
     text: string,
     options?: {
-      provider?: 'vertex' | 'ollama' | ModelProvider;
+      provider?: ModelProvider;
       modelId?: string;
     }
   ): Promise<number[]> {
@@ -3515,92 +2432,31 @@ export class ModelRouter {
     }
 
     const cfg = this.getConfig();
-    // Enforce pinned embedding provider invariance: non-embedding chat providers (`meta_muse`, `anthropic`, `openai`, `huggingface`, `vllm`)
-    // automatically route to the pinned `vertex` (`text-embedding-005`) or `ollama` (`nomic-embed-text`) pipeline.
-    const pinnedProvider: 'vertex' | 'ollama' =
-      options?.provider === 'ollama' ? 'ollama' : 'vertex';
+    const modelId =
+      options?.modelId && options.modelId.includes('embed')
+        ? options.modelId
+        : cfg.embeddingModel || 'muse-embed-1.0';
 
-    // 1. Try Vertex AI / Gemini API `text-embedding-005`
-    if (pinnedProvider === 'vertex') {
-      const modelId =
-        options?.modelId && options.modelId.includes('embed')
-          ? options.modelId
-          : cfg.embeddingModel || 'text-embedding-005';
+    // 1. Try Meta Muse `/embeddings`
+    if (cfg.metaMuseApiKey) {
       try {
-        if (cfg.geminiApiKey) {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:embedContent?key=${cfg.geminiApiKey}`;
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: `models/${modelId}`,
-              content: { parts: [{ text: cleanText.slice(0, 12000) }] },
-              outputDimensionality: 768,
-            }),
-            signal: AbortSignal.timeout(8000),
-          });
-          if (res.ok) {
-            const data = (await res.json()) as { embedding?: { values?: number[] } };
-            if (Array.isArray(data.embedding?.values) && data.embedding.values.length > 0) {
-              return normalizeVectorTo768(data.embedding.values);
-            }
-          }
-        } else if (this.isRealGcpProjectConfigured(cfg.gcpProject)) {
-          const token = this.getVertexAccessToken();
-          if (token) {
-            const host =
-              cfg.gcpLocation === 'global'
-                ? 'aiplatform.googleapis.com'
-                : `${cfg.gcpLocation}-aiplatform.googleapis.com`;
-            const url = `https://${host}/v1/projects/${cfg.gcpProject}/locations/${cfg.gcpLocation}/publishers/google/models/${modelId}:predict`;
-            const res = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                instances: [{ content: cleanText.slice(0, 12000) }],
-                parameters: { outputDimensionality: 768 },
-              }),
-              signal: AbortSignal.timeout(8000),
-            });
-            if (res.ok) {
-              const data = (await res.json()) as {
-                predictions?: Array<{ embeddings?: { values?: number[] } }>;
-              };
-              const values = data.predictions?.[0]?.embeddings?.values;
-              if (Array.isArray(values) && values.length > 0) {
-                return normalizeVectorTo768(values);
-              }
-            }
-          }
-        }
-      } catch {
-        // Fallback to Ollama or deterministic trigram embedding below
-      }
-    }
-
-    // 2. Try Ollama `nomic-embed-text` if requested or if Vertex was not configured
-    if (pinnedProvider === 'ollama' || Boolean(process.env.OLLAMA_EMBED_ENABLED)) {
-      const ollamaModel =
-        options?.modelId && options.modelId.includes('embed')
-          ? options.modelId
-          : 'nomic-embed-text';
-      try {
-        const res = await fetch(`${cfg.ollamaBaseUrl}/api/embeddings`, {
+        const res = await fetch(`${cfg.metaMuseBaseUrl}/embeddings`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${cfg.metaMuseApiKey}`,
+          },
           body: JSON.stringify({
-            model: ollamaModel,
-            prompt: cleanText.slice(0, 8000),
+            model: modelId,
+            input: cleanText.slice(0, 8000),
           }),
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(8000),
         });
         if (res.ok) {
-          const data = (await res.json()) as { embedding?: number[] };
-          if (Array.isArray(data.embedding) && data.embedding.length > 0) {
-            return normalizeVectorTo768(data.embedding);
+          const data = (await res.json()) as { data?: Array<{ embedding?: number[] }> };
+          const values = data.data?.[0]?.embedding;
+          if (Array.isArray(values) && values.length > 0) {
+            return normalizeVectorTo768(values);
           }
         }
       } catch {
@@ -3608,7 +2464,7 @@ export class ModelRouter {
       }
     }
 
-    // 3. Deterministic 768-dim semantic trigram fallback (100% offline-capable)
+    // 2. Deterministic 768-dim semantic trigram fallback (100% offline-capable)
     return computeDeterministicTrigramEmbedding(cleanText);
   }
 

@@ -24,7 +24,7 @@ We do not sell your data. We do not use it for advertising.
 ## Who processes it
 
 - **Meta (WhatsApp Business Platform)** carries messages between you and Warden.
-- **AI model providers** (for example Google Gemini or Meta models) process message text to generate replies, under their API terms.
+- **AI model providers** (for example Meta models) process message text to generate replies, under their API terms.
 - Data is stored in Warden's own database. It is not shared with anyone else.
 
 ## Retention and deletion

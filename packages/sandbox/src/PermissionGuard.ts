@@ -157,7 +157,7 @@ export function truncateToolOutput(output: string, maxTokens = 8000): {
     };
   }
 
-  // Redact any accidental inline bearer tokens or AWS/GCP secret keys before returning to LLM
+  // Redact any accidental inline bearer tokens or AWS/cloud secret keys before returning to LLM
   const redacted = redactSecrets(output);
   const charsPerToken = 4;
   const maxChars = Math.max(512, maxTokens * charsPerToken);

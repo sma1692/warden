@@ -61,13 +61,13 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
 
   // Brain config editor state
   const [initPrompt, setInitPrompt] = useState('');
-  const [modelProvider, setModelProvider] = useState<ModelProvider>('vertex');
+  const [modelProvider, setModelProvider] = useState<ModelProvider>('meta_muse');
   const [modelId, setModelId] = useState('');
   const [fallbackProvider, setFallbackProvider] = useState<ModelProvider>('meta_muse');
   const [fallbackModelId, setFallbackModelId] = useState('muse-spark-1.3');
-  const [planningModel, setPlanningModel] = useState('vertex:gemini-2.5-pro');
-  const [toolLoopModel, setToolLoopModel] = useState('vertex:gemini-2.0-flash');
-  const [compactionModel, setCompactionModel] = useState('ollama:qwen2.5-coder:32b');
+  const [planningModel, setPlanningModel] = useState('meta_muse:muse-wonder-1.0');
+  const [toolLoopModel, setToolLoopModel] = useState('meta_muse:muse-spark-1.3');
+  const [compactionModel, setCompactionModel] = useState('ollama:llama-3.3-70b');
   const [permissionTier, setPermissionTier] = useState<PermissionTier>('full_overdrive');
   const [maxSubagents, setMaxSubagents] = useState(4);
   const [maxRunDurationHours, setMaxRunDurationHours] = useState(24);
@@ -97,13 +97,13 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
       agent.step_routing?.tool_loop_model ||
         (agent.model_provider === 'meta_muse'
           ? 'meta_muse:muse-spark-1.3'
-          : 'vertex:gemini-2.0-flash')
+          : 'ollama:llama-3.3-70b')
     );
     setCompactionModel(
       agent.step_routing?.compaction_model ||
         (agent.model_provider === 'meta_muse'
           ? 'meta_muse:muse-glimmer-30b'
-          : 'ollama:qwen2.5-coder:32b')
+          : 'ollama:muse-glimmer-30b')
     );
     setPermissionTier(agent.permission_tier);
     setMaxSubagents(agent.max_subagents);
@@ -510,7 +510,7 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
 
                       {isExpanded && (
                         <div className="border-t border-[var(--surface-border)] p-4 space-y-3 text-xs">
-                          {/* Internal Reasoning (Argon High / Gemini 2.5 Pro thinking_text) */}
+                          {/* Internal Reasoning (Muse Wonder thinking_text) */}
                           {step.thinking_text && (
                             <div className="rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-accent-gold)]/25 p-3 space-y-1">
                               <div className="text-[11px] font-mono font-semibold text-[var(--surface-accent-gold)] flex items-center gap-1.5">
@@ -608,7 +608,7 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                   </h3>
                   <div className="flex items-center gap-2">
                     <span className="rounded-md bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/40 px-2.5 py-1 text-[10px] font-mono text-[var(--surface-accent-gold)]">
-                      📌 pgvector 768-dim Pinned: text-embedding-005 / nomic-embed-text (Zero Vector Drift)
+                      📌 pgvector 768-dim Pinned: muse-embed-1.0 / muse-embed-1.0 (Zero Vector Drift)
                     </span>
                     {configSavedBanner && (
                       <span className="rounded-md bg-[var(--semantic-success)]/15 border border-[var(--semantic-success)]/40 px-2.5 py-1 text-xs font-mono text-[var(--semantic-success)]">
@@ -633,11 +633,8 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                       }}
                       className="w-full rounded-lg bg-[var(--surface-muted)] border border-[var(--surface-border)] px-3 py-2 text-[var(--text-main)] font-mono"
                     >
-                      <option value="vertex">vertex (GCP Vertex AI Gemini 2.5)</option>
                       <option value="meta_muse">meta_muse (Meta Muse API v1)</option>
-                      <option value="anthropic">anthropic (Claude Sonnet 4 / 3.7)</option>
-                      <option value="openai">openai (GPT-4.1 / Mini / o3)</option>
-                      <option value="ollama">ollama (GCP L4 GPU Self-Hosted)</option>
+                      <option value="ollama">ollama (Local GPU Self-Hosted)</option>
                       <option value="huggingface">huggingface (Dedicated vLLM)</option>
                     </select>
                   </div>
@@ -697,11 +694,8 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                         }}
                         className="w-full rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] px-3 py-1.5 text-[var(--text-main)] font-mono"
                       >
-                        <option value="vertex">vertex (GCP Vertex AI)</option>
                         <option value="meta_muse">meta_muse (Meta Muse API)</option>
-                        <option value="anthropic">anthropic (Claude Sonnet)</option>
-                        <option value="openai">openai (GPT-4.1 / o3)</option>
-                        <option value="ollama">ollama (GCP GPU Ollama)</option>
+                        <option value="ollama">ollama (Local GPU Ollama)</option>
                         <option value="huggingface">huggingface (vLLM)</option>
                       </select>
                     </div>
@@ -841,7 +835,7 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                     <span>Hybrid Agent Memory (`PostgreSQL + pgvector HNSW`)</span>
                   </h3>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Pinned memories load deterministically into every prompt; unpinned episodic memories are recalled semantically via <code className="text-[var(--surface-accent-gold)]">text-embedding-005</code> cosine similarity.
+                    Pinned memories load deterministically into every prompt; unpinned episodic memories are recalled semantically via <code className="text-[var(--surface-accent-gold)]">muse-embed-1.0</code> cosine similarity.
                   </p>
                 </div>
 

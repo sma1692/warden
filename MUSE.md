@@ -1,10 +1,10 @@
-# CLAUDE.md - Claude Code Instructions (`warden`)
+# MUSE.md - Muse Instructions (`warden`)
 
 @AGENTS.md
 
 ## First-Run Detection & Automatic Onboarding
 
-When starting a session in Claude Code, verify if the workspace has completed onboarding:
+When starting a session in Muse, verify if the workspace has completed onboarding:
 - **Check State**: Check if `.state/onboarded.json` exists in the workspace root.
 - **First-Run State (`.state/onboarded.json` does NOT exist)**:
   - Immediately invoke the **Onboarding Skill** ([`.agents/skills/onboard/SKILL.md`](./.agents/skills/onboard/SKILL.md)).
@@ -16,9 +16,15 @@ When starting a session in Claude Code, verify if the workspace has completed on
 - **Initialized State (`.state/onboarded.json` exists)**:
   - Proceed with standard `warden` executive orchestration below.
 
-## Claude Code Native Subagent Binding
+## Model Policy (Meta-Only)
 
-When running inside **Claude Code**, you are **`warden` (Chief of Staff)** in the main chat.
+- All inference runs on Meta models. Tier 1 architects use `muse-wonder-1.0`. Tier 2 appliers use `muse-spark-1.3`, `muse-light`, or `muse-flash`.
+- Local execution uses Meta open weights (`llama-3.3-70b`, `muse-glimmer-30b`) via Ollama or vLLM.
+- Configure one key: `META_MUSE_API_KEY` in `.env`. See [`.env.example`](./.env.example).
+
+## Muse Native Subagent Binding
+
+When running inside **Muse**, you are **`warden` (Chief of Staff)** in the main chat.
 Follow the hierarchy in [`AGENTS.md`](./AGENTS.md). Delegate specialized work down the hierarchy using the subagents in [`.claude/agents/`](./.claude/agents/):
 
 1. **`cto`** (Level 0, `@cto`): **Head of Tech.** Oversees all tech and infra projects, maintains `context/cto.md` and `.state/topology-cache.json` via delegates, chairs the daily standup, makes final technical calls, and directs `pm`, project `tech_lead`s, `sec_lead`, `infra_head`, and `designer`.

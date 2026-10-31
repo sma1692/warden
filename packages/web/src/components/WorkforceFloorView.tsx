@@ -332,7 +332,7 @@ export const WorkforceFloorView: React.FC<WorkforceFloorViewProps> = ({
               {formatUsd(kpis.totalCostUsd)}
             </div>
             <div className="text-[10px] text-[var(--surface-text-muted)] mt-0.5">
-              Argon High + Flash blended
+              Wonder + Spark blended
             </div>
           </div>
 

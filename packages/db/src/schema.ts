@@ -15,15 +15,12 @@ export type Department =
 export type HierarchyLevel = -1 | 0 | 1 | 2 | 3;
 
 export type ModelProvider =
-  | 'vertex'
   | 'meta_muse'
-  | 'anthropic'
-  | 'openai'
   | 'ollama'
   | 'huggingface';
 
 export type RoutingProfileId =
-  | 'GCP_ZERO_COST'
+  | 'LOCAL_ZERO_COST'
   | 'META_MUSE_HACKATHON'
   | 'CUSTOM_HYBRID';
 
@@ -171,7 +168,7 @@ export type ApprovalGateStatus = 'PENDING' | 'RESOLVED' | 'APPROVED' | 'REJECTED
 
 export interface ChatAttachment {
   type: string;
-  gcs_uri: string;
+  media_uri: string;
   public_url: string;
   filename: string;
   size_bytes?: number;
@@ -587,10 +584,10 @@ export const agents = pgTable('agents', {
   hierarchy_level: integer('hierarchy_level').$type<HierarchyLevel>().notNull(),
   parent_agent_id: text('parent_agent_id'),
   project_scope: text('project_scope'),
-  model_provider: text('model_provider').$type<ModelProvider>().notNull().default('vertex'),
-  model_id: text('model_id').notNull().default('gemini-2.5-pro'),
-  fallback_provider: text('fallback_provider').$type<ModelProvider>().notNull().default('vertex'),
-  fallback_model_id: text('fallback_model_id').notNull().default('gemini-2.0-flash'),
+  model_provider: text('model_provider').$type<ModelProvider>().notNull().default('meta_muse'),
+  model_id: text('model_id').notNull().default('muse-wonder-1.0'),
+  fallback_provider: text('fallback_provider').$type<ModelProvider>().notNull().default('meta_muse'),
+  fallback_model_id: text('fallback_model_id').notNull().default('muse-spark-1.3'),
   step_routing_json: jsonb('step_routing_json').$type<StepRoutingConfig>().notNull().default({}),
   init_prompt: text('init_prompt').notNull(),
   allowed_repos: jsonb('allowed_repos').$type<string[]>().notNull().default([]),

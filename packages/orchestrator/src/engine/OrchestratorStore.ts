@@ -10,6 +10,7 @@ import {
   resolveCommandoRoot,
 } from '../config/projectRegistry.js';
 import { loadSeedData } from './seedData.js';
+import { hybridMemoryEngine } from '../memory/HybridMemoryEngine.js';
 
 // ============================================================================
 // Core Relational + Vector Schema Types (dynamocommando.md Section 4)
@@ -32,16 +33,13 @@ export type AgentHealthStatus =
   | 'KILLED_24H_LIMIT';
 
 export type ModelProvider =
-  | 'vertex'
   | 'meta_muse'
   | 'ollama'
   | 'huggingface'
-  | 'anthropic'
-  | 'openai'
   | 'vllm';
 
 export type RoutingProfile =
-  | 'GCP_ZERO_COST'
+  | 'LOCAL_ZERO_COST'
   | 'META_MUSE_HACKATHON'
   | 'CUSTOM_HYBRID';
 
@@ -285,7 +283,7 @@ export interface MediaAttachment {
   id?: string;
   type: string; // e.g. 'image/png', 'video/mp4', 'application/pdf'
   filename: string;
-  gcs_uri?: string;
+  media_uri?: string;
   public_url: string;
   base64_data?: string;
   size_bytes?: number;
@@ -460,7 +458,7 @@ export class OrchestratorStore {
   public providerCredentials = new Map<string, ProviderCredentialRecord>();
   public subagentSessions = new Map<string, string>();
   public routingProfile: RoutingProfile =
-    (process.env.COMMANDO_ROUTING_PROFILE as RoutingProfile) || 'GCP_ZERO_COST';
+    (process.env.COMMANDO_ROUTING_PROFILE as RoutingProfile) || 'META_MUSE_HACKATHON';
   public codeChunksCount = 412;
   public commandoRoot: string;
   public lastSyncStatus: DiskDbSyncStatus = {
@@ -471,8 +469,7 @@ export class OrchestratorStore {
     synced_worklist_files: 0,
     preserved_native_ide_files: [
       'AGENTS.md',
-      'GEMINI.md',
-      'CLAUDE.md',
+      'MUSE.md',
       '.agents/skills/*',
       '.claude/agents/*.md',
       'context/**',
@@ -582,6 +579,17 @@ export class OrchestratorStore {
   }
 
   /**
+   * Hands the live pg pool to the memory engine so hybrid recall
+   * (`recallPastChatMessages`, `recallEpisodicMemories`, `recallCodeChunks`)
+   * queries Postgres instead of silently degrading to in-memory fallback.
+   */
+  private attachMemoryExecutor(): void {
+    const pool = this.dbModule?.pool;
+    if (!this.dbConnected || !pool || typeof pool.query !== 'function') return;
+    hybridMemoryEngine.setDatabaseExecutor((sql, params) => pool.query(sql, params));
+  }
+
+  /**
    * Attempts to attach to `@commando/db` PostgreSQL pool if available.
    */
   public async tryConnectDatabase(): Promise<boolean> {
@@ -602,6 +610,7 @@ export class OrchestratorStore {
         if (this.dbConnected) {
           await this.syncFromPostgresIfAvailable();
         }
+        this.attachMemoryExecutor();
       }
     } catch {
       this.dbConnected = false;
@@ -632,6 +641,7 @@ export class OrchestratorStore {
     this.dbModule = { ...mod, pool };
     this.dbConnected = mode === 'postgres' && pool !== null;
     console.log(`[OrchestratorStore] Source=db, storage=${mode}`);
+    this.attachMemoryExecutor();
 
     if (this.dbConnected) {
       await this.syncFromPostgresIfAvailable();
@@ -734,8 +744,8 @@ export class OrchestratorStore {
             hierarchy_level: Number(row.hierarchy_level ?? existing?.hierarchy_level ?? 1),
             parent_agent_id: row.parent_agent_id ?? existing?.parent_agent_id ?? null,
             project_scope: row.project_scope ?? existing?.project_scope ?? null,
-            model_provider: (row.model_provider as ModelProvider) || 'vertex',
-            model_id: row.model_id || 'gemini-3.1-pro-preview',
+            model_provider: (row.model_provider as ModelProvider) || 'meta_muse',
+            model_id: row.model_id || 'muse-wonder-1.0',
             fallback_provider:
               (row.fallback_provider as ModelProvider) ||
               existing?.fallback_provider ||
@@ -829,7 +839,7 @@ export class OrchestratorStore {
         },
         tool_loop: {
           provider: item.model_provider,
-          modelId: isExec ? item.model_id : 'gemini-3-flash-preview',
+          modelId: isExec ? item.model_id : 'muse-spark-1.3',
         },
         compaction: {
           provider: 'meta_muse',
@@ -854,13 +864,15 @@ export class OrchestratorStore {
     // Seed Multi-Token Provider Credentials Pool
     const seededCredentials: ProviderCredentialRecord[] = [
       {
-        id: 'cred_vertex_gcp_credits',
-        provider: 'vertex',
-        label: 'GCP Vertex AI — 12-Month Unlimited Credits Pool (Primary)',
-        api_key_masked: 'adc://gcp-application-default-credentials',
-        base_url: 'https://us-central1-aiplatform.googleapis.com/v1',
-        project_id: process.env.GOOGLE_CLOUD_PROJECT || '',
-        region: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
+        id: 'cred_meta_muse_backup',
+        provider: 'meta_muse',
+        label: 'Meta AI Muse API — Backup Token (Failover)',
+        api_key_masked: process.env.META_MUSE_BACKUP_API_KEY
+          ? `muse_${process.env.META_MUSE_BACKUP_API_KEY.slice(0, 4)}...${process.env.META_MUSE_BACKUP_API_KEY.slice(-4)}`
+          : 'muse_backup_unconfigured',
+        base_url: process.env.META_MUSE_BASE_URL || 'https://api.meta.ai/v1',
+        project_id: 'meta-muse-backup',
+        region: 'global',
         priority_weight: 100,
         daily_quota_tokens: 100_000_000,
         today_used_tokens: 2_824_100,
@@ -907,13 +919,13 @@ export class OrchestratorStore {
         created_at: now,
       },
       {
-        id: 'cred_ollama_gcp_gpu',
+        id: 'cred_ollama_local_gpu',
         provider: 'ollama',
-        label: 'Self-Hosted Ollama GPU Cluster (Qwen2.5-Coder-32B / DeepSeek-R1)',
+        label: 'Self-Hosted Ollama GPU Cluster (Llama-3.3-70B / Muse-Glimmer-30B)',
         api_key_masked: 'internal://ollama-vpc-no-key',
         base_url: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
-        project_id: 'gcp-gpu-spot-l4',
-        region: 'us-central1-a',
+        project_id: 'local-gpu',
+        region: 'local',
         priority_weight: 80,
         daily_quota_tokens: 250_000_000,
         today_used_tokens: 640_000,
@@ -1157,19 +1169,19 @@ export class OrchestratorStore {
       hierarchy_level: input.hierarchy_level,
       parent_agent_id: input.parent_agent_id ?? 'warden',
       project_scope: input.project_scope ?? null,
-      model_provider: input.model_provider || 'vertex',
-      model_id: input.model_id || 'gemini-3-flash-preview',
+      model_provider: input.model_provider || 'meta_muse',
+      model_id: input.model_id || 'muse-spark-1.3',
       fallback_provider: input.fallback_provider || 'meta_muse',
       fallback_model_id:
         input.fallback_model_id || (isExec ? 'muse-wonder-1.0' : 'muse-spark-1.3'),
       step_routing_json: input.step_routing_json || {
         planning: {
-          provider: input.model_provider || 'vertex',
-          modelId: input.model_id || 'gemini-3-flash-preview',
+          provider: input.model_provider || 'meta_muse',
+          modelId: input.model_id || 'muse-spark-1.3',
         },
         tool_loop: {
-          provider: input.model_provider || 'vertex',
-          modelId: input.model_id || 'gemini-3-flash-preview',
+          provider: input.model_provider || 'meta_muse',
+          modelId: input.model_id || 'muse-spark-1.3',
         },
         compaction: {
           provider: 'meta_muse',
@@ -1214,7 +1226,7 @@ export class OrchestratorStore {
   }
 
   /**
-   * Switches the Global Routing Profile preset (`GCP_ZERO_COST`, `META_MUSE_HACKATHON`, `CUSTOM_HYBRID`)
+   * Switches the Global Routing Profile preset (`LOCAL_ZERO_COST`, `META_MUSE_HACKATHON`, `CUSTOM_HYBRID`)
    * and updates agent configurations when a global preset is selected.
    */
   public setRoutingProfile(profile: RoutingProfile): {
@@ -1232,8 +1244,8 @@ export class OrchestratorStore {
           ...agent,
           model_provider: 'meta_muse',
           model_id: primaryModel,
-          fallback_provider: 'vertex',
-          fallback_model_id: isExecOrCsuite ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview',
+          fallback_provider: 'meta_muse',
+          fallback_model_id: isExecOrCsuite ? 'muse-wonder-1.0' : 'muse-spark-1.3',
           step_routing_json: {
             planning: {
               provider: 'meta_muse',
@@ -1252,32 +1264,26 @@ export class OrchestratorStore {
         this.agents.set(agent.id, updated);
         updatedAgents += 1;
       }
-    } else if (profile === 'GCP_ZERO_COST') {
+    } else if (profile === 'LOCAL_ZERO_COST') {
       for (const agent of this.agents.values()) {
-        const isHighReasoning =
-          agent.hierarchy_level <= 0 ||
-          agent.id.startsWith('tech_lead') ||
-          agent.id === 'infra_head' ||
-          agent.id === 'seo_aeo_head';
-        const primaryModel = isHighReasoning ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview';
         const updated: AgentRecord = {
           ...agent,
-          model_provider: 'vertex',
-          model_id: primaryModel,
-          fallback_provider: 'meta_muse',
-          fallback_model_id: agent.hierarchy_level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3',
+          model_provider: 'ollama',
+          model_id: 'llama-3.3-70b',
+          fallback_provider: 'vllm',
+          fallback_model_id: 'meta-llama/Llama-3.3-70B-Instruct',
           step_routing_json: {
             planning: {
-              provider: 'vertex',
-              modelId: primaryModel,
+              provider: 'ollama',
+              modelId: 'llama-3.3-70b',
             },
             tool_loop: {
-              provider: 'vertex',
-              modelId: 'gemini-3-flash-preview',
+              provider: 'ollama',
+              modelId: 'llama-3.3-70b',
             },
             compaction: {
-              provider: 'vertex',
-              modelId: 'gemini-3-flash-preview',
+              provider: 'ollama',
+              modelId: 'muse-glimmer-30b',
             },
           },
         };
@@ -1314,8 +1320,8 @@ export class OrchestratorStore {
     const level = agent?.hierarchy_level ?? 1;
 
     const executionMode = (process.env.WARDEN_EXECUTION_MODE || 'case_2b').toLowerCase();
-    const l2Provider = (process.env.WARDEN_L2_MODEL_PROVIDER || 'gemini-flash').toLowerCase();
-    const localLlmModel = process.env.LOCAL_LLM_MODEL || 'qwen2.5-coder:14b';
+    const l2Provider = (process.env.WARDEN_L2_MODEL_PROVIDER || 'muse-spark').toLowerCase();
+    const localLlmModel = process.env.LOCAL_LLM_MODEL || 'llama-3.3-70b';
     const localLlmBaseUrl = (
       process.env.LOCAL_LLM_BASE_URL ||
       process.env.OLLAMA_BASE_URL ||
@@ -1335,12 +1341,12 @@ export class OrchestratorStore {
         agent?.id === 'pm';
 
       if (isTier1 || stepPhase === 'planning') {
-        const cred = this.selectActiveCredentialForProvider('vertex');
+        const cred = this.selectActiveCredentialForProvider('meta_muse');
         return {
-          provider: 'vertex',
-          modelId: process.env.COMMANDO_PRO_MODEL || 'gemini-2.5-pro',
-          fallbackProvider: 'anthropic',
-          fallbackModelId: 'claude-3-7-sonnet-20250219',
+          provider: 'meta_muse',
+          modelId: process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0',
+          fallbackProvider: 'meta_muse',
+          fallbackModelId: 'muse-wonder-1.0',
           credentialId: cred?.id || null,
           routingProfile: this.routingProfile,
           stepPhase,
@@ -1350,42 +1356,41 @@ export class OrchestratorStore {
       // Tier 2 Fast File Applier
       if (l2Provider === 'local-ollama' || l2Provider === 'ollama' || l2Provider === 'local') {
         const isV1 = localLlmBaseUrl.endsWith('/v1') || localLlmBaseUrl.includes('/v1');
-        const targetProvider: ModelProvider = isV1 ? 'openai' : 'ollama';
+        const targetProvider: ModelProvider = isV1 ? 'vllm' : 'ollama';
         const cred = this.selectActiveCredentialForProvider(targetProvider);
         return {
           provider: targetProvider,
           modelId: localLlmModel,
-          fallbackProvider: 'vertex',
-          fallbackModelId: 'gemini-2.5-flash',
+          fallbackProvider: 'meta_muse',
+          fallbackModelId: 'muse-spark-1.3',
           credentialId: cred?.id || null,
           routingProfile: this.routingProfile,
           stepPhase,
         };
       }
 
-      if (l2Provider === 'haiku') {
-        const cred = this.selectActiveCredentialForProvider('anthropic');
+      if (l2Provider === 'muse-light' || l2Provider === 'muse-flash') {
+        const cred = this.selectActiveCredentialForProvider('meta_muse');
         return {
-          provider: 'anthropic',
-          modelId: 'claude-3-5-haiku-20241022',
-          fallbackProvider: 'vertex',
-          fallbackModelId: 'gemini-2.5-flash',
+          provider: 'meta_muse',
+          modelId: l2Provider === 'muse-flash' ? 'muse-flash' : 'muse-light',
+          fallbackProvider: 'meta_muse',
+          fallbackModelId: 'muse-spark-1.3',
           credentialId: cred?.id || null,
           routingProfile: this.routingProfile,
           stepPhase,
         };
       }
 
-      // Default gemini-flash
-      const cred = this.selectActiveCredentialForProvider('vertex');
+      // Default muse-spark
+      const cred = this.selectActiveCredentialForProvider('meta_muse');
       return {
-        provider: 'vertex',
+        provider: 'meta_muse',
         modelId:
-          process.env.COMMANDO_STUDIO_FLASH_MODEL ||
           process.env.COMMANDO_DEFAULT_MODEL ||
-          'gemini-2.5-flash',
-        fallbackProvider: 'vertex',
-        fallbackModelId: 'gemini-2.5-flash-lite',
+          'muse-spark-1.3',
+        fallbackProvider: 'meta_muse',
+        fallbackModelId: 'muse-spark-1.3',
         credentialId: cred?.id || null,
         routingProfile: this.routingProfile,
         stepPhase,
@@ -1403,35 +1408,24 @@ export class OrchestratorStore {
       return {
         provider: 'meta_muse',
         modelId,
-        fallbackProvider: 'vertex',
-        fallbackModelId: level <= 0 ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview',
+        fallbackProvider: 'meta_muse',
+        fallbackModelId: level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3',
         credentialId: cred?.id || null,
         routingProfile: this.routingProfile,
         stepPhase,
       };
     }
 
-    if (this.routingProfile === 'GCP_ZERO_COST' && !agent?.step_routing_json?.[stepPhase]) {
-      const isPro =
-        level <= 0 ||
-        agent?.id.startsWith('tech_lead') ||
-        agent?.id === 'infra_head' ||
-        agent?.id === 'seo_aeo_head';
+    if (this.routingProfile === 'LOCAL_ZERO_COST' && !agent?.step_routing_json?.[stepPhase]) {
       const modelId =
-        stepPhase === 'compaction'
-          ? 'gemini-3-flash-preview'
-          : stepPhase === 'tool_loop' && level >= 2
-          ? 'gemini-3-flash-preview'
-          : isPro
-          ? 'gemini-3.1-pro-preview'
-          : 'gemini-3-flash-preview';
-      const cred = this.selectActiveCredentialForProvider('vertex');
+        stepPhase === 'compaction' ? 'muse-glimmer-30b' : 'llama-3.3-70b';
+      const cred = this.selectActiveCredentialForProvider('ollama');
       return {
-        provider: 'vertex',
+        provider: 'ollama',
         modelId,
-        fallbackProvider: agent?.fallback_provider || 'meta_muse',
+        fallbackProvider: agent?.fallback_provider || 'vllm',
         fallbackModelId:
-          agent?.fallback_model_id || (level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3'),
+          agent?.fallback_model_id || 'meta-llama/Llama-3.3-70B-Instruct',
         credentialId: cred?.id || null,
         routingProfile: this.routingProfile,
         stepPhase,
@@ -1441,12 +1435,12 @@ export class OrchestratorStore {
     // Tier 3 (Per-Step Override) -> Tier 2 (Per-Agent Primary)
     const stepOverride = agent?.step_routing_json?.[stepPhase];
     const provider: ModelProvider =
-      stepOverride?.provider || agent?.model_provider || 'vertex';
+      stepOverride?.provider || agent?.model_provider || 'meta_muse';
     const modelId: string =
       stepOverride?.modelId ||
       stepOverride?.model_id ||
       agent?.model_id ||
-      (level <= 0 ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview');
+      (level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3');
     const fallbackProvider: ModelProvider = agent?.fallback_provider || 'meta_muse';
     const fallbackModelId: string =
       agent?.fallback_model_id || (level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3');
@@ -1603,7 +1597,7 @@ export class OrchestratorStore {
   /**
    * Reads `context/`, `memory/`, and `worklist/` (`inbox.md`, `todo/*.md`, `done/*.md`)
    * from the Commando root on disk and merges them into the in-memory / DB store.
-   * Never deletes or overwrites any native IDE files (`AGENTS.md`, `GEMINI.md`, `CLAUDE.md`, etc.).
+   * Never deletes or overwrites any native IDE files (`AGENTS.md`, `MUSE.md`, etc.).
    */
   public syncDiskToDb(): DiskDbSyncStatus {
     const now = new Date().toISOString();
@@ -1736,49 +1730,25 @@ export class OrchestratorStore {
         }
       }
 
-      // 5. Auto-register `.env` GEMINI_API_KEY & ANTHROPIC_API_KEY in Provider Credential Pool
-      const envGeminiKey = (process.env.GEMINI_API_KEY || process.env.VERTEX_API_KEY || '').trim();
-      if (envGeminiKey && !this.providerCredentials.has('cred_env_gemini')) {
+      // 5. Auto-register `.env` META_MUSE_API_KEY in Provider Credential Pool
+      const envMuseKey = (process.env.META_MUSE_API_KEY || process.env.META_MUSE_BACKUP_API_KEY || '').trim();
+      if (envMuseKey && !this.providerCredentials.has('cred_env_muse')) {
         const masked =
-          envGeminiKey.length > 8
-            ? `${envGeminiKey.slice(0, 4)}...${envGeminiKey.slice(-4)}`
+          envMuseKey.length > 8
+            ? `${envMuseKey.slice(0, 4)}...${envMuseKey.slice(-4)}`
             : 'configured';
-        this.providerCredentials.set('cred_env_gemini', {
-          id: 'cred_env_gemini',
-          provider: 'vertex',
-          label: 'Gemini API Key (.env Live)',
+        this.providerCredentials.set('cred_env_muse', {
+          id: 'cred_env_muse',
+          provider: 'meta_muse',
+          label: 'Muse API Key (.env Live)',
           api_key_masked: masked,
           base_url: null,
-          project_id: process.env.GOOGLE_CLOUD_PROJECT || 'gemini-api',
-          region: process.env.GOOGLE_CLOUD_LOCATION || 'global',
+          project_id: null,
+          region: 'global',
           priority_weight: 100,
           daily_quota_tokens: 100_000_000,
           today_used_tokens: 0,
           rpm_limit: 1000,
-          cooldown_until: null,
-          is_enabled: true,
-          last_used_at: now,
-          created_at: now,
-        });
-      }
-      const envAnthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim();
-      if (envAnthropicKey && !this.providerCredentials.has('cred_env_anthropic')) {
-        const masked =
-          envAnthropicKey.length > 8
-            ? `${envAnthropicKey.slice(0, 4)}...${envAnthropicKey.slice(-4)}`
-            : 'configured';
-        this.providerCredentials.set('cred_env_anthropic', {
-          id: 'cred_env_anthropic',
-          provider: 'anthropic',
-          label: 'Anthropic Claude Key (.env Live)',
-          api_key_masked: masked,
-          base_url: 'https://api.anthropic.com/v1',
-          project_id: null,
-          region: 'global',
-          priority_weight: 95,
-          daily_quota_tokens: 50_000_000,
-          today_used_tokens: 0,
-          rpm_limit: 500,
           cooldown_until: null,
           is_enabled: true,
           last_used_at: now,
@@ -1802,7 +1772,7 @@ export class OrchestratorStore {
 
   /**
    * Writes updated `backlogItems`, `memories`, and `projectContexts` from the Orchestrator
-   * back to `worklist/`, `memory/`, and `context/` on disk so Native IDE Mode (`GEMINI.md` / `CLAUDE.md`)
+   * back to `worklist/`, `memory/`, and `context/` on disk so Native IDE Mode (`MUSE.md`)
    * and Web/Cloud Control Plane Mode always stay 100% synchronized.
    */
   public syncDbToDisk(): DiskDbSyncStatus {

@@ -159,16 +159,16 @@ export class DatabaseStore {
                 return {
                   ...a,
                   fallback_provider:
-                    a.fallback_provider || seed?.fallback_provider || 'vertex',
+                    a.fallback_provider || seed?.fallback_provider || 'meta_muse',
                   fallback_model_id:
-                    a.fallback_model_id || seed?.fallback_model_id || 'gemini-2.0-flash',
+                    a.fallback_model_id || seed?.fallback_model_id || 'muse-spark-1.3',
                   step_routing_json:
                     a.step_routing_json && Object.keys(a.step_routing_json).length > 0
                       ? a.step_routing_json
                       : seed?.step_routing_json || {
-                          planning: { provider: 'vertex', modelId: 'gemini-2.5-pro' },
-                          tool_loop: { provider: 'vertex', modelId: 'gemini-2.0-flash' },
-                          compaction: { provider: 'ollama', modelId: 'qwen2.5-coder:32b' },
+                          planning: { provider: 'meta_muse', modelId: 'muse-wonder-1.0' },
+                          tool_loop: { provider: 'meta_muse', modelId: 'muse-spark-1.3' },
+                          compaction: { provider: 'ollama', modelId: 'muse-glimmer-30b' },
                         },
                 };
               })
@@ -204,7 +204,7 @@ export class DatabaseStore {
           active_routing_profile:
             parsed.active_routing_profile ||
             routing_profiles.find((p) => p.is_active)?.id ||
-            'GCP_ZERO_COST',
+            'META_MUSE_HACKATHON',
           agents,
           provider_credentials,
           routing_profiles,
@@ -228,7 +228,7 @@ export class DatabaseStore {
     return {
       version: '2.1.0',
       updated_at: new Date().toISOString(),
-      active_routing_profile: 'GCP_ZERO_COST',
+      active_routing_profile: 'META_MUSE_HACKATHON',
       agents: structuredClone(SEED_AGENTS),
       provider_credentials: structuredClone(SEED_PROVIDER_CREDENTIALS),
       routing_profiles: structuredClone(SEED_ROUTING_PROFILES),
@@ -300,7 +300,7 @@ export class DatabaseStore {
     this.state = {
       version: '2.1.0',
       updated_at: new Date().toISOString(),
-      active_routing_profile: 'GCP_ZERO_COST',
+      active_routing_profile: 'META_MUSE_HACKATHON',
       agents: structuredClone(SEED_AGENTS),
       provider_credentials: structuredClone(SEED_PROVIDER_CREDENTIALS),
       routing_profiles: structuredClone(SEED_ROUTING_PROFILES),
@@ -407,8 +407,8 @@ export class DatabaseStore {
           agent.project_scope,
           agent.model_provider,
           agent.model_id,
-          agent.fallback_provider || 'vertex',
-          agent.fallback_model_id || 'gemini-2.0-flash',
+          agent.fallback_provider || 'meta_muse',
+          agent.fallback_model_id || 'muse-spark-1.3',
           JSON.stringify(agent.step_routing_json || {}),
           agent.init_prompt,
           JSON.stringify(agent.allowed_repos || []),
@@ -526,10 +526,10 @@ export class DatabaseStore {
       hierarchy_level: Number(r.hierarchy_level) as HierarchyLevel,
       parent_agent_id: r.parent_agent_id ?? null,
       project_scope: r.project_scope ?? null,
-      model_provider: (r.model_provider || 'vertex') as ModelProvider,
-      model_id: String(r.model_id || 'gemini-2.5-pro'),
-      fallback_provider: (r.fallback_provider || 'vertex') as ModelProvider,
-      fallback_model_id: String(r.fallback_model_id || 'gemini-2.0-flash'),
+      model_provider: (r.model_provider || 'meta_muse') as ModelProvider,
+      model_id: String(r.model_id || 'muse-wonder-1.0'),
+      fallback_provider: (r.fallback_provider || 'meta_muse') as ModelProvider,
+      fallback_model_id: String(r.fallback_model_id || 'muse-spark-1.3'),
       step_routing_json:
         r.step_routing_json && typeof r.step_routing_json === 'object'
           ? (r.step_routing_json as StepRoutingConfig)
@@ -647,18 +647,18 @@ export class DatabaseStore {
         input.project_scope !== undefined
           ? input.project_scope
           : (existing?.project_scope ?? 'GLOBAL'),
-      model_provider: input.model_provider || existing?.model_provider || 'vertex',
-      model_id: input.model_id || existing?.model_id || 'gemini-2.5-pro',
+      model_provider: input.model_provider || existing?.model_provider || 'meta_muse',
+      model_id: input.model_id || existing?.model_id || 'muse-wonder-1.0',
       fallback_provider:
-        input.fallback_provider || existing?.fallback_provider || 'vertex',
+        input.fallback_provider || existing?.fallback_provider || 'meta_muse',
       fallback_model_id:
-        input.fallback_model_id || existing?.fallback_model_id || 'gemini-2.0-flash',
+        input.fallback_model_id || existing?.fallback_model_id || 'muse-spark-1.3',
       step_routing_json:
         input.step_routing_json ??
         existing?.step_routing_json ?? {
-          planning: { provider: 'vertex', modelId: 'gemini-2.5-pro' },
-          tool_loop: { provider: 'vertex', modelId: 'gemini-2.0-flash' },
-          compaction: { provider: 'ollama', modelId: 'qwen2.5-coder:32b' },
+          planning: { provider: 'meta_muse', modelId: 'muse-wonder-1.0' },
+          tool_loop: { provider: 'meta_muse', modelId: 'muse-spark-1.3' },
+          compaction: { provider: 'ollama', modelId: 'muse-glimmer-30b' },
         },
       init_prompt: input.init_prompt ?? existing?.init_prompt ?? '',
       allowed_repos: input.allowed_repos ?? existing?.allowed_repos ?? [],
@@ -2940,7 +2940,7 @@ export class DatabaseStore {
   }
 
   public async getActiveRoutingProfile(): Promise<RoutingProfileRow> {
-    const activeId = this.state.active_routing_profile || 'GCP_ZERO_COST';
+    const activeId = this.state.active_routing_profile || 'META_MUSE_HACKATHON';
     const found =
       this.state.routing_profiles.find((p) => p.id === activeId) ||
       this.state.routing_profiles.find((p) => p.is_active) ||
@@ -2949,7 +2949,7 @@ export class DatabaseStore {
   }
 
   /**
-   * 1-Click Global Routing Profile Switcher (`GCP_ZERO_COST` | `META_MUSE_HACKATHON` | `CUSTOM_HYBRID`).
+   * 1-Click Global Routing Profile Switcher (`LOCAL_ZERO_COST` | `META_MUSE_HACKATHON` | `CUSTOM_HYBRID`).
    * Updates `routing_profiles.is_active` and (when `applyToAgents !== false`) updates all
    * hierarchy agents' `model_provider`, `model_id`, `fallback_provider`, `fallback_model_id`,
    * and `step_routing_json` in a single atomic operation.
@@ -3014,16 +3014,12 @@ export class DatabaseStore {
           model_id: primaryModel,
           fallback_provider:
             primaryProvider === 'meta_muse'
-              ? 'vertex'
-              : agent.hierarchy_level >= 2
               ? 'ollama'
-              : 'vertex',
+              : 'meta_muse',
           fallback_model_id:
             primaryProvider === 'meta_muse'
-              ? 'gemini-2.5-pro'
-              : agent.hierarchy_level >= 2
-              ? 'qwen2.5-coder:32b'
-              : 'gemini-2.0-flash',
+              ? 'muse-glimmer-30b'
+              : 'muse-spark-1.3',
           step_routing_json: {
             planning: {
               provider: cfg.default_level0_provider,

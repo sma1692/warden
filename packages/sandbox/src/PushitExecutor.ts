@@ -7,7 +7,7 @@ const execFileAsync = promisify(execFile);
 
 export interface PushitOptions {
   workspacePath: string;
-  mode?: 'docker' | 'local' | 'gcp-ephemeral';
+  mode?: 'docker' | 'local' | 'cloud-ephemeral';
   containerName?: string;
   shortRunId?: string;
   summaryHeader: string;
@@ -174,7 +174,7 @@ export class PushitExecutor {
     const logs: string[] = [];
 
     const runGit = async (args: string[]): Promise<string> => {
-      if (mode === 'gcp-ephemeral' && opts.shortRunId) {
+      if (mode === 'cloud-ephemeral' && opts.shortRunId) {
         const { stdout } = await execFileAsync(
           'ssh',
           ['-S', `/tmp/commando-ssh-${opts.shortRunId}.sock`, 'commando@127.0.0.1', 'bash', '-lc', `cd ${opts.workspacePath} && git ${args.map(a => '"' + a.replace(/"/g, '\\"') + '"').join(' ')}`],
@@ -199,7 +199,7 @@ export class PushitExecutor {
 
     const readPackageJson = async (): Promise<string | null> => {
       try {
-        if (mode === 'gcp-ephemeral' && opts.shortRunId) {
+        if (mode === 'cloud-ephemeral' && opts.shortRunId) {
           const { stdout } = await execFileAsync('ssh', [
             '-S',
             `/tmp/commando-ssh-${opts.shortRunId}.sock`,
@@ -228,7 +228,7 @@ export class PushitExecutor {
     };
 
     const writePackageJson = async (content: string): Promise<void> => {
-      if (mode === 'gcp-ephemeral' && opts.shortRunId) {
+      if (mode === 'cloud-ephemeral' && opts.shortRunId) {
         const encoded = Buffer.from(content, 'utf8').toString('base64');
         await execFileAsync('ssh', [
           '-S',

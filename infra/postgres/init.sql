@@ -16,10 +16,10 @@ CREATE TABLE IF NOT EXISTS agents (
   hierarchy_level INTEGER NOT NULL CHECK (hierarchy_level IN (-1, 0, 1, 2, 3)),
   parent_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
   project_scope TEXT,
-  model_provider TEXT NOT NULL DEFAULT 'vertex' CHECK (model_provider IN ('vertex', 'meta_muse', 'anthropic', 'openai', 'ollama', 'huggingface')),
-  model_id TEXT NOT NULL DEFAULT 'gemini-2.5-pro',
-  fallback_provider TEXT NOT NULL DEFAULT 'vertex' CHECK (fallback_provider IN ('vertex', 'meta_muse', 'anthropic', 'openai', 'ollama', 'huggingface')),
-  fallback_model_id TEXT NOT NULL DEFAULT 'gemini-2.5-flash',
+  model_provider TEXT NOT NULL DEFAULT 'meta_muse' CHECK (model_provider IN ('meta_muse', 'ollama', 'huggingface')),
+  model_id TEXT NOT NULL DEFAULT 'muse-wonder-1.0',
+  fallback_provider TEXT NOT NULL DEFAULT 'meta_muse' CHECK (fallback_provider IN ('meta_muse', 'ollama', 'huggingface')),
+  fallback_model_id TEXT NOT NULL DEFAULT 'muse-spark-1.3',
   step_routing_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   init_prompt TEXT NOT NULL,
   allowed_repos JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -316,7 +316,7 @@ CREATE INDEX IF NOT EXISTS idx_code_chunks_content_fts
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS provider_credentials (
   id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL CHECK (provider IN ('vertex', 'meta_muse', 'anthropic', 'openai', 'ollama', 'huggingface')),
+  provider TEXT NOT NULL CHECK (provider IN ('meta_muse', 'ollama', 'huggingface')),
   label TEXT NOT NULL,
   api_key_encrypted TEXT NOT NULL DEFAULT '',
   base_url TEXT NOT NULL DEFAULT '',
@@ -340,7 +340,7 @@ CREATE INDEX IF NOT EXISTS idx_provider_credentials_provider_priority
 -- 13. routing_profiles (Global Model Routing Profile & Hackathon Switcher)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS routing_profiles (
-  id TEXT PRIMARY KEY CHECK (id IN ('GCP_ZERO_COST', 'META_MUSE_HACKATHON', 'CUSTOM_HYBRID')),
+  id TEXT PRIMARY KEY CHECK (id IN ('LOCAL_ZERO_COST', 'META_MUSE_HACKATHON', 'CUSTOM_HYBRID')),
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   is_active BOOLEAN NOT NULL DEFAULT FALSE,

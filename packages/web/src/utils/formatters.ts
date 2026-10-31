@@ -36,33 +36,24 @@ export function formatUsd(amount: number): string {
 
 export function formatModelBadge(provider: string, modelId: string): string {
   const labelMap: Record<string, string> = {
-    vertex: 'Vertex',
     meta_muse: 'Meta Muse',
-    anthropic: 'Anthropic',
-    openai: 'OpenAI',
     ollama: 'Ollama',
     huggingface: 'HF vLLM',
   };
   const prefix = labelMap[provider] || provider;
-  if (modelId === 'gemini-3.1-pro-argon-high') return `${prefix}: Gemini 3.1 Pro (Argon High)`;
-  if (modelId === 'gemini-3.1-pro-preview') return `${prefix}: Gemini 3.1 Pro`;
-  if (modelId === 'gemini-3-flash-preview') return `${prefix}: Gemini 3 Flash`;
-  if (modelId === 'gemini-2.5-pro-argon-high') return `${prefix}: Gemini 3.1 Pro (Argon High)`;
-  if (modelId === 'gemini-2.5-pro') return `${prefix}: Gemini 3.1 Pro`;
-  if (modelId === 'gemini-2.0-flash') return `${prefix}: Gemini 3 Flash`;
-  if (modelId === 'gemini-1.5-flash') return `${prefix}: Gemini 1.5 Flash`;
   if (modelId === 'muse-wonder-1.0') return `${prefix}: Muse Wonder 1.0`;
+  if (modelId === 'muse-pro' || modelId === 'meta-muse-pro') return `${prefix}: Muse Pro`;
   if (modelId === 'muse-spark-1.3') return `${prefix}: Muse Spark 1.3`;
+  if (modelId === 'muse-light') return `${prefix}: Muse Light`;
+  if (modelId === 'muse-flash') return `${prefix}: Muse Flash`;
   if (modelId === 'muse-glimmer-30b') return `${prefix}: Muse Glimmer 30B`;
   if (modelId === 'muse-image') return `${prefix}: Muse Image`;
   if (modelId === 'muse-voice') return `${prefix}: Muse Voice`;
-  if (modelId === 'claude-sonnet-4-20250514') return `${prefix}: Claude Sonnet 4`;
-  if (modelId === 'claude-3-7-sonnet-latest') return `${prefix}: Claude 3.7 Sonnet`;
-  if (modelId === 'gpt-4.1') return `${prefix}: GPT-4.1`;
-  if (modelId === 'gpt-4.1-mini') return `${prefix}: GPT-4.1 Mini`;
-  if (modelId === 'o3') return `${prefix}: o3 Reasoning`;
+  if (modelId === 'muse-voice-transcribe-1.0') return `${prefix}: Muse Voice Transcribe`;
+  if (modelId === 'muse-embed-1.0') return `${prefix}: Muse Embed`;
   if (modelId === 'llama-3.3-70b') return `${prefix}: Llama 3.3 70B`;
-  if (modelId === 'qwen2.5-coder:32b') return `${prefix}: Qwen 2.5 Coder 32B`;
+  if (modelId === 'meta-llama/Llama-3.3-70B-Instruct') return `${prefix}: Llama 3.3 70B Instruct`;
+  if (modelId === 'llama-4-maverick') return `${prefix}: Llama 4 Maverick`;
   return `${prefix}: ${modelId}`;
 }
 

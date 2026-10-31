@@ -63,7 +63,7 @@ function isBinary(buffer) {
 }
 
 // --- Pre-configured .claude/settings.json Content ---
-const PRECONFIGURED_CLAUDE_SETTINGS = JSON.stringify({
+const PRECONFIGURED_MUSE_SETTINGS = JSON.stringify({
   permissions: {
     allow: [
       "Read(**)",
@@ -153,7 +153,7 @@ const ENCODED_REPLACERS = [
   { b64Pattern: 'Y2VvQGNvbXBhbnlcLmNvbQ==', flags: 'gi', rep: 'ceo@example.com' },
   { b64Pattern: 'c3VwcG9ydEBub3ZhcHVsc2VcLmlv', flags: 'gi', rep: 'support@example.com' },
 
-  // GCP and internal identifiers
+  // Cloud and internal identifiers
   { b64Pattern: 'XGJhaS1zdHVkaW8tZGlyZWN0XGJ8XGJjb21tYW5kby1nY3BcYnxcYmNvbW1hbmRvLW1lZGlhXGI=', flags: 'g', rep: 'warden-cloud-sample' },
   { b64Pattern: 'XGJwcm9qZWN0cy9cZHs2LH1cYg==', flags: 'g', rep: 'projects/PROJECT_ID' },
   { b64Pattern: 'XGJcZHsxMn0tY29tcHV0ZUBkZXZlbG9wZXJcLmdzZXJ2aWNlYWNjb3VudFwuY29tXGI=', flags: 'g', rep: 'sa-compute@example.com' },
@@ -219,97 +219,17 @@ function ensureModelRegistry() {
     description: 'Auto-discovered and statically registered model endpoints, capabilities, and pricing metrics.',
     updatedAt: new Date().toISOString(),
     models: {
-      'claude-3-7-sonnet-20250219': {
-        provider: 'anthropic',
+      'muse-wonder-1.0': {
+        provider: 'meta_muse',
         tier: 'tier1_architect',
-        displayName: 'Claude 3.7 Sonnet',
-        contextWindow: 200000,
-        maxOutputTokens: 64000,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 3.0, outputPer1MUsd: 15.0, cachedInputPer1MUsd: 0.3 }
-      },
-      'claude-3-5-haiku-20241022': {
-        provider: 'anthropic',
-        tier: 'tier2_applier',
-        displayName: 'Claude 3.5 Haiku',
-        contextWindow: 200000,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 0.8, outputPer1MUsd: 4.0, cachedInputPer1MUsd: 0.08 }
-      },
-      'gemini-2.5-pro': {
-        provider: 'vertex',
-        tier: 'tier1_architect',
-        displayName: 'Gemini 2.5 Pro',
-        contextWindow: 1048576,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 1.25, outputPer1MUsd: 10.0, cachedInputPer1MUsd: 0.31 }
-      },
-      'gemini-2.5-flash': {
-        provider: 'vertex',
-        tier: 'tier2_applier',
-        displayName: 'Gemini 2.5 Flash',
-        contextWindow: 1048576,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 0.15, outputPer1MUsd: 0.6, cachedInputPer1MUsd: 0.0375 }
-      },
-      'gemini-2.5-flash-lite': {
-        provider: 'vertex',
-        tier: 'tier2_applier',
-        displayName: 'Gemini 2.5 Flash-Lite',
-        contextWindow: 1048576,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 0.075, outputPer1MUsd: 0.3, cachedInputPer1MUsd: 0.01875 }
-      },
-      'gpt-4o': {
-        provider: 'openai',
-        tier: 'tier1_architect',
-        displayName: 'GPT-4o',
+        displayName: 'Meta Muse Wonder 1.0',
         contextWindow: 128000,
-        maxOutputTokens: 16384,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 2.5, outputPer1MUsd: 10.0, cachedInputPer1MUsd: 1.25 }
-      },
-      'gpt-4o-mini': {
-        provider: 'openai',
-        tier: 'tier2_applier',
-        displayName: 'GPT-4o mini',
-        contextWindow: 128000,
-        maxOutputTokens: 16384,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 0.15, outputPer1MUsd: 0.6, cachedInputPer1MUsd: 0.075 }
-      },
-      'grok-2': {
-        provider: 'xai',
-        tier: 'tier1_architect',
-        displayName: 'Grok 2',
-        contextWindow: 131072,
         maxOutputTokens: 8192,
         supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 2.0, outputPer1MUsd: 10.0, cachedInputPer1MUsd: 0.5 }
+        supportsThinking: true,
+        pricing: { inputPer1MUsd: 1.0, outputPer1MUsd: 4.0, cachedInputPer1MUsd: 0.25 }
       },
-      'grok-2-mini': {
-        provider: 'xai',
-        tier: 'tier2_applier',
-        displayName: 'Grok 2 mini',
-        contextWindow: 131072,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 0.2, outputPer1MUsd: 1.0, cachedInputPer1MUsd: 0.05 }
-      },
-      'meta-muse-pro': {
+      'muse-pro': {
         provider: 'meta_muse',
         tier: 'tier1_architect',
         displayName: 'Meta Muse Pro',
@@ -317,12 +237,112 @@ function ensureModelRegistry() {
         maxOutputTokens: 8192,
         supportsToolUse: true,
         supportsThinking: true,
-        pricing: { inputPer1MUsd: 1.5, outputPer1MUsd: 6.0, cachedInputPer1MUsd: 0.4 }
+        pricing: { inputPer1MUsd: 1.0, outputPer1MUsd: 4.0, cachedInputPer1MUsd: 0.6 }
       },
-      'qwen2.5-coder:14b': {
+      'muse-spark-1.3': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Spark 1.3',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: true,
+        pricing: { inputPer1MUsd: 0.2, outputPer1MUsd: 0.8, cachedInputPer1MUsd: 0.05 }
+      },
+      'muse-light': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Light',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.15, outputPer1MUsd: 0.6, cachedInputPer1MUsd: 0.05 }
+      },
+      'muse-flash': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Flash',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.15, outputPer1MUsd: 0.6, cachedInputPer1MUsd: 0.05 }
+      },
+      'muse-glimmer-30b': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Glimmer 30B',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.12, outputPer1MUsd: 0.25, cachedInputPer1MUsd: 0.03 }
+      },
+      'muse-image': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Image',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.8, outputPer1MUsd: 2.4, cachedInputPer1MUsd: 0.2 }
+      },
+      'muse-voice': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Voice',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.5, outputPer1MUsd: 1.5, cachedInputPer1MUsd: 0.125 }
+      },
+      'muse-voice-transcribe-1.0': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Voice Transcribe 1.0',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: false,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.5, outputPer1MUsd: 1.5, cachedInputPer1MUsd: 0.125 }
+      },
+      'muse-embed-1.0': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Embed 1.0',
+        contextWindow: 8192,
+        maxOutputTokens: 0,
+        supportsToolUse: false,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.025, outputPer1MUsd: 0.0, cachedInputPer1MUsd: 0.0 }
+      },
+      'llama-3.3-70b': {
         provider: 'ollama',
         tier: 'tier2_applier',
-        displayName: 'Qwen 2.5 Coder 14B (Local)',
+        displayName: 'Llama 3.3 70B (Local)',
+        contextWindow: 32768,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.0, outputPer1MUsd: 0.0, cachedInputPer1MUsd: 0.0 }
+      },
+      'meta-llama/Llama-3.3-70B-Instruct': {
+        provider: 'huggingface',
+        tier: 'tier2_applier',
+        displayName: 'Llama 3.3 70B Instruct (Local vLLM)',
+        contextWindow: 32768,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.0, outputPer1MUsd: 0.0, cachedInputPer1MUsd: 0.0 }
+      },
+      'llama-4-maverick': {
+        provider: 'ollama',
+        tier: 'tier2_applier',
+        displayName: 'Llama 4 Maverick (Local)',
         contextWindow: 32768,
         maxOutputTokens: 8192,
         supportsToolUse: true,
@@ -365,18 +385,17 @@ function getAgenticMDFiles() {
   const files = [
     'README.md',
     'AGENTS.md',
-    'CLAUDE.md',
-    'GEMINI.md',
+    'MUSE.md',
     'projects.example.yaml',
     '.env.example',
     'docs/privacy-policy.md',
     'docs/whatsapp-setup.md'
   ];
 
-  // Claude Code Subagent Prompts (including Tier 2 reader_scout.md)
-  const claudeAgentsDir = path.join(ROOT, '.claude', 'agents');
-  if (fs.existsSync(claudeAgentsDir)) {
-    for (const f of fs.readdirSync(claudeAgentsDir)) {
+  // Muse Code Subagent Prompts (including Tier 2 reader_scout.md)
+  const roleAgentsDir = path.join(ROOT, '.claude', 'agents');
+  if (fs.existsSync(roleAgentsDir)) {
+    for (const f of fs.readdirSync(roleAgentsDir)) {
       if (f.endsWith('.md') || f.endsWith('.json')) {
         files.push(`.claude/agents/${f}`);
       }
@@ -387,7 +406,7 @@ function getAgenticMDFiles() {
     files.push(readerScoutPath);
   }
 
-  // Antigravity & Agent Skills
+  // Agent Skills
   const skillsDir = path.join(ROOT, '.agents', 'skills');
   if (fs.existsSync(skillsDir)) {
     for (const skill of fs.readdirSync(skillsDir)) {
@@ -444,13 +463,12 @@ function getWardenPublicFiles() {
       'scripts/token-report.mjs',
       'scripts/sync-md-db.ts',
       'scripts/migrate-md-to-db.ts',
-      'scripts/commando-vertex.mjs',
+      'scripts/commando-muse.mjs',
       'scripts/build-kit.mjs',
       '.agents/skills/**',
       '.claude/agents/**',
       'AGENTS.md',
-      'CLAUDE.md',
-      'GEMINI.md',
+      'MUSE.md',
       'README.md'
     ],
     exclude: [
@@ -733,7 +751,7 @@ function main() {
     }
     // Inject pre-configured .claude/settings.json
     ensureDir(path.join(AGENTIC_MD_TARGET, '.claude'));
-    fs.writeFileSync(path.join(AGENTIC_MD_TARGET, '.claude', 'settings.json'), PRECONFIGURED_CLAUDE_SETTINGS, 'utf8');
+    fs.writeFileSync(path.join(AGENTIC_MD_TARGET, '.claude', 'settings.json'), PRECONFIGURED_MUSE_SETTINGS, 'utf8');
 
     console.log(`    Successfully processed ${mdCount} agentic markdown files + .claude/settings.json.`);
 
@@ -754,7 +772,7 @@ function main() {
     }
     // Inject pre-configured .claude/settings.json
     ensureDir(path.join(WARDEN_PUBLIC_TARGET, '.claude'));
-    fs.writeFileSync(path.join(WARDEN_PUBLIC_TARGET, '.claude', 'settings.json'), PRECONFIGURED_CLAUDE_SETTINGS, 'utf8');
+    fs.writeFileSync(path.join(WARDEN_PUBLIC_TARGET, '.claude', 'settings.json'), PRECONFIGURED_MUSE_SETTINGS, 'utf8');
 
     console.log(`    Successfully processed ${pubCount} public repository files + .claude/settings.json.`);
 

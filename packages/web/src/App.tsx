@@ -99,7 +99,7 @@ const INITIAL_NOTIFICATIONS: AppNotificationItem[] = [
   {
     id: 'notif-2',
     title: 'AEO Citation Share Reached 34.8% (+9.2%)',
-    body: '@aeo_lead completed Perplexity & ChatGPT Search citation audit and /llms.txt draft.',
+    body: '@aeo_lead completed Meta AI citation audit and /llms.txt draft.',
     vertical: 'SEO_AEO',
     timeAgo: '14m ago',
     unread: true,

@@ -112,8 +112,8 @@ function agent(
   const isExecOrLead = a.hierarchy_level <= 1;
   return {
     slug: `@${a.id}`,
-    model_provider: 'vertex',
-    model_id: a.model_id || (isExecOrLead ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview'),
+    model_provider: 'meta_muse',
+    model_id: a.model_id || (isExecOrLead ? 'muse-wonder-1.0' : 'muse-spark-1.3'),
     permission_tier: a.permission_tier || 'standard_autonomous',
     max_subagents: a.max_subagents ?? 4,
     ...ZERO_STATS,
@@ -182,7 +182,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       hierarchy_level: 1,
       parent_agent_id: 'cto',
       project_scope: 'product',
-      model_id: 'gemini-3-flash-preview',
+      model_id: 'muse-spark-1.3',
       init_prompt:
         'You are @pm (Level 1 Lead Product Manager). Coordinate with the per-project PMs and @infra_head so every project maintains its prioritized P0/P1/P2 backlog and @cto has a live Collated Master Backlog (worklist/COLLATED_BACKLOG.md). Surface NEEDS_CEO human intervention tasks (questions, API keys, manual actions) and weekly standup task movements.',
       allowed_repos: [...techSlugs, 'commando'],

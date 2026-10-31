@@ -1,21 +1,20 @@
 /**
- * DYNAMO COMMANDO — Multimodal Chat Attachment & GCS / Local Media Upload Service
+ * DYNAMO COMMANDO — Multimodal Chat Attachment & Local Media Upload Service
  * (`dynamocommando.md` Section 4.1 Table 7 & Section 5.2)
  *
  * Responsibilities:
  * 1. Accepts multimodal chat attachments uploaded via base64 JSON or `multipart/form-data`
  *    from the Dashboard PWA (screenshots, Figma mockups, architecture diagrams, videos, PDFs).
  * 2. Saves files locally to `.state/media/<filename>` (served at `/media/<filename>`).
- * 3. Optionally uploads to Google Cloud Storage (`gs://${GCS_MEDIA_BUCKET}/...`) when GCS
- *    credentials are present.
- * 4. Returns structured `ChatAttachment` objects (`{ type, gcs_uri, public_url, filename, size_bytes, base64Data }`)
+ * 3. Assigns a deterministic `media://` URI (`media://${MEDIA_BUCKET}/<filename>`) for
+ *    native `fileData` references in `ModelRouter`.
+ * 4. Returns structured `ChatAttachment` objects (`{ type, media_uri, public_url, filename, size_bytes, base64Data }`)
  *    ready for `chat_messages.attachments_json` and `ModelRouter`.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execSync } from 'node:child_process';
 
 export type SupportedAttachmentMimeType =
   | 'image/png'
@@ -27,7 +26,7 @@ export type SupportedAttachmentMimeType =
 export interface ChatAttachment {
   id?: string;
   type: SupportedAttachmentMimeType | string;
-  gcs_uri: string | null;
+  media_uri: string | null;
   public_url: string;
   filename: string;
   size_bytes: number;
@@ -117,18 +116,18 @@ export function buildSafeMediaFilename(originalName: string | undefined, mimeTyp
 
 export class MediaUploadService {
   private readonly mediaDir: string;
-  private readonly gcsBucket: string;
+  private readonly mediaBucket: string;
   private readonly publicBaseUrl: string;
 
   constructor(options?: {
     mediaDir?: string;
-    gcsBucket?: string;
+    mediaBucket?: string;
     publicBaseUrl?: string;
   }) {
     this.mediaDir =
       options?.mediaDir || path.resolve(process.cwd(), '.state', 'media');
-    this.gcsBucket =
-      options?.gcsBucket ?? (process.env.GCS_MEDIA_BUCKET || '');
+    this.mediaBucket =
+      options?.mediaBucket ?? (process.env.MEDIA_BUCKET || 'local-media');
     this.publicBaseUrl = (
       options?.publicBaseUrl ||
       process.env.VITE_API_URL ||
@@ -145,7 +144,7 @@ export class MediaUploadService {
 
   /**
    * Uploads a single attachment from base64, data URI, or Buffer.
-   * Saves locally to `.state/media/<filename>` and optionally uploads to `gs://${GCS_MEDIA_BUCKET}/...`.
+   * Saves locally to `.state/media/<filename>` and assigns a `media://` URI.
    */
   public async uploadAttachment(input: MediaUploadInput): Promise<ChatAttachment> {
     const rawString = input.base64Data || input.base64_data || input.data || '';
@@ -179,8 +178,7 @@ export class MediaUploadService {
     const sizeBytes = binaryBuffer.byteLength;
     const publicUrl = `/media/${safeFilename}`;
 
-    // Attempt optional upload to Google Cloud Storage if GCS credentials are configured
-    const gcsUri = await this.tryUploadToGcs(safeFilename, mimeType, binaryBuffer);
+    const mediaUri = `media://${this.mediaBucket}/${safeFilename}`;
 
     // Include base64Data for attachments <= 8MB so ModelRouter can pass inlineData directly when offline
     const includeBase64 = input.includeBase64 ?? sizeBytes <= 8 * 1024 * 1024;
@@ -188,7 +186,7 @@ export class MediaUploadService {
     return {
       id: input.id || `att_${crypto.randomUUID().slice(0, 8)}`,
       type: mimeType,
-      gcs_uri: gcsUri,
+      media_uri: mediaUri,
       public_url: publicUrl,
       filename: safeFilename,
       size_bytes: sizeBytes,
@@ -278,60 +276,6 @@ export class MediaUploadService {
     };
   }
 
-  /**
-   * Optionally uploads binary buffer to Google Cloud Storage (`gs://${GCS_MEDIA_BUCKET}/${filename}`)
-   * when GCS credentials are present (`GCS_ACCESS_TOKEN`, `VERTEX_ACCESS_TOKEN`, or `GCS_UPLOAD_ENABLED=true`).
-   */
-  private async tryUploadToGcs(
-    filename: string,
-    mimeType: string,
-    buffer: Buffer
-  ): Promise<string | null> {
-    if (!this.gcsBucket) return null;
-
-    const explicitToken = process.env.GCS_ACCESS_TOKEN || process.env.VERTEX_ACCESS_TOKEN || '';
-    const uploadEnabled =
-      Boolean(explicitToken) || process.env.GCS_UPLOAD_ENABLED === 'true';
-
-    if (!uploadEnabled) {
-      return null;
-    }
-
-    try {
-      const token =
-        explicitToken ||
-        execSync(
-          'gcloud auth application-default print-access-token 2>/dev/null || gcloud auth print-access-token 2>/dev/null',
-          { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }
-        ).trim();
-
-      if (!token) return null;
-
-      const objectName = encodeURIComponent(`chat-attachments/${filename}`);
-      const uploadUrl = `https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(
-        this.gcsBucket
-      )}/o?uploadType=media&name=${objectName}`;
-
-      const res = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': mimeType,
-          'Content-Length': String(buffer.byteLength),
-        },
-        body: new Uint8Array(buffer),
-        signal: AbortSignal.timeout(15_000),
-      });
-
-      if (res.ok) {
-        return `gs://${this.gcsBucket}/chat-attachments/${filename}`;
-      }
-    } catch {
-      // Fallback cleanly to local `.state/media/<filename>` storage when offline
-    }
-
-    return null;
-  }
 }
 
 export const mediaUploadService = new MediaUploadService();

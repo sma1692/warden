@@ -3,8 +3,7 @@
  * Commando Kit White-Label Builder (`scripts/build-kit.mjs`)
  *
  * Packages a clean, zero-leak, general-purpose Tiered AI Workforce bundle
- * into `dist/commando-kit/` and `dist/commando-kit.zip` for Google Antigravity
- * and Claude Code.
+ * into `dist/commando-kit/` and `dist/commando-kit.zip` for Muse.
  */
 
 import fs from 'node:fs';
@@ -44,7 +43,7 @@ writeFile(
   'README.md',
   `# Commando Kit — Tiered Multi-Agent Engineering & Executive OS
 
-> **Compatible IDEs & CLIs**: Google Antigravity (\`GEMINI.md\` + \`.agents/skills/\`) and Claude Code (\`CLAUDE.md\` + \`.claude/agents/\`).
+> **Compatible IDEs & CLIs**: Muse (\`MUSE.md\` + \`.agents/skills/\` + \`.claude/agents/\`).
 > **Reporting Standard**: ASD-STE100 (Simplified Technical English), Visual-First Diagrams, and Structured Markdown Tables.
 
 ---
@@ -72,7 +71,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | **1. Register Repos** | Edit \`projects.yaml\` with your project names and local git repository paths. | Maps projects to local folders. |
 | **2. Scaffold Memory** | Run \`npm run init\` in terminal. | Creates \`context/\`, \`memory/\`, \`worklist/\`, and \`.state/topology-cache.json\`. |
-| **3. Start Orchestrating** | Open this folder in **Antigravity** or **Claude Code** and type \`standup\` or \`onboard <project>\`. | Activates \`warden\` and the full C-Suite hierarchy. |
+| **3. Start Orchestrating** | Open this folder in **Muse** and type \`standup\` or \`onboard <project>\`. | Activates \`warden\` and the full C-Suite hierarchy. |
 
 ---
 
@@ -123,7 +122,7 @@ writeFile(
       version: '1.0.0',
       private: true,
       type: 'module',
-      description: 'Commando Kit — Tiered Multi-Agent Engineering & Executive Hierarchy for Antigravity and Claude Code',
+      description: 'Commando Kit — Tiered Multi-Agent Engineering & Executive Hierarchy for Muse',
       scripts: {
         init: 'node scripts/init-kit.mjs',
         'sync-in': 'node scripts/repo-tool.mjs sync-in',
@@ -279,55 +278,17 @@ Every repo operator (\`backend_dev\`, \`frontend_dev\`, \`infra_jr\`, \`tech_lea
 );
 
 // ----------------------------------------------------------------------------
-// 5. GEMINI.md & CLAUDE.md
+// 5. MUSE.md
 // ----------------------------------------------------------------------------
 writeFile(
-  'GEMINI.md',
-  `# GEMINI.md — Antigravity Command Center Instructions (\`warden\`)
-
-@./AGENTS.md
-
-## Antigravity Native Tool Binding
-
-When running inside **Google Antigravity**, you are **\`warden\` (CEO Office Chief of Staff)** in the main chat. Use native subagent tools (\`define_subagent\`, \`invoke_subagent\`, \`send_message\`, \`manage_subagents\`) to execute the Commando hierarchy defined in [\`AGENTS.md\`](./AGENTS.md).
-
-### 1. Subagent Lifecycle & Persistence Rules
-1. **Startup**: Spawn **0** subagents until the CEO gives a task, triggers \`"standup"\`, or addresses \`@<agent>\`.
-2. **Model Assignment Rule**:
-   - Always invoke **\`cto\`** and **\`cbo\`** with \`Model: "pro"\`.
-   - Invoke Level 1 (\`pm\`, \`tech_lead\`, \`infra_head\`) and Level 2 (\`backend_dev\`, \`frontend_dev\`, \`infra_jr\`) with \`Model: "inherit"\`.
-3. **Zero-Popup Parallel Subagent Rule (\`sync-in\` $\\rightarrow$ Sandboxed Subagents $\\rightarrow$ \`sync-out\`)**:
-   - Before spawning parallel subagents for external repo work, \`warden\` runs:
-     \`node scripts/repo-tool.mjs sync-in\`
-   - All subagents edit files inside \`.state/mirror/<repo-alias>/\` using native \`read_file\`, \`edit_file\`, \`write_file\`, and \`BypassSandbox: false\` ONLY.
-   - After subagents finish, \`warden\` runs:
-     \`node scripts/repo-tool.mjs sync-out\`
-
-### 2. Active Hierarchy Subagent Matrix
-
-| Level | Subagent \`Name\` | Direct Address | \`Model\` | Role & Scope |
-| :--- | :--- | :--- | :--- | :--- |
-| **Root** | \`warden\` *(You)* | Default | User Selection | CEO Chief of Staff. Orchestrates C-Suite and formats reports in ASD-STE100 tables + diagrams. |
-| **Level 0** | \`cto\` | \`@cto\` | \`"pro"\` | Head of Tech. Owns \`context/cto.md\`, \`memory/cto.md\`, and chairs Daily Standups. |
-| **Level 0** | \`cbo\` | \`@cbo\` | \`"pro"\` | Chief Business Officer. Owns \`context/cbo.md\` and ranks backlog by ROI and CEO hour cost. |
-| **Level 1** | \`pm\` | \`@pm:<project>\` | \`"inherit"\` | Product Manager. Owns \`worklist/<project>/backlog.md\` and \`worklist/COLLATED_BACKLOG.md\`. |
-| **Level 1** | \`tech_lead\` | \`@tech_lead:<project>\` | \`"inherit"\` | Project Tech Lead. Owns \`context/<project>/<repo>.md\` and \`contracts/\`. |
-| **Level 1** | \`infra_head\` | \`@infra_head\` | \`"inherit"\` | Head of Infrastructure. Owns cloud architecture, FinOps, and deployments. |
-| **Level 2** | \`backend_dev\` | \`@backend_dev:<project>\` | \`"inherit"\` | Backend Developer (spawn N parallel instances for chunked backend tasks). |
-| **Level 2** | \`frontend_dev\` | \`@frontend_dev:<project>\` | \`"inherit"\` | Frontend Developer (spawn N parallel instances for chunked frontend tasks). |
-| **Level 2** | \`infra_jr\` | \`@infra_jr\` | \`"inherit"\` | Infrastructure Engineer (executes cloud scripts, CI/CD, and deployments). |
-`
-);
-
-writeFile(
-  'CLAUDE.md',
-  `# CLAUDE.md — Claude Code Command Center Instructions (\`warden\`)
+  'MUSE.md',
+  `# MUSE.md — Muse Code Command Center Instructions (\`warden\`)
 
 @AGENTS.md
 
-## Claude Code Native Subagent Binding
+## Muse Code Native Subagent Binding
 
-When running inside **Claude Code**, you are **\`warden\` (CEO Office Chief of Staff)** in the main chat.
+When running inside **Muse Code**, you are **\`warden\` (CEO Office Chief of Staff)** in the main chat.
 Delegate work down the hierarchy using the pre-configured subagents in [\`.claude/agents/\`](./.claude/agents/):
 
 | Subagent File | Role | Level | Scope |
@@ -529,9 +490,9 @@ When the CEO says **"onboard \`<project>\`"** (or provides a repository path):
 );
 
 // ----------------------------------------------------------------------------
-// 7. .claude/agents/*.md (For Claude Code users)
+// 7. .claude/agents/*.md (For Muse Code users)
 // ----------------------------------------------------------------------------
-const CLAUDE_AGENTS = [
+const MUSE_AGENTS = [
   {
     name: 'cto',
     desc: 'Level 0 Head of Tech. Chairs Daily Standups, owns context/cto.md, and orchestrates pm, tech_lead, and infra_head.',
@@ -574,7 +535,7 @@ const CLAUDE_AGENTS = [
   },
 ];
 
-for (const agent of CLAUDE_AGENTS) {
+for (const agent of MUSE_AGENTS) {
   writeFile(
     `.claude/agents/${agent.name}.md`,
     `---

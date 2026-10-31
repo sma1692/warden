@@ -411,7 +411,7 @@ export class StandupCoordinator {
       return item.assigned_agent_id;
     }
     const text = `${item.title} ${item.spec_md}`.toLowerCase();
-    if (item.project_slug === this.store.getInfraProjectSlug() || text.includes('deploy') || text.includes('gcs')) {
+    if (item.project_slug === this.store.getInfraProjectSlug() || text.includes('deploy') || text.includes('bucket')) {
       return 'infra_jr';
     }
     if (item.project_slug === 'marketing' || text.includes('llms.txt') || text.includes('seo')) {

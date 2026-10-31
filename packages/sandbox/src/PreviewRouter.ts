@@ -8,7 +8,7 @@ export interface PreviewRoute {
   repoSlug: string;
   hostPort: number;
   containerPort: number;
-  /** Production GCP wildcard HTTPS preview URL (`https://preview-<shortRunId>.<PREVIEW_BASE_DOMAIN>`) */
+  /** Production cloud wildcard HTTPS preview URL (`https://preview-<shortRunId>.<PREVIEW_BASE_DOMAIN>`) */
   previewUrl: string;
   /** Direct local HTTP preview URL (`http://localhost:<hostPort>`) */
   localPreviewUrl: string;
@@ -71,7 +71,7 @@ export class PreviewRouter {
 
   /**
    * Allocates an available host preview port in the `15000-15999` range for `runId`
-   * and returns the structured `PreviewRoute` with both GCP HTTPS and local URLs.
+   * and returns the structured `PreviewRoute` with both cloud HTTPS and local URLs.
    */
   async allocateRoute(opts: {
     runId: string;

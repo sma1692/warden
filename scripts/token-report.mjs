@@ -9,7 +9,10 @@ const projectRoot = fs.existsSync(path.join(process.cwd(), '.state'))
     ? process.cwd()
     : path.resolve(__dirname, '..');
 
-const brainDir = path.join(os.homedir(), '.gemini/antigravity/brain');
+const sessionsDir = process.env.MUSE_SESSIONS_DIR
+    || (process.env.XDG_DATA_HOME
+        ? path.join(process.env.XDG_DATA_HOME, 'muse/sessions')
+        : path.join(os.homedir(), '.local/share/muse/sessions'));
 const cacheDir = path.join(projectRoot, '.state', 'tokens');
 const modelRegistryPath = path.join(projectRoot, '.state', 'model-registry.json');
 
@@ -18,165 +21,15 @@ if (!fs.existsSync(cacheDir)) {
 }
 
 const DEFAULT_MODELS = {
-    'gemini-2.5-pro': {
-        provider: 'google',
+    'muse-wonder-1.0': {
+        provider: 'meta_muse',
         tier: 'tier1_architect',
-        displayName: 'Gemini 2.5 Pro',
-        contextWindow: 1048576,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 1.25, outputPer1MUsd: 10.0, cachedInputPer1MUsd: 0.60 }
-    },
-    'gemini-2.5-flash': {
-        provider: 'google',
-        tier: 'tier2_applier',
-        displayName: 'Gemini 2.5 Flash',
-        contextWindow: 1048576,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 0.15, outputPer1MUsd: 0.60, cachedInputPer1MUsd: 0.15 }
-    },
-    'gemini-2.5-flash-lite': {
-        provider: 'google',
-        tier: 'tier2_applier',
-        displayName: 'Gemini 2.5 Flash-Lite',
-        contextWindow: 1048576,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 0.075, outputPer1MUsd: 0.30, cachedInputPer1MUsd: 0.075 }
-    },
-    'gemini-1.5-pro': {
-        provider: 'google',
-        tier: 'tier1_architect',
-        displayName: 'Gemini 1.5 Pro',
-        contextWindow: 2097152,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 1.25, outputPer1MUsd: 5.0, cachedInputPer1MUsd: 0.60 }
-    },
-    'gemini-1.5-flash': {
-        provider: 'google',
-        tier: 'tier2_applier',
-        displayName: 'Gemini 1.5 Flash',
-        contextWindow: 1048576,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 0.075, outputPer1MUsd: 0.30, cachedInputPer1MUsd: 0.075 }
-    },
-    'claude-3-7-sonnet': {
-        provider: 'anthropic',
-        tier: 'tier1_architect',
-        displayName: 'Claude 3.7 Sonnet',
-        contextWindow: 200000,
-        maxOutputTokens: 64000,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 3.0, outputPer1MUsd: 15.0, cachedInputPer1MUsd: 0.30 }
-    },
-    'claude-3-5-sonnet': {
-        provider: 'anthropic',
-        tier: 'tier1_architect',
-        displayName: 'Claude 3.5 Sonnet',
-        contextWindow: 200000,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 3.0, outputPer1MUsd: 15.0, cachedInputPer1MUsd: 0.30 }
-    },
-    'claude-3-5-haiku': {
-        provider: 'anthropic',
-        tier: 'tier2_applier',
-        displayName: 'Claude 3.5 Haiku',
-        contextWindow: 200000,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 0.80, outputPer1MUsd: 4.0, cachedInputPer1MUsd: 0.08 }
-    },
-    'gpt-4o': {
-        provider: 'openai',
-        tier: 'tier1_architect',
-        displayName: 'GPT-4o',
+        displayName: 'Meta Muse Wonder 1.0',
         contextWindow: 128000,
-        maxOutputTokens: 16384,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 2.50, outputPer1MUsd: 10.0, cachedInputPer1MUsd: 0.60 }
-    },
-    'gpt-4o-mini': {
-        provider: 'openai',
-        tier: 'tier2_applier',
-        displayName: 'GPT-4o mini',
-        contextWindow: 128000,
-        maxOutputTokens: 16384,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 0.15, outputPer1MUsd: 0.60, cachedInputPer1MUsd: 0.075 }
-    },
-    'o1': {
-        provider: 'openai',
-        tier: 'tier1_architect',
-        displayName: 'OpenAI o1',
-        contextWindow: 200000,
-        maxOutputTokens: 100000,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 15.0, outputPer1MUsd: 60.0, cachedInputPer1MUsd: 7.50 }
-    },
-    'o1-mini': {
-        provider: 'openai',
-        tier: 'tier2_applier',
-        displayName: 'OpenAI o1-mini',
-        contextWindow: 128000,
-        maxOutputTokens: 65536,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 1.10, outputPer1MUsd: 4.40, cachedInputPer1MUsd: 0.55 }
-    },
-    'o3-mini': {
-        provider: 'openai',
-        tier: 'tier2_applier',
-        displayName: 'OpenAI o3-mini',
-        contextWindow: 200000,
-        maxOutputTokens: 100000,
-        supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 1.10, outputPer1MUsd: 4.40, cachedInputPer1MUsd: 0.55 }
-    },
-    'grok-2': {
-        provider: 'xai',
-        tier: 'tier1_architect',
-        displayName: 'Grok 2',
-        contextWindow: 131072,
         maxOutputTokens: 8192,
         supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 2.0, outputPer1MUsd: 10.0, cachedInputPer1MUsd: 0.50 }
-    },
-    'grok-2-mini': {
-        provider: 'xai',
-        tier: 'tier2_applier',
-        displayName: 'Grok 2 mini',
-        contextWindow: 131072,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 0.20, outputPer1MUsd: 1.0, cachedInputPer1MUsd: 0.05 }
-    },
-    'grok-beta': {
-        provider: 'xai',
-        tier: 'tier1_architect',
-        displayName: 'Grok Beta',
-        contextWindow: 131072,
-        maxOutputTokens: 8192,
-        supportsToolUse: true,
-        supportsThinking: false,
-        pricing: { inputPer1MUsd: 5.0, outputPer1MUsd: 15.0, cachedInputPer1MUsd: 1.25 }
+        supportsThinking: true,
+        pricing: { inputPer1MUsd: 1.0, outputPer1MUsd: 4.0, cachedInputPer1MUsd: 0.25 }
     },
     'muse-pro': {
         provider: 'meta_muse',
@@ -198,6 +51,16 @@ const DEFAULT_MODELS = {
         supportsThinking: true,
         pricing: { inputPer1MUsd: 1.0, outputPer1MUsd: 4.0, cachedInputPer1MUsd: 0.60 }
     },
+    'muse-spark-1.3': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Spark 1.3',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: true,
+        pricing: { inputPer1MUsd: 0.20, outputPer1MUsd: 0.80, cachedInputPer1MUsd: 0.05 }
+    },
     'muse-light': {
         provider: 'meta_muse',
         tier: 'tier2_applier',
@@ -218,30 +81,80 @@ const DEFAULT_MODELS = {
         supportsThinking: false,
         pricing: { inputPer1MUsd: 0.15, outputPer1MUsd: 0.60, cachedInputPer1MUsd: 0.05 }
     },
-    'muse-spark-1.3': {
+    'muse-glimmer-30b': {
         provider: 'meta_muse',
         tier: 'tier2_applier',
-        displayName: 'Meta Muse Spark 1.3',
+        displayName: 'Meta Muse Glimmer 30B',
         contextWindow: 128000,
         maxOutputTokens: 8192,
         supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 0.20, outputPer1MUsd: 0.80, cachedInputPer1MUsd: 0.05 }
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.12, outputPer1MUsd: 0.25, cachedInputPer1MUsd: 0.03 }
     },
-    'muse-wonder-1.0': {
+    'muse-image': {
         provider: 'meta_muse',
-        tier: 'tier1_architect',
-        displayName: 'Meta Muse Wonder 1.0',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Image',
         contextWindow: 128000,
         maxOutputTokens: 8192,
         supportsToolUse: true,
-        supportsThinking: true,
-        pricing: { inputPer1MUsd: 1.0, outputPer1MUsd: 4.0, cachedInputPer1MUsd: 0.25 }
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.80, outputPer1MUsd: 2.40, cachedInputPer1MUsd: 0.20 }
     },
-    'qwen2.5-coder:14b': {
+    'muse-voice': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Voice',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.50, outputPer1MUsd: 1.50, cachedInputPer1MUsd: 0.125 }
+    },
+    'muse-voice-transcribe-1.0': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Voice Transcribe 1.0',
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsToolUse: false,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.50, outputPer1MUsd: 1.50, cachedInputPer1MUsd: 0.125 }
+    },
+    'muse-embed-1.0': {
+        provider: 'meta_muse',
+        tier: 'tier2_applier',
+        displayName: 'Meta Muse Embed 1.0',
+        contextWindow: 8192,
+        maxOutputTokens: 0,
+        supportsToolUse: false,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.025, outputPer1MUsd: 0.0, cachedInputPer1MUsd: 0.0 }
+    },
+    'llama-3.3-70b': {
         provider: 'ollama',
         tier: 'tier2_applier',
-        displayName: 'Qwen 2.5 Coder 14B (Local)',
+        displayName: 'Llama 3.3 70B (Local)',
+        contextWindow: 32768,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.0, outputPer1MUsd: 0.0, cachedInputPer1MUsd: 0.0 }
+    },
+    'meta-llama/Llama-3.3-70B-Instruct': {
+        provider: 'huggingface',
+        tier: 'tier2_applier',
+        displayName: 'Llama 3.3 70B Instruct (Local vLLM)',
+        contextWindow: 32768,
+        maxOutputTokens: 8192,
+        supportsToolUse: true,
+        supportsThinking: false,
+        pricing: { inputPer1MUsd: 0.0, outputPer1MUsd: 0.0, cachedInputPer1MUsd: 0.0 }
+    },
+    'llama-4-maverick': {
+        provider: 'ollama',
+        tier: 'tier2_applier',
+        displayName: 'Llama 4 Maverick (Local)',
         contextWindow: 32768,
         maxOutputTokens: 8192,
         supportsToolUse: true,
@@ -302,24 +215,19 @@ export function resolveModel(rawModelId, fallbackContext = {}) {
 
     // Canonical aliases
     const aliases = {
-        'pro': process.env.COMMANDO_PRO_MODEL || 'gemini-2.5-pro',
-        'flash': process.env.COMMANDO_DEFAULT_MODEL || 'gemini-2.5-flash',
-        'gemini-pro': 'gemini-2.5-pro',
-        'gemini-flash': 'gemini-2.5-flash',
-        'claude-sonnet': 'claude-3-5-sonnet',
-        'claude-haiku': 'claude-3-5-haiku',
-        'haiku': 'claude-3-5-haiku',
-        'sonnet': 'claude-3-5-sonnet',
-        'gpt4': 'gpt-4o',
-        'gpt-4': 'gpt-4o',
-        'gpt4o': 'gpt-4o',
-        'gpt4-mini': 'gpt-4o-mini',
-        'gpt-4-mini': 'gpt-4o-mini',
-        'grok': 'grok-2',
-        'grok-mini': 'grok-2-mini',
+        'pro': process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0',
+        'flash': process.env.COMMANDO_DEFAULT_MODEL || 'muse-spark-1.3',
+        'wonder': 'muse-wonder-1.0',
+        'spark': 'muse-spark-1.3',
+        'light': 'muse-light',
+        'glimmer': 'muse-glimmer-30b',
+        'image': 'muse-image',
+        'voice': 'muse-voice',
+        'embed': 'muse-embed-1.0',
         'muse': 'muse-pro',
-        'local': process.env.LOCAL_LLM_MODEL || 'qwen2.5-coder:14b',
-        'ollama': process.env.LOCAL_LLM_MODEL || 'qwen2.5-coder:14b'
+        'llama': 'llama-3.3-70b',
+        'local': process.env.LOCAL_LLM_MODEL || 'llama-3.3-70b',
+        'ollama': process.env.LOCAL_LLM_MODEL || 'llama-3.3-70b'
     };
 
     if (aliases[norm]) {
@@ -333,8 +241,8 @@ export function resolveModel(rawModelId, fallbackContext = {}) {
         const depth = fallbackContext.depth ?? 0;
         const isFlashShard = /flash|Apply pass/i.test(role) || typeName === 'pa' || typeName === 'frontend_dev' || typeName === 'backend_dev' || depth >= 2;
         norm = isFlashShard
-            ? (process.env.COMMANDO_DEFAULT_MODEL || 'gemini-2.5-flash')
-            : (process.env.COMMANDO_PRO_MODEL || 'gemini-2.5-pro');
+            ? (process.env.COMMANDO_DEFAULT_MODEL || 'muse-spark-1.3')
+            : (process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0');
     }
 
     // Direct lookup in registry
@@ -351,21 +259,13 @@ export function resolveModel(rawModelId, fallbackContext = {}) {
 
     // Runtime Unknown-Model Auto-Discovery
     let provider = 'custom';
-    if (/^(gpt|o1|o3|chatgpt|openai)/i.test(norm)) {
-        provider = 'openai';
-    } else if (/^(grok|xai)/i.test(norm)) {
-        provider = 'xai';
-    } else if (/^(muse|meta|llama)/i.test(norm)) {
+    if (/^(muse|meta)/i.test(norm)) {
         provider = 'meta_muse';
-    } else if (/^(claude|anthropic)/i.test(norm)) {
-        provider = 'anthropic';
-    } else if (/^(gemini|google|vertex)/i.test(norm)) {
-        provider = 'google';
-    } else if (/^(qwen|mistral|deepseek|phi|codellama|ollama)/i.test(norm)) {
+    } else if (/^(ollama|llama|glimmer|codellama|local)/i.test(norm)) {
         provider = 'ollama';
     }
 
-    const isTier2 = /mini|flash|light|spark|nano|haiku|coder|small|8b|14b|3b|1b|shard|fast|local/i.test(norm);
+    const isTier2 = /mini|flash|light|spark|glimmer|nano|coder|small|8b|70b|14b|3b|1b|shard|fast|local|llama/i.test(norm);
     const tier = isTier2 ? 'tier2_applier' : 'tier1_architect';
 
     let pricing;
@@ -373,21 +273,13 @@ export function resolveModel(rawModelId, fallbackContext = {}) {
         pricing = { inputPer1MUsd: 0.0, outputPer1MUsd: 0.0, cachedInputPer1MUsd: 0.0 };
     } else if (isTier2) {
         switch (provider) {
-            case 'openai': pricing = { inputPer1MUsd: 0.15, outputPer1MUsd: 0.60, cachedInputPer1MUsd: 0.075 }; break;
-            case 'xai': pricing = { inputPer1MUsd: 0.20, outputPer1MUsd: 1.00, cachedInputPer1MUsd: 0.05 }; break;
             case 'meta_muse': pricing = { inputPer1MUsd: 0.20, outputPer1MUsd: 0.80, cachedInputPer1MUsd: 0.05 }; break;
-            case 'anthropic': pricing = { inputPer1MUsd: 0.80, outputPer1MUsd: 4.00, cachedInputPer1MUsd: 0.08 }; break;
-            case 'google': pricing = { inputPer1MUsd: 0.15, outputPer1MUsd: 0.60, cachedInputPer1MUsd: 0.0375 }; break;
-            default: pricing = { inputPer1MUsd: 0.15, outputPer1MUsd: 0.60, cachedInputPer1MUsd: 0.05 };
+            default: pricing = { inputPer1MUsd: 0.20, outputPer1MUsd: 0.80, cachedInputPer1MUsd: 0.05 };
         }
     } else {
         switch (provider) {
-            case 'openai': pricing = { inputPer1MUsd: 2.50, outputPer1MUsd: 10.00, cachedInputPer1MUsd: 0.60 }; break;
-            case 'xai': pricing = { inputPer1MUsd: 2.00, outputPer1MUsd: 10.00, cachedInputPer1MUsd: 0.50 }; break;
-            case 'meta_muse': pricing = { inputPer1MUsd: 1.00, outputPer1MUsd: 4.00, cachedInputPer1MUsd: 0.60 }; break;
-            case 'anthropic': pricing = { inputPer1MUsd: 3.00, outputPer1MUsd: 15.00, cachedInputPer1MUsd: 0.30 }; break;
-            case 'google': pricing = { inputPer1MUsd: 1.25, outputPer1MUsd: 10.00, cachedInputPer1MUsd: 0.60 }; break;
-            default: pricing = { inputPer1MUsd: 1.00, outputPer1MUsd: 10.00, cachedInputPer1MUsd: 0.60 };
+            case 'meta_muse': pricing = { inputPer1MUsd: 1.00, outputPer1MUsd: 4.00, cachedInputPer1MUsd: 0.25 }; break;
+            default: pricing = { inputPer1MUsd: 1.00, outputPer1MUsd: 4.00, cachedInputPer1MUsd: 0.25 };
         }
     }
 
@@ -398,7 +290,7 @@ export function resolveModel(rawModelId, fallbackContext = {}) {
         contextWindow: 128000,
         maxOutputTokens: 8192,
         supportsToolUse: true,
-        supportsThinking: /pro|think|reason|o1|o3|sonnet|wonder/i.test(norm),
+        supportsThinking: /pro|think|reason|wonder|spark/i.test(norm),
         pricing,
         discoveredAt: new Date().toISOString(),
         autoDiscovered: true
@@ -496,6 +388,7 @@ export function parseTranscriptLines(lines, typeName, role) {
         } catch {
             continue;
         }
+        entry = museRecordToGeneric(entry) || entry;
         totalSteps++;
 
         if (entry.model || entry.model_name) {
@@ -597,6 +490,92 @@ export function parseTranscriptLines(lines, typeName, role) {
     };
 }
 
+
+// Muse sessions live nested by date: <sessionsDir>/YYYY/MM/DD/<sessionId>/session.jsonl
+function findSessionFile(convId) {
+    if (!convId || !fs.existsSync(sessionsDir)) return null;
+    const direct = path.join(sessionsDir, convId, 'session.jsonl');
+    if (fs.existsSync(direct)) return direct;
+    const stack = [sessionsDir];
+    let guard = 0;
+    while (stack.length > 0 && guard++ < 4000) {
+        const dir = stack.pop();
+        let entries = [];
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch { continue; }
+        for (const ent of entries) {
+            const full = path.join(dir, ent.name);
+            if (ent.isDirectory()) {
+                if (ent.name === convId) {
+                    const cand = path.join(full, 'session.jsonl');
+                    if (fs.existsSync(cand)) return cand;
+                }
+                stack.push(full);
+            }
+        }
+    }
+    return null;
+}
+
+function findLatestSessionFile() {
+    if (!fs.existsSync(sessionsDir)) return null;
+    let best = null;
+    let bestMtime = -1;
+    const stack = [sessionsDir];
+    let guard = 0;
+    while (stack.length > 0 && guard++ < 4000) {
+        const dir = stack.pop();
+        let entries = [];
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch { continue; }
+        for (const ent of entries) {
+            const full = path.join(dir, ent.name);
+            if (ent.isDirectory()) {
+                stack.push(full);
+            } else if (ent.name === 'session.jsonl') {
+                try {
+                    const mtime = fs.statSync(full).mtimeMs;
+                    if (mtime > bestMtime) {
+                        bestMtime = mtime;
+                        best = { sessionId: path.basename(dir), file: full };
+                    }
+                } catch {}
+            }
+        }
+    }
+    return best;
+}
+
+// Best-effort mapping of a Muse session.jsonl record onto the generic
+// transcript shape ({ type, content, thinking, tool_calls, model }).
+function museRecordToGeneric(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (!entry.payload_type && entry.type !== undefined && (entry.content !== undefined || entry.tool_calls !== undefined)) {
+        return entry;
+    }
+    const payloadType = String(entry.payload_type || '');
+    const payload = entry.payload || {};
+    const looksModelish = /assistant|message|completion|response|tool|turn/i.test(payloadType);
+    const pickText = (obj) => {
+        if (!obj || typeof obj !== 'object') return '';
+        for (const key of ['text', 'content', 'message', 'output', 'summary']) {
+            if (typeof obj[key] === 'string' && obj[key]) return obj[key];
+        }
+        return '';
+    };
+    const content = pickText(payload) || (looksModelish ? JSON.stringify(payload).slice(0, 4000) : '');
+    return {
+        type: looksModelish ? 'PLANNER_RESPONSE' : 'EVENT',
+        content,
+        thinking: typeof payload.thinking === 'string' ? payload.thinking : '',
+        tool_calls: Array.isArray(payload.tool_calls) ? payload.tool_calls : undefined,
+        model: payload.model || payload.model_id || entry.model || undefined,
+    };
+}
+
+const _origParseTranscriptLines = parseTranscriptLines;
 const args = process.argv.slice(2);
 let sessionId = null;
 let cliModel = null;
@@ -615,9 +594,7 @@ export function walkAgent(convId, typeName = 'warden', role = 'CEO Office Chief 
     if (visited.has(convId)) return;
     visited.add(convId);
 
-    const fullPath = path.join(brainDir, convId, '.system_generated/logs/transcript_full.jsonl');
-    const compactPath = path.join(brainDir, convId, '.system_generated/logs/transcript.jsonl');
-    const tPath = fs.existsSync(fullPath) ? fullPath : compactPath;
+    const tPath = findSessionFile(convId);
     const cacheFile = path.join(cacheDir, `${convId}.json`);
 
     let parsed = null;
@@ -711,22 +688,13 @@ function runCli() {
     loadModelRegistry();
 
     if (!sessionId) {
-        if (!fs.existsSync(brainDir)) {
-            console.error("Brain directory not found:", brainDir);
+        if (!fs.existsSync(sessionsDir)) {
+            console.error("Muse sessions directory not found:", sessionsDir);
             process.exit(1);
         }
-        let sessions = [];
-        try {
-            sessions = fs.readdirSync(brainDir).filter(f => {
-                try { return fs.statSync(path.join(brainDir, f)).isDirectory(); } catch { return false; }
-            });
-        } catch (e) {
-            console.error("Unable to list sessions in brainDir:", e.message);
-            process.exit(1);
-        }
-        if (sessions.length > 0) {
-            sessions.sort((a, b) => fs.statSync(path.join(brainDir, b)).mtimeMs - fs.statSync(path.join(brainDir, a)).mtimeMs);
-            sessionId = sessions[0];
+        const latest = findLatestSessionFile();
+        if (latest) {
+            sessionId = latest.sessionId;
         } else {
             console.error("No sessions found.");
             process.exit(1);
@@ -794,10 +762,10 @@ ${totalRow}
         fs.writeFileSync(fullReportPath, reportMd.trim() + '\n');
     } catch (_) {}
 
-    const artifactReportPath = path.join(brainDir, sessionId, 'token-report.md');
     try {
-        if (fs.existsSync(path.join(brainDir, sessionId))) {
-            fs.writeFileSync(artifactReportPath, reportMd.trim() + '\n');
+        const sessionFile = findSessionFile(sessionId);
+        if (sessionFile) {
+            fs.writeFileSync(path.join(path.dirname(sessionFile), 'token-report.md'), reportMd.trim() + '\n');
         }
     } catch (_) {}
 

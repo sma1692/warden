@@ -93,8 +93,8 @@ const CANONICAL_VERTICAL_ROSTER: {
     hierarchy_level: -1,
     levelBadge: 'Root (L-1)',
     supervisorHandle: 'CEO (Founder)',
-    model_provider: 'vertex',
-    model_id: 'gemini-2.5-pro-argon-high',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     status: 'WORKING',
     payloadTokens: 920,
     turnCapLabel: '<= 1.5K tok/turn',
@@ -113,8 +113,8 @@ const CANONICAL_VERTICAL_ROSTER: {
     hierarchy_level: 0,
     levelBadge: 'Level 0 (CXO)',
     supervisorHandle: '@warden',
-    model_provider: 'vertex',
-    model_id: 'gemini-2.5-pro',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     status: 'WORKING',
     payloadTokens: 1840,
     turnCapLabel: '<= 4.0K tok/turn',
@@ -133,8 +133,8 @@ const CANONICAL_VERTICAL_ROSTER: {
     hierarchy_level: 1,
     levelBadge: 'Level 1 (Lead)',
     supervisorHandle: '@cto',
-    model_provider: 'vertex',
-    model_id: 'gemini-2.0-flash',
+    model_provider: 'meta_muse',
+    model_id: 'muse-spark-1.3',
     status: 'WORKING',
     payloadTokens: 1120,
     turnCapLabel: '<= 150w upward',
@@ -153,8 +153,8 @@ const CANONICAL_VERTICAL_ROSTER: {
     hierarchy_level: 1,
     levelBadge: 'Level 1 (Lead)',
     supervisorHandle: '@cto',
-    model_provider: 'vertex',
-    model_id: 'gemini-2.5-pro',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     status: 'WAITING_FOR_CEO',
     payloadTokens: 1410,
     turnCapLabel: '<= 150w upward',
@@ -213,14 +213,14 @@ const CANONICAL_VERTICAL_ROSTER: {
     hierarchy_level: 1,
     levelBadge: 'Level 1 (Lead)',
     supervisorHandle: '@cto',
-    model_provider: 'vertex',
-    model_id: 'gemini-2.0-flash',
+    model_provider: 'meta_muse',
+    model_id: 'muse-spark-1.3',
     status: 'IDLE',
     payloadTokens: 480,
     turnCapLabel: '<= 150w upward',
     contextReads: ['context/pulse-infra.md', 'memory/infra_head.md'],
     forbiddenReads: 'Application source trees',
-    active_task_title: 'Monitoring Cloudflare Pages, GCS asset buckets & pm2 health',
+    active_task_title: 'Monitoring Cloudflare Pages, media asset buckets & pm2 health',
     active_git_branch: 'main',
     project_scope: 'pulse-infra',
   },
@@ -233,8 +233,8 @@ const CANONICAL_VERTICAL_ROSTER: {
     hierarchy_level: 1,
     levelBadge: 'Level 1 (Lead)',
     supervisorHandle: '@cto',
-    model_provider: 'anthropic',
-    model_id: 'claude-sonnet-4-20250514',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     status: 'IDLE',
     payloadTokens: 410,
     turnCapLabel: '<= 150w upward',
@@ -255,8 +255,8 @@ const CANONICAL_VERTICAL_ROSTER: {
     hierarchy_level: 0,
     levelBadge: 'Level 0 (CXO)',
     supervisorHandle: '@warden',
-    model_provider: 'vertex',
-    model_id: 'gemini-2.5-pro',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     status: 'WORKING',
     payloadTokens: 1150,
     turnCapLabel: '<= 4.0K tok/turn',
@@ -275,14 +275,14 @@ const CANONICAL_VERTICAL_ROSTER: {
     hierarchy_level: 1,
     levelBadge: 'Level 1 (Lead)',
     supervisorHandle: '@cbo',
-    model_provider: 'openai',
-    model_id: 'gpt-4.1',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     status: 'WAITING_FOR_CEO',
     payloadTokens: 890,
     turnCapLabel: '<= 150w upward',
     contextReads: ['context/aeo.md', 'memory/aeo_lead.md', 'contracts/aeo-schema.md'],
     forbiddenReads: 'Backend service repos',
-    active_task_title: 'Awaiting CEO principle selection on Perplexity & ChatGPT citation graph',
+    active_task_title: 'Awaiting CEO principle selection on Meta AI citation graph',
     active_git_branch: 'feat/llms-txt-schema',
     project_scope: 'pulse-seo,pulse-core',
   },
@@ -295,8 +295,8 @@ const CANONICAL_VERTICAL_ROSTER: {
     hierarchy_level: 2,
     levelBadge: 'Level 2 (Exec)',
     supervisorHandle: '@aeo_lead',
-    model_provider: 'vertex',
-    model_id: 'gemini-2.0-flash',
+    model_provider: 'meta_muse',
+    model_id: 'muse-spark-1.3',
     status: 'WORKING',
     payloadTokens: 660,
     turnCapLabel: '<= 200w upward',
@@ -399,7 +399,7 @@ const FIRST_TEMPLATE = PRESET_TEMPLATES[0];
 const getTierBadge = (modelId: string, modelProvider: string) => {
   const modelStr = modelId.toLowerCase();
   const title = `${modelProvider}:${modelId}`;
-  if (modelStr.includes('pro') || modelStr.includes('opus') || modelStr.includes('wonder') || modelStr.includes('70b') || modelStr.includes('32b') || modelStr.includes('gpt-4')) {
+  if (modelStr.includes('pro') || modelStr.includes('wonder') || modelStr.includes('70b') || modelStr.includes('32b')) {
     return <span title={title} className="cursor-help rounded bg-[var(--semantic-alert)]/15 border border-[var(--semantic-alert)]/40 text-[var(--semantic-alert)] px-2 py-0.5 text-[10px] font-bold">High</span>;
   }
   if (modelStr.includes('flash') || modelStr.includes('sonnet') || modelStr.includes('spark')) {
@@ -448,8 +448,8 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
   const [projectScope, setProjectScope] = useState<string>(FIRST_TEMPLATE.project_scope);
   const [modelProvider, setModelProvider] = useState<ModelProvider>('meta_muse');
   const [modelId, setModelId] = useState('muse-spark-1.3');
-  const [fallbackProvider, setFallbackProvider] = useState<ModelProvider>('vertex');
-  const [fallbackModelId, setFallbackModelId] = useState('gemini-2.5-pro');
+  const [fallbackProvider, setFallbackProvider] = useState<ModelProvider>('meta_muse');
+  const [fallbackModelId, setFallbackModelId] = useState('muse-wonder-1.0');
   const [planningModel, setPlanningModel] = useState('meta_muse:muse-wonder-1.0');
   const [toolLoopModel, setToolLoopModel] = useState('meta_muse:muse-spark-1.3');
   const [compactionModel, setCompactionModel] = useState('meta_muse:muse-glimmer-30b');
@@ -676,12 +676,12 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
     setToolLoopModel(
       tpl.model_provider === 'meta_muse'
         ? 'meta_muse:muse-spark-1.3'
-        : 'vertex:gemini-2.0-flash'
+        : 'ollama:llama-3.3-70b'
     );
     setCompactionModel(
       tpl.model_provider === 'meta_muse'
         ? 'meta_muse:muse-glimmer-30b'
-        : 'ollama:qwen2.5-coder:32b'
+        : 'ollama:muse-glimmer-30b'
     );
     setSelectedRepos(tpl.allowed_repos);
     setInitPrompt(tpl.init_prompt);
@@ -697,8 +697,8 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
     setProjectScope(agent.project_scope || 'ALL');
     setModelProvider(agent.model_provider);
     setModelId(agent.model_id);
-    setFallbackProvider(agent.fallback_provider || 'vertex');
-    setFallbackModelId(agent.fallback_model_id || 'gemini-2.5-pro');
+    setFallbackProvider(agent.fallback_provider || 'meta_muse');
+    setFallbackModelId(agent.fallback_model_id || 'muse-wonder-1.0');
     setSelectedRepos(agent.allowed_repos);
     setInitPrompt(agent.init_prompt);
     setSubView('studio');
@@ -1448,10 +1448,7 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                       }}
                       className="w-full rounded-lg bg-[var(--surface-card)] border border-[var(--surface-border)] px-2.5 py-2 font-mono text-[var(--surface-text)]"
                     >
-                      <option value="vertex">vertex</option>
                       <option value="meta_muse">meta_muse</option>
-                      <option value="anthropic">anthropic</option>
-                      <option value="openai">openai</option>
                       <option value="ollama">ollama</option>
                       <option value="huggingface">huggingface</option>
                     </select>

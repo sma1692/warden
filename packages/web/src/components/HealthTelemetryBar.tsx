@@ -60,7 +60,7 @@ export const HealthTelemetryBar: React.FC<HealthTelemetryBarProps> = ({
               <div className="font-bold tracking-tight text-[var(--surface-text)] flex items-center gap-1.5">
                 DYNAMO<span className="text-[var(--surface-accent-gold)]">COMMANDO</span>
                 <span className="hidden md:inline-block rounded bg-[var(--surface-accent-gold)]/15 px-1.5 py-0.5 text-[10px] font-mono text-[var(--surface-accent-gold)] border border-[var(--surface-accent-gold)]/30 font-semibold">
-                  GCP + pgvector
+                  Cloud + pgvector
                 </span>
               </div>
               <div className="text-[10px] text-[var(--surface-text-secondary)] hidden sm:block">
@@ -118,7 +118,7 @@ export const HealthTelemetryBar: React.FC<HealthTelemetryBarProps> = ({
           {/* Pinned pgvector 768-dim Embedding Indicator */}
           <div
             className="hidden xl:flex items-center gap-1.5 rounded-md bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-2 py-1 text-[var(--surface-accent-gold)] font-mono text-[10px]"
-            title="Memory embeddings are pinned to 768-dim text-embedding-005 / nomic-embed-text so switching LLMs causes zero vector drift"
+            title="Memory embeddings are pinned to 768-dim muse-embed-1.0 / muse-embed-1.0 so switching LLMs causes zero vector drift"
           >
             <Database className="h-3 w-3 text-[var(--surface-accent-gold)]" />
             <span>pgvector 768d Pinned</span>

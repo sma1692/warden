@@ -54,7 +54,7 @@ export const PROJECT_CATALOG: ProjectCatalogEntry[] = [
     mdPath: 'worklist/infra-ops/backlog.md',
     lensLabel: '☁️ Infra & Cloud Backlog',
     description:
-      'Owned by @infra_head — AWS FinOps, GCP VM fleet, Cloudflare Pages & GCS assets.',
+      'Owned by @infra_head — AWS FinOps, cloud VM fleet, Cloudflare Pages & media assets.',
   },
   {
     slug: 'marketing',
@@ -95,16 +95,13 @@ export const EXAMPLE_CEO_OVERRIDE_NOTE = "Move DG-05 ahead of DG-02; ship the we
 export const EXAMPLE_THREAD_ID = 'thr_demo_game_loot';
 
 /** Object-store prefix for chat media uploads. */
-export const MEDIA_BUCKET_URI = 'gs://demo-media-bucket';
+export const MEDIA_BUCKET_URI = 'media://demo-media-bucket';
 
 /** Base URL for simulated preview deployments in offline/demo mode. */
 export const PREVIEW_URL_EXAMPLE = 'https://preview.example.com';
 
 export const DEFAULT_PROVIDER_ENDPOINTS: Record<ModelProvider, string> = {
-  vertex: 'https://us-central1-aiplatform.googleapis.com/v1',
   meta_muse: 'https://api.meta.ai/v1',
-  anthropic: 'https://api.anthropic.com/v1',
-  openai: 'https://api.openai.com/v1',
   ollama: 'http://localhost:11434/v1',
   huggingface: 'http://localhost:8000/v1',
 };
@@ -114,7 +111,7 @@ export const SEO_GROWTH_SPEC_OPTIONS: GateOption[] = [
   {
     id: 'opt_seo_1',
     label: '1. [P0] Interactive WebXR FPS Benchmark Matrix Page on demo-game.example.com',
-    description: 'High-citation technical benchmark table targeted at Perplexity & Google AI Overviews.',
+    description: 'High-citation technical benchmark table targeted at Meta AI answers.',
     priority: 'P0',
   },
   {
@@ -126,7 +123,7 @@ export const SEO_GROWTH_SPEC_OPTIONS: GateOption[] = [
   {
     id: 'opt_seo_3',
     label: '3. [P1] Automated Weekly AI Citation Share-of-Voice Probe (50 Target Prompts)',
-    description: 'Tracks Demo Game & Arcade Hub rank across ChatGPT Search, Perplexity, and Gemini.',
+    description: 'Tracks Demo Game & Arcade Hub rank across Meta AI answers and Muse.',
     priority: 'P1',
   },
 ];
@@ -161,8 +158,8 @@ export const AGENT_PRESET_TEMPLATES: AgentPresetTemplate[] = [
     project_scope: 'demo-game',
     model_provider: 'meta_muse',
     model_id: 'muse-spark-1.3',
-    fallback_provider: 'vertex',
-    fallback_model_id: 'gemini-2.5-pro',
+    fallback_provider: 'meta_muse',
+    fallback_model_id: 'muse-wonder-1.0',
     allowed_repos: ['demo-game-web'],
     init_prompt:
       'You are @shader_artist:demo-game reporting to @tech_lead:demo-game. Write zero-allocation custom GLSL shaders, KTX2 material pipelines, and 90Hz Quest 3 particle effects inside demo-game-web.',
@@ -177,8 +174,8 @@ export const AGENT_PRESET_TEMPLATES: AgentPresetTemplate[] = [
     project_scope: 'marketing',
     model_provider: 'meta_muse',
     model_id: 'muse-wonder-1.0',
-    fallback_provider: 'openai',
-    fallback_model_id: 'gpt-4.1',
+    fallback_provider: 'meta_muse',
+    fallback_model_id: 'muse-wonder-1.0',
     allowed_repos: ['demo-game-landing', 'studio-landing'],
     init_prompt:
       'You are @growth_hacker:marketing reporting to @seo_aeo_head. Synthesize OpenGraph visuals via muse-image, audio narrations via muse-voice, and high-citation /llms.txt benchmarks.',
@@ -191,10 +188,10 @@ export const AGENT_PRESET_TEMPLATES: AgentPresetTemplate[] = [
     hierarchy_level: 1,
     parent_slug: '@cto',
     project_scope: 'ALL',
-    model_provider: 'vertex',
-    model_id: 'gemini-2.5-pro',
-    fallback_provider: 'anthropic',
-    fallback_model_id: 'claude-sonnet-4-20250514',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
+    fallback_provider: 'meta_muse',
+    fallback_model_id: 'muse-wonder-1.0',
     allowed_repos: ['demo-game-web', 'demo-game-api', 'grid-duel', 'sky-runner'],
     init_prompt:
       'You are @qa_lead reporting to @cto. Run multi-client Colyseus stress tests and Headless Playwright WebGL regression suites across all active preview containers.',
@@ -207,12 +204,12 @@ export const AGENT_PRESET_TEMPLATES: AgentPresetTemplate[] = [
     hierarchy_level: 0,
     parent_slug: '@warden',
     project_scope: 'ALL',
-    model_provider: 'vertex',
-    model_id: 'gemini-2.5-pro-argon-high',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     fallback_provider: 'meta_muse',
     fallback_model_id: 'muse-wonder-1.0',
     allowed_repos: ['infra-ops'],
     init_prompt:
-      'You are @cfo reporting to @warden. Track GCP credit utilization, Meta Muse token pool burn, per-feature ROI, and multi-cloud cost guardrails.',
+      'You are @cfo reporting to @warden. Track cloud credit utilization, Meta Muse token pool burn, per-feature ROI, and multi-cloud cost guardrails.',
   },
 ];

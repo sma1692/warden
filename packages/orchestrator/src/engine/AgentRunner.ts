@@ -176,6 +176,21 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
       required: ['project_slug', 'feature_slug', 'contract_md'],
     },
   },
+  {
+    name: 'search_chat_history',
+    description:
+      'Search past chat messages when asked what was discussed before. Returns top matching snippets with thread id, sender, and timestamp. Read-only.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: { type: 'STRING', description: 'Keywords or question to search past chats for' },
+        top_k: { type: 'NUMBER', description: 'Max snippets to return (default 5, max 10)' },
+        thread_id: { type: 'STRING', description: 'Optional thread id to restrict the search' },
+        since_days: { type: 'NUMBER', description: 'Optional recency window in days' },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 /**
@@ -381,7 +396,7 @@ export class AgentRunner {
 
     const multimodalAttachments = (params.attachments || []).map((a) => ({
       type: a.type,
-      gcs_uri: a.gcs_uri,
+      media_uri: a.media_uri,
       public_url: a.public_url,
       filename: a.filename,
       base64Data: a.base64_data,
@@ -452,11 +467,11 @@ export class AgentRunner {
         agent.id,
         stepPhase
       );
-      const routerProvider: 'vertex' | 'ollama' | 'huggingface' =
+      const routerProvider: 'meta_muse' | 'ollama' | 'huggingface' =
         resolvedRouting.provider === 'ollama' ||
         resolvedRouting.provider === 'huggingface'
           ? resolvedRouting.provider
-          : 'vertex';
+          : 'meta_muse';
 
       effectiveModelLabel = `${resolvedRouting.provider}/${resolvedRouting.modelId}`;
       if (turnIdx === 0) {
@@ -1579,6 +1594,101 @@ export class AgentRunner {
         pausedForCeo: false,
         summary: `Locked contract ${contractId}`,
         output: out,
+      };
+    }
+
+    // Handle `search_chat_history` (read-only recall over past chat messages)
+    if (tc.name === 'search_chat_history') {
+      const query = String(args.query || '').trim();
+      const requestedTopK = Math.floor(Number(args.top_k ?? 5));
+      const topK = Math.min(10, Math.max(1, Number.isFinite(requestedTopK) ? requestedTopK : 5));
+      const threadFilter = String(args.thread_id || '').trim() || null;
+      const sinceDaysRaw = Number(args.since_days ?? NaN);
+      const sinceDays =
+        Number.isFinite(sinceDaysRaw) && sinceDaysRaw > 0 ? Math.min(365, sinceDaysRaw) : null;
+      const cutoffMs = sinceDays !== null ? Date.now() - sinceDays * 24 * 60 * 60 * 1000 : null;
+
+      let searchOutput: Record<string, unknown>;
+      let searchSummary: string;
+      try {
+        if (!query) {
+          throw new Error('Missing required parameter: query');
+        }
+        const recalled = await this.memoryEngine.recallPastChatMessages({
+          queryText: query,
+          projectScope: agent.project_scope ?? null,
+          topK: Math.min(25, Math.max(topK * 4, topK)),
+        });
+        const filtered = recalled.filter((m) => {
+          if (threadFilter && m.thread_id !== threadFilter) return false;
+          if (cutoffMs !== null) {
+            const ts = new Date(m.created_at).getTime();
+            if (!Number.isFinite(ts) || ts < cutoffMs) return false;
+          }
+          return true;
+        });
+        const results = filtered.slice(0, topK).map((m) => ({
+          thread_id: m.thread_id,
+          sender_type: m.sender_type,
+          sender_agent_id: m.sender_agent_id ?? null,
+          created_at: m.created_at,
+          score: m.hybrid_score ?? null,
+          snippet: String(m.content || '').slice(0, 600),
+        }));
+        searchOutput = {
+          ok: true,
+          query,
+          results,
+          total_found: filtered.length,
+          ...(results.length === 0
+            ? { note: 'No matching past chats in scope. Widen the query, thread, or time window.' }
+            : {}),
+        };
+        searchSummary =
+          results.length === 0
+            ? `No past chats matched "${query.slice(0, 120)}" in scope.`
+            : results
+                .map(
+                  (r) =>
+                    `- [${r.created_at} | ${r.thread_id} | ${r.sender_agent_id || r.sender_type}] ${r.snippet}`
+                )
+                .join('\n');
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        searchOutput = { ok: false, error: errMsg };
+        searchSummary = `Chat history search failed: ${errMsg}`;
+      }
+
+      this.store.addInferenceStep({
+        run_id: run.id,
+        step_type: 'TOOL_CALL',
+        model_used: agent.model_id,
+        thinking_text: `Recalling past chats for "${query.slice(0, 120)}" (topK=${topK}).`,
+        message_text: searchSummary,
+        tool_name: tc.name,
+        tool_args_json: args,
+        tool_output_json: searchOutput,
+        duration_ms: Math.max(80, Date.now() - startMs),
+        tokens_in: 260,
+        tokens_cached: 190,
+        tokens_thinking: 30,
+        tokens_out: 140,
+        cost_usd: 0.0012,
+      });
+
+      this.accumulateRunTokens(run.id, {
+        tokens_in: 260,
+        tokens_cached: 190,
+        tokens_thinking: 30,
+        tokens_out: 140,
+        cost_usd: 0.0012,
+      });
+
+      return {
+        codeModified: false,
+        pausedForCeo: false,
+        summary: searchSummary,
+        output: searchOutput,
       };
     }
 

@@ -233,17 +233,17 @@ export class HierarchyRouter {
 
     // If CEO is greeting, asking a conversational question, or pinging Warden:
     if (this.isConversationalPrompt(parsed.cleanPrompt)) {
-      console.log(`[⚡ ROUTER] Executive conversational prompt -> @warden (gemini-3.1-pro-preview)`);
+      console.log(`[⚡ ROUTER] Executive conversational prompt -> @warden (muse-wonder-1.0)`);
       this.store.emit('brain:status', {
         thread_id: thread.id,
         run_id: null,
         agent_id: 'warden',
         agent_slug: '@warden',
         phase: 'ROUTING',
-        model_used: 'vertex/gemini-3.1-pro-preview',
+        model_used: 'meta_muse/muse-wonder-1.0',
         thought: `Evaluating executive prompt from CEO in @warden Chief of Staff context.`,
         completed_step: `Recorded CEO message in thread ${thread.id}`,
-        next_action: `Synthesizing executive response with gemini-3.1-pro-preview`,
+        next_action: `Synthesizing executive response with muse-wonder-1.0`,
         timestamp: new Date().toISOString(),
       });
 
@@ -287,10 +287,10 @@ export class HierarchyRouter {
       agent_id: 'warden',
       agent_slug: '@warden',
       phase: 'ROUTING',
-      model_used: 'vertex/gemini-3.1-pro-preview',
+      model_used: 'meta_muse/muse-wonder-1.0',
       thought: `Triage complete: routing directive down chain @warden -> @${chain.cSuiteAgentId} -> @${chain.level1LeadId} -> @${chain.level2ExecutorId}.`,
       completed_step: `Resolved command chain (@${chain.cSuiteAgentId} -> @${chain.level1LeadId} -> @${chain.level2ExecutorId})`,
-      next_action: `Step 1/4: Running @warden Chief of Staff intake (gemini-3.1-pro-preview)`,
+      next_action: `Step 1/4: Running @warden Chief of Staff intake (muse-wonder-1.0)`,
       timestamp: new Date().toISOString(),
     });
 
@@ -345,10 +345,10 @@ export class HierarchyRouter {
       agent_id: chain.cSuiteAgentId,
       agent_slug: `@${chain.cSuiteAgentId}`,
       phase: 'DELEGATING',
-      model_used: 'vertex/gemini-3.1-pro-preview',
+      model_used: 'meta_muse/muse-wonder-1.0',
       thought: `@warden completed intake. Handing off directive to Level 0 C-Suite (@${chain.cSuiteAgentId}) for cross-project architecture & priority alignment.`,
       completed_step: `Step 1/4 Done: @warden intake complete`,
-      next_action: `Step 2/4: Dispatching @${chain.cSuiteAgentId} on gemini-3.1-pro-preview`,
+      next_action: `Step 2/4: Dispatching @${chain.cSuiteAgentId} on muse-wonder-1.0`,
       timestamp: new Date().toISOString(),
     });
 
@@ -370,7 +370,7 @@ export class HierarchyRouter {
       agent_id: chain.level1LeadId,
       agent_slug: `@${chain.level1LeadId}`,
       phase: 'DELEGATING',
-      model_used: 'vertex/gemini-3.1-pro-preview',
+      model_used: 'meta_muse/muse-wonder-1.0',
       thought: `@${chain.cSuiteAgentId} locked technical direction. Delegating contract & repo verification to Level 1 Lead (@${chain.level1LeadId}).`,
       completed_step: `Step 2/4 Done: @${chain.cSuiteAgentId} architectural review complete`,
       next_action: `Step 3/4: Dispatching Level 1 Lead @${chain.level1LeadId}`,
@@ -394,7 +394,7 @@ export class HierarchyRouter {
       agent_id: chain.level2ExecutorId,
       agent_slug: `@${chain.level2ExecutorId}`,
       phase: 'DELEGATING',
-      model_used: 'vertex/gemini-3-flash-preview',
+      model_used: 'meta_muse/muse-spark-1.3',
       thought: `@${chain.level1LeadId} locked repo contract. Spawning Level 2 Executor (@${chain.level2ExecutorId}) for code execution & Playwright WebGL QA.`,
       completed_step: `Step 3/4 Done: @${chain.level1LeadId} contract handshake locked`,
       next_action: `Step 4/4: Executing tools & Playwright QA via @${chain.level2ExecutorId}`,
@@ -428,7 +428,7 @@ export class HierarchyRouter {
       content: `Upward chain report (@${chain.cSuiteAgentId} -> @${chain.level1LeadId} -> @${chain.level2ExecutorId}): ${executorRes.outputSummary}`,
     });
 
-    // Record SUBAGENT_CALL steps AND child TOOL_CALL / QA_CHECK steps on @warden run for full Antigravity Brain Trace visibility
+    // Record SUBAGENT_CALL steps AND child TOOL_CALL / QA_CHECK steps on @warden run for full Muse Trace visibility
     for (const subRun of delegatedRuns) {
       const subSteps = this.store.getStepsForRun(subRun.id);
       const subThought =
@@ -436,7 +436,7 @@ export class HierarchyRouter {
         `Routed down hierarchy to ${subRun.agent_slug} (Run ${subRun.id}).`;
       const subModel =
         subSteps.find((s) => s.step_type === 'LLM_INFERENCE')?.model_used ||
-        'vertex/gemini-3.1-pro-preview';
+        'meta_muse/muse-wonder-1.0';
 
       this.store.addInferenceStep({
         run_id: wardenRunRes.run.id,
@@ -568,7 +568,7 @@ export class HierarchyRouter {
       ...(infraProject ? getProjectKeywords(infraProject, true) : [infraSlug]),
       'deploy',
       'cloudflare',
-      'gcs',
+      'bucket',
       'docker',
       'infra',
     ];

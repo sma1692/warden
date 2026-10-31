@@ -274,7 +274,7 @@ class CommandoApiClient {
         run_id: runId,
         step_index: 1,
         step_type: 'LLM_INFERENCE',
-        model_used: 'vertex/gemini-3.1-pro-preview',
+        model_used: 'meta_muse/muse-wonder-1.0',
         thinking_text: `Loaded deterministic init_prompt, project_contexts, and top-5 pgvector episodic memories for run ${runId}.`,
         message_text: run?.input_prompt || 'Executing assigned sprint task inside ephemeral Docker container.',
         tool_name: null,
@@ -292,7 +292,7 @@ class CommandoApiClient {
         run_id: runId,
         step_index: 2,
         step_type: 'QA_CHECK',
-        model_used: 'vertex/gemini-3.1-pro-preview',
+        model_used: 'meta_muse/muse-wonder-1.0',
         thinking_text: 'Running container build & automated verification checks before reporting upward.',
         message_text: run?.output_summary || 'Verification complete.',
         tool_name: 'run_container_verification',
@@ -478,18 +478,18 @@ class CommandoApiClient {
       project_scope: newAgentInput.project_scope || 'ALL',
       model_provider: newAgentInput.model_provider,
       model_id: newAgentInput.model_id,
-      fallback_provider: newAgentInput.fallback_provider || 'vertex',
-      fallback_model_id: newAgentInput.fallback_model_id || 'gemini-3.1-pro-preview',
+      fallback_provider: newAgentInput.fallback_provider || 'meta_muse',
+      fallback_model_id: newAgentInput.fallback_model_id || 'muse-wonder-1.0',
       step_routing: newAgentInput.step_routing || {
         planning_model: `${newAgentInput.model_provider}:${newAgentInput.model_id}`,
         tool_loop_model:
           newAgentInput.model_provider === 'meta_muse'
             ? 'meta_muse:muse-spark-1.3'
-            : 'vertex:gemini-3-flash-preview',
+            : 'ollama:llama-3.3-70b',
         compaction_model:
           newAgentInput.model_provider === 'meta_muse'
             ? 'meta_muse:muse-glimmer-30b'
-            : 'ollama:qwen2.5-coder:32b',
+            : 'ollama:muse-glimmer-30b',
       },
       init_prompt: newAgentInput.init_prompt,
       allowed_repos: newAgentInput.allowed_repos.length ? newAgentInput.allowed_repos : ['GLOBAL'],
@@ -667,7 +667,7 @@ class CommandoApiClient {
         recipient_agent_id: 'CEO',
         content:
           mode === 'WARDEN_EXECUTIVE'
-            ? '⚡ **Executive Channel Open (`@warden`):** Directives here will route through `@cto` / `@cmo` and fan out to ephemeral GCP Docker containers.'
+            ? '⚡ **Executive Channel Open (`@warden`):** Directives here will route through `@cto` / `@cmo` and fan out to ephemeral Docker containers.'
             : `🎙️ **Direct 1-on-1 Granular Session Open with \`${payload.target_agent_id}\`:** Bypassing intermediate compression. Responses arrive at native technical granularity.`,
         run_id: null,
         attachments_json: [],
@@ -766,7 +766,7 @@ class CommandoApiClient {
     const runId = `run_${Date.now()}`;
     const attachmentNote =
       payload.attachments.length > 0
-        ? ` Analyzed ${payload.attachments.length} multimodal attachment(s) (${payload.attachments.map((a) => a.filename).join(', ')}) via Vertex AI Argon/Gemini fileData.`
+        ? ` Analyzed ${payload.attachments.length} multimodal attachment(s) (${payload.attachments.map((a) => a.filename).join(', ')}) via Meta Muse media fileData.`
         : '';
 
     const createdRun: AgentRun = {
@@ -1241,8 +1241,8 @@ class CommandoApiClient {
             ...agent,
             model_provider: 'meta_muse',
             model_id: 'muse-wonder-1.0',
-            fallback_provider: 'vertex',
-            fallback_model_id: 'gemini-3.1-pro-preview-argon-high',
+            fallback_provider: 'meta_muse',
+            fallback_model_id: 'muse-wonder-1.0',
             step_routing: {
               planning_model: 'meta_muse:muse-wonder-1.0',
               tool_loop_model: 'meta_muse:muse-spark-1.3',
@@ -1255,8 +1255,8 @@ class CommandoApiClient {
             ...agent,
             model_provider: 'meta_muse',
             model_id: 'muse-spark-1.3',
-            fallback_provider: 'vertex',
-            fallback_model_id: 'gemini-3.1-pro-preview',
+            fallback_provider: 'meta_muse',
+            fallback_model_id: 'muse-wonder-1.0',
             step_routing: {
               planning_model: 'meta_muse:muse-wonder-1.0',
               tool_loop_model: 'meta_muse:muse-spark-1.3',
@@ -1270,70 +1270,42 @@ class CommandoApiClient {
           model_id:
             agent.department === 'MARKETING' ? 'muse-spark-1.3' : 'muse-glimmer-30b',
           fallback_provider: 'ollama',
-          fallback_model_id: 'qwen2.5-coder:32b',
+          fallback_model_id: 'llama-3.3-70b',
           step_routing: {
             planning_model: 'meta_muse:muse-spark-1.3',
             tool_loop_model: 'meta_muse:muse-glimmer-30b',
-            compaction_model: 'ollama:qwen2.5-coder:32b',
+            compaction_model: 'ollama:muse-glimmer-30b',
           },
         };
       }
 
-      if (profile === 'GCP_ZERO_COST') {
-        if (agent.hierarchy_level === -1 || agent.hierarchy_level === 0) {
-          return {
-            ...agent,
-            model_provider: 'vertex',
-            model_id: 'gemini-3.1-pro-preview-argon-high',
-            fallback_provider: 'vertex',
-            fallback_model_id: 'gemini-3.1-pro-preview',
-            step_routing: {
-              planning_model: 'vertex:gemini-3.1-pro-preview-argon-high',
-              tool_loop_model: 'vertex:gemini-3.1-pro-preview',
-              compaction_model: 'vertex:gemini-3-flash-preview',
-            },
-          };
-        }
-        if (agent.slug === '@infra_jr') {
-          return {
-            ...agent,
-            model_provider: 'ollama',
-            model_id: 'llama-3.3-70b',
-            fallback_provider: 'vertex',
-            fallback_model_id: 'gemini-3-flash-preview',
-            step_routing: {
-              planning_model: 'vertex:gemini-3.1-pro-preview',
-              tool_loop_model: 'ollama:llama-3.3-70b',
-              compaction_model: 'ollama:qwen2.5-coder:32b',
-            },
-          };
-        }
+      if (profile === 'LOCAL_ZERO_COST') {
         return {
           ...agent,
-          model_provider: 'vertex',
-          model_id: 'gemini-3.1-pro-preview',
-          fallback_provider: 'ollama',
-          fallback_model_id: 'qwen2.5-coder:32b',
+          model_provider: 'ollama',
+          model_id: 'llama-3.3-70b',
+          fallback_provider: 'huggingface',
+          fallback_model_id: 'meta-llama/Llama-3.3-70B-Instruct',
           step_routing: {
-            planning_model: 'vertex:gemini-3.1-pro-preview',
-            tool_loop_model: 'vertex:gemini-3-flash-preview',
-            compaction_model: 'ollama:qwen2.5-coder:32b',
+            planning_model: 'ollama:llama-3.3-70b',
+            tool_loop_model: 'ollama:llama-3.3-70b',
+            compaction_model: 'ollama:muse-glimmer-30b',
           },
         };
       }
 
-      // CUSTOM_HYBRID: Frontier multi-provider mix across Vertex, Meta Muse, Anthropic, OpenAI & Ollama
+      // CUSTOM_HYBRID: Muse cloud + local open-weights mix across Meta Muse, Ollama & vLLM
       if (agent.slug === '@cto') {
         return {
           ...agent,
-          model_provider: 'vertex',
-          model_id: 'gemini-3.1-pro-preview-argon-high',
+          model_provider: 'meta_muse',
+          model_id: 'muse-wonder-1.0',
           fallback_provider: 'meta_muse',
           fallback_model_id: 'muse-wonder-1.0',
           step_routing: {
-            planning_model: 'vertex:gemini-3.1-pro-preview-argon-high',
-            tool_loop_model: 'anthropic:claude-sonnet-4-20250514',
-            compaction_model: 'vertex:gemini-3-flash-preview',
+            planning_model: 'meta_muse:muse-wonder-1.0',
+            tool_loop_model: 'meta_muse:muse-wonder-1.0',
+            compaction_model: 'meta_muse:muse-spark-1.3',
           },
         };
       }
@@ -1342,8 +1314,8 @@ class CommandoApiClient {
           ...agent,
           model_provider: 'meta_muse',
           model_id: 'muse-wonder-1.0',
-          fallback_provider: 'openai',
-          fallback_model_id: 'gpt-4.1',
+          fallback_provider: 'meta_muse',
+          fallback_model_id: 'muse-wonder-1.0',
           step_routing: {
             planning_model: 'meta_muse:muse-wonder-1.0',
             tool_loop_model: 'meta_muse:muse-spark-1.3',
@@ -1354,26 +1326,26 @@ class CommandoApiClient {
       if (agent.hierarchy_level === 1) {
         return {
           ...agent,
-          model_provider: 'anthropic',
-          model_id: 'claude-sonnet-4-20250514',
-          fallback_provider: 'vertex',
-          fallback_model_id: 'gemini-3.1-pro-preview',
+          model_provider: 'meta_muse',
+          model_id: 'muse-wonder-1.0',
+          fallback_provider: 'meta_muse',
+          fallback_model_id: 'muse-wonder-1.0',
           step_routing: {
-            planning_model: 'openai:o3',
-            tool_loop_model: 'anthropic:claude-sonnet-4-20250514',
-            compaction_model: 'vertex:gemini-3-flash-preview',
+            planning_model: 'meta_muse:muse-spark-1.3',
+            tool_loop_model: 'meta_muse:muse-wonder-1.0',
+            compaction_model: 'meta_muse:muse-spark-1.3',
           },
         };
       }
       return {
         ...agent,
         model_provider: 'ollama',
-        model_id: 'qwen2.5-coder:32b',
+        model_id: 'llama-3.3-70b',
         fallback_provider: 'meta_muse',
         fallback_model_id: 'muse-glimmer-30b',
         step_routing: {
-          planning_model: 'anthropic:claude-sonnet-4-20250514',
-          tool_loop_model: 'ollama:qwen2.5-coder:32b',
+          planning_model: 'meta_muse:muse-wonder-1.0',
+          tool_loop_model: 'ollama:llama-3.3-70b',
           compaction_model: 'meta_muse:muse-glimmer-30b',
         },
       };
@@ -1437,7 +1409,7 @@ class CommandoApiClient {
       provider: payload.provider,
       label: payload.label,
       api_key_masked: masked,
-      endpoint_url: payload.endpoint_url || 'https://generativelanguage.googleapis.com',
+      endpoint_url: payload.endpoint_url || 'https://api.meta.ai/v1',
       remaining_budget_usd: payload.remaining_budget_usd ?? 50.0,
       rpm_limit: payload.rpm_limit ?? 60,
       priority_order: payload.priority_order,

@@ -214,7 +214,7 @@ const INITIAL_SOLO_AGENTS: SuggestedAgentNode[] = [
     supervisorSlug: '@cbo',
     tokenCap: '<= 2.5K tok/turn',
     accepted: true,
-    rationale: 'Maximizes NovaPulse LLM citation share across Perplexity, ChatGPT Search, and Gemini (pulse-seo).',
+    rationale: 'Maximizes NovaPulse LLM citation share across Meta AI answers and Muse (pulse-seo).',
   },
   {
     slug: '@aeo_specialist',
@@ -286,7 +286,7 @@ const INITIAL_HUMAN_ROSTER: HumanTeamMember[] = [
     id: 'hum-4',
     humanName: 'Elena Rostova',
     humanRole: 'Head of SEO & AEO',
-    currentFocus: 'pulse-seo programmatic comparison pages, /llms.txt & Perplexity/ChatGPT citations',
+    currentFocus: 'pulse-seo programmatic comparison pages, /llms.txt & Meta AI citations',
     vertical: 'SEO_AEO',
     pairedAiTwinSlug: '@aeo_lead',
     pairedAiTwinRole: 'Level 1 SEO/AEO Lead + @aeo_specialist Twin',
@@ -1035,7 +1035,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   LLM Citation &amp; Answer Engine Share
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  `@aeo_lead` and `@aeo_specialist` ship `/llms.txt`, `VideoGame` JSON-LD schemas, and comparative clusters across Perplexity, ChatGPT Search, and Gemini.
+                  `@aeo_lead` and `@aeo_specialist` ship `/llms.txt`, `VideoGame` JSON-LD schemas, and comparative clusters across Meta AI answers and Muse.
                 </p>
               </div>
 

@@ -1,5 +1,5 @@
 /**
- * DYNAMO COMMANDO — Automatic Context Compaction (`60K Token Threshold`) & Vertex AI Context Cache Manager
+ * DYNAMO COMMANDO — Automatic Context Compaction (`60K Token Threshold`) & Meta Muse Context Cache Manager
  * (`dynamocommando.md` Section 4.7)
  *
  * Responsibilities:
@@ -11,7 +11,7 @@
  *    - Build/test/runtime errors resolved
  *    - Pending acceptance criteria & next steps
  * 3. Keeps the most recent turns intact and archives compacted turns into `agent_memories` / `chat_messages`.
- * 4. Manages deterministic Vertex AI Context Cache keys & TTLs for `init_prompt` + `project_contexts`.
+ * 4. Manages deterministic Meta Muse Context Cache keys & TTLs for `init_prompt` + `project_contexts`.
  */
 
 import crypto from 'node:crypto';
@@ -22,7 +22,7 @@ export const CHECKPOINT_MAX_TOKENS = 1_950; // Strictly < 2,000 tokens
 export const DEFAULT_KEEP_RECENT_TURNS = 6;
 export const DEFAULT_CONTEXT_CACHE_TTL_SECONDS = 3_600; // 1 hour TTL
 
-export interface GeminiPartLike {
+export interface MusePartLike {
   text?: string;
   thought?: boolean;
   functionCall?: {
@@ -46,7 +46,7 @@ export interface GeminiPartLike {
 export interface ConversationTurnLike {
   role: string;
   content?: string;
-  parts?: GeminiPartLike[];
+  parts?: MusePartLike[];
   tool_calls?: Array<{ id?: string; name?: string; function?: { name: string; arguments: string } }>;
   attachments?: unknown[];
   createdAt?: string;
@@ -80,7 +80,7 @@ export interface CompactionResult<T extends ConversationTurnLike = ConversationT
 
 export interface ContextCacheEntry {
   cacheKey: string;
-  vertexCacheName: string;
+  museCacheName: string;
   agentId: string;
   projectScope: string;
   modelId: string;
@@ -99,8 +99,8 @@ export type DbArchiveQueryFn = (
 ) => Promise<{ rows?: unknown[] } | unknown>;
 
 /**
- * Extracts readable text from either a Gemini-style `{ role, parts }` turn
- * or an OpenAI/standard `{ role, content }` chat message.
+ * Extracts readable text from either a structured `{ role, parts }` turn
+ * or a standard `{ role, content }` chat message.
  */
 export function serializeTurnToText(turn: ConversationTurnLike, index?: number): string {
   const prefix = index !== undefined ? `[Turn #${index + 1} | ${turn.role}]` : `[${turn.role}]`;
@@ -424,12 +424,12 @@ export class ContextCompactor {
       });
     }
 
-    // Construct the synthetic checkpoint turn matching the caller's turn structure (Gemini parts vs standard content)
+    // Construct the synthetic checkpoint turn matching the caller's turn structure (structured parts vs standard content)
     const sampleTurn = params.turns[0];
-    const usesGeminiParts = Array.isArray(sampleTurn?.parts);
+    const usesStructuredParts = Array.isArray(sampleTurn?.parts);
 
     const checkpointTurn = (
-      usesGeminiParts
+      usesStructuredParts
         ? {
             role: 'user',
             parts: [{ text: checkpointSummary }],
@@ -543,7 +543,7 @@ export class ContextCompactor {
   }
 
   /**
-   * Creates or retrieves a deterministic Vertex AI Context Cache entry for an agent's
+   * Creates or retrieves a deterministic Meta Muse Context Cache entry for an agent's
    * `init_prompt` + `project_contexts` payload.
    */
   public getOrCreateContextCache(params: {
@@ -556,7 +556,7 @@ export class ContextCompactor {
     this.pruneExpiredCaches();
 
     const scope = params.projectScope || 'GLOBAL';
-    const modelId = params.modelId || 'gemini-2.5-pro';
+    const modelId = params.modelId || 'muse-wonder-1.0';
     const ttlSeconds = params.ttlSeconds ?? DEFAULT_CONTEXT_CACHE_TTL_SECONDS;
     const contentHash = crypto
       .createHash('sha256')
@@ -574,13 +574,11 @@ export class ContextCompactor {
       return existing;
     }
 
-    const project = process.env.GOOGLE_CLOUD_PROJECT || 'local';
-    const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
-    const vertexCacheName = `projects/${project}/locations/${location}/cachedContents/${cacheKey}`;
+    const museCacheName = `muse-cache/${cacheKey}`;
 
     const entry: ContextCacheEntry = {
       cacheKey,
-      vertexCacheName,
+      museCacheName,
       agentId: params.agentId,
       projectScope: scope,
       modelId,

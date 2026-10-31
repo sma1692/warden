@@ -110,10 +110,10 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
     impactBadge: '+2,400 Daily Organic Views',
     decisiveTitle: 'Approve AEO Schema Patch: SoftwareApplication JSON-LD & /llms.txt Citation Graph',
     decisiveSummary:
-      '@aeo_lead prepared entity-first SoftwareApplication + FAQPage JSON-LD and /llms.txt endpoints on novapulse.io targeting Perplexity, ChatGPT Search, and Google AI Overviews.',
+      '@aeo_lead prepared entity-first SoftwareApplication + FAQPage JSON-LD and /llms.txt endpoints on novapulse.io targeting Meta AI answers.',
     decisiveCtaLabel: 'Approve AEO Schema Patch',
     questionTitle:
-      'Citation Targeting Principle for LLM Answer Engines (Perplexity, ChatGPT, AI Overviews)',
+      'Citation Targeting Principle for LLM Answer Engines (Meta AI answers)',
     questionPrompt:
       'Which primary citation & entity authority principle should guide our programmatic SEO/AEO rollout across novapulse.io commerce and support automation search intents?',
     principleTag: 'AEO Entity & Citation Principle',

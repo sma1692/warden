@@ -4,8 +4,8 @@
  *
  * Tracks:
  * - `tokens_in` (fresh prompt/input tokens)
- * - `tokens_cached` (Vertex AI Context Cache hits — up to 90% faster TTFT & 75% cheaper)
- * - `tokens_thinking` (Argon High / Gemini 2.5 Pro internal reasoning tokens)
+ * - `tokens_cached` (Meta Muse Context Cache hits — up to 90% faster TTFT & 75% cheaper)
+ * - `tokens_thinking` (Muse Wonder internal reasoning tokens)
  * - `tokens_out` (completion / code output tokens)
  * - `tokens_per_sec` (live streaming generation throughput)
  * - `cost_usd` (theoretical USD cost calculated against per-1M-token pricing tables)
@@ -41,61 +41,23 @@ export interface ModelPricingSpec {
 
 /**
  * Standard per-1M-token pricing table (in USD) for unit-economics telemetry
- * across Vertex AI, Meta Muse, Anthropic, OpenAI, Ollama, and HuggingFace / vLLM models.
+ * across Meta Muse cloud and Meta open-weights (Ollama / vLLM) models.
  */
 export const MODEL_PRICING_TABLE: Record<string, ModelPricingSpec> = {
-  // 1. Google Cloud Vertex AI / Gemini Models
-  'gemini-3.1-pro-preview': {
-    inputPer1M: 1.25,
-    cachedInputPer1M: 0.3125,
-    thinkingPer1M: 3.75,
-    outputPer1M: 10.0,
-  },
-  'gemini-3.1-pro-argon-high': {
-    inputPer1M: 1.25,
-    cachedInputPer1M: 0.3125,
-    thinkingPer1M: 3.75,
-    outputPer1M: 10.0,
-  },
-  'gemini-3-flash-preview': {
-    inputPer1M: 0.15,
-    cachedInputPer1M: 0.0375,
-    thinkingPer1M: 0.6,
-    outputPer1M: 0.6,
-  },
-  'gemini-3.8-flash': {
-    inputPer1M: 0.15,
-    cachedInputPer1M: 0.0375,
-    thinkingPer1M: 0.6,
-    outputPer1M: 0.6,
-  },
-  'gemini-2.5-pro': {
-    inputPer1M: 1.25,
-    cachedInputPer1M: 0.3125,
-    thinkingPer1M: 3.75,
-    outputPer1M: 10.0,
-  },
-  'gemini-2.0-flash': {
-    inputPer1M: 0.15,
-    cachedInputPer1M: 0.0375,
-    thinkingPer1M: 0.6,
-    outputPer1M: 0.6,
-  },
-  'gemini-2.0-flash-lite': {
-    inputPer1M: 0.1,
-    cachedInputPer1M: 0.025,
-    thinkingPer1M: 0.4,
-    outputPer1M: 0.4,
-  },
-  'text-embedding-005': {
-    inputPer1M: 0.025,
-    cachedInputPer1M: 0.0,
-    thinkingPer1M: 0.0,
-    outputPer1M: 0.0,
-  },
-
-  // 2. Meta Muse Portfolio (`https://api.meta.ai/v1` + Self-Hosted Glimmer)
+  // 1. Meta Muse cloud (`https://api.meta.ai/v1`)
   'muse-wonder-1.0': {
+    inputPer1M: 1.0,
+    cachedInputPer1M: 0.25,
+    thinkingPer1M: 3.0,
+    outputPer1M: 4.0,
+  },
+  'muse-pro': {
+    inputPer1M: 1.0,
+    cachedInputPer1M: 0.25,
+    thinkingPer1M: 3.0,
+    outputPer1M: 4.0,
+  },
+  'meta-muse-pro': {
     inputPer1M: 1.0,
     cachedInputPer1M: 0.25,
     thinkingPer1M: 3.0,
@@ -106,6 +68,18 @@ export const MODEL_PRICING_TABLE: Record<string, ModelPricingSpec> = {
     cachedInputPer1M: 0.05,
     thinkingPer1M: 0.4,
     outputPer1M: 0.8,
+  },
+  'muse-light': {
+    inputPer1M: 0.15,
+    cachedInputPer1M: 0.05,
+    thinkingPer1M: 0.3,
+    outputPer1M: 0.6,
+  },
+  'muse-flash': {
+    inputPer1M: 0.15,
+    cachedInputPer1M: 0.05,
+    thinkingPer1M: 0.3,
+    outputPer1M: 0.6,
   },
   'muse-glimmer-30b': {
     inputPer1M: 0.12,
@@ -125,107 +99,37 @@ export const MODEL_PRICING_TABLE: Record<string, ModelPricingSpec> = {
     thinkingPer1M: 0.0,
     outputPer1M: 1.5,
   },
-
-  // 3. Anthropic Claude Models (`https://api.anthropic.com/v1/messages`)
-  'claude-sonnet-4-20250514': {
-    inputPer1M: 3.0,
-    cachedInputPer1M: 0.3,
-    thinkingPer1M: 15.0,
-    outputPer1M: 15.0,
+  'muse-voice-transcribe-1.0': {
+    inputPer1M: 0.5,
+    cachedInputPer1M: 0.125,
+    thinkingPer1M: 0.0,
+    outputPer1M: 1.5,
   },
-  'claude-3-7-sonnet-latest': {
-    inputPer1M: 3.0,
-    cachedInputPer1M: 0.3,
-    thinkingPer1M: 15.0,
-    outputPer1M: 15.0,
-  },
-  'claude-opus-4-20250514': {
-    inputPer1M: 15.0,
-    cachedInputPer1M: 1.5,
-    thinkingPer1M: 75.0,
-    outputPer1M: 75.0,
-  },
-  'claude-3-5-haiku-latest': {
-    inputPer1M: 0.8,
-    cachedInputPer1M: 0.08,
-    thinkingPer1M: 4.0,
-    outputPer1M: 4.0,
+  'muse-embed-1.0': {
+    inputPer1M: 0.025,
+    cachedInputPer1M: 0.0,
+    thinkingPer1M: 0.0,
+    outputPer1M: 0.0,
   },
 
-  // 4. OpenAI Models (`https://api.openai.com/v1/chat/completions`)
-  'gpt-4.1': {
-    inputPer1M: 2.0,
-    cachedInputPer1M: 0.5,
-    thinkingPer1M: 8.0,
-    outputPer1M: 8.0,
-  },
-  'gpt-4.1-mini': {
-    inputPer1M: 0.4,
-    cachedInputPer1M: 0.1,
-    thinkingPer1M: 1.6,
-    outputPer1M: 1.6,
-  },
-  'o3': {
-    inputPer1M: 2.0,
-    cachedInputPer1M: 0.5,
-    thinkingPer1M: 8.0,
-    outputPer1M: 8.0,
-  },
-  'o4-mini': {
-    inputPer1M: 1.1,
-    cachedInputPer1M: 0.275,
-    thinkingPer1M: 4.4,
-    outputPer1M: 4.4,
-  },
-
-  // 5. Open-Weight Models on GCP GPU VM (Ollama / HuggingFace vLLM) — theoretical equivalent value
+  // 2. Meta open weights (Ollama / vLLM) — theoretical equivalent value
   'llama-3.3-70b': {
-    inputPer1M: 0.6,
-    cachedInputPer1M: 0.15,
-    thinkingPer1M: 0.6,
-    outputPer1M: 0.6,
+    inputPer1M: 0.3,
+    cachedInputPer1M: 0.075,
+    thinkingPer1M: 0.3,
+    outputPer1M: 0.3,
   },
-  'llama-3.3-70b-instruct': {
-    inputPer1M: 0.6,
-    cachedInputPer1M: 0.15,
-    thinkingPer1M: 0.6,
-    outputPer1M: 0.6,
+  'meta-llama/Llama-3.3-70B-Instruct': {
+    inputPer1M: 0.3,
+    cachedInputPer1M: 0.075,
+    thinkingPer1M: 0.3,
+    outputPer1M: 0.3,
   },
   'llama-4-maverick': {
     inputPer1M: 0.5,
     cachedInputPer1M: 0.125,
     thinkingPer1M: 0.5,
     outputPer1M: 0.75,
-  },
-  'qwen2.5-coder:32b': {
-    inputPer1M: 0.3,
-    cachedInputPer1M: 0.075,
-    thinkingPer1M: 0.3,
-    outputPer1M: 0.3,
-  },
-  'Qwen/Qwen2.5-Coder-32B-Instruct': {
-    inputPer1M: 0.3,
-    cachedInputPer1M: 0.075,
-    thinkingPer1M: 0.3,
-    outputPer1M: 0.3,
-  },
-  'deepseek-r1:70b': {
-    inputPer1M: 0.55,
-    cachedInputPer1M: 0.14,
-    thinkingPer1M: 2.19,
-    outputPer1M: 2.19,
-  },
-  'nomic-embed-text': {
-    inputPer1M: 0.01,
-    cachedInputPer1M: 0.0,
-    thinkingPer1M: 0.0,
-    outputPer1M: 0.0,
-  },
-  'bge-m3': {
-    inputPer1M: 0.01,
-    cachedInputPer1M: 0.0,
-    thinkingPer1M: 0.0,
-    outputPer1M: 0.0,
   },
 };
 
@@ -359,29 +263,24 @@ export function truncateToTokenLimit(
  * Resolves pricing spec for a given model ID (with prefix fallback for versioned model names).
  */
 export function getModelPricing(modelId: string): ModelPricingSpec {
-  const normalized = (modelId || 'gemini-2.0-flash').trim();
+  const normalized = (modelId || 'muse-spark-1.3').trim();
   if (MODEL_PRICING_TABLE[normalized]) {
     return MODEL_PRICING_TABLE[normalized];
   }
 
   const lower = normalized.toLowerCase();
-  if (lower.includes('gemini-3.8')) {
-    return MODEL_PRICING_TABLE['gemini-3.8-flash'];
-  }
-  if (lower.includes('gemini-2.5-pro') || lower.includes('argon')) {
-    return MODEL_PRICING_TABLE['gemini-2.5-pro'];
-  }
-  if (lower.includes('gemini-2.0-flash') || lower.includes('gemini-2.0-flash')) {
-    return MODEL_PRICING_TABLE['gemini-2.0-flash'];
-  }
-  if (lower.includes('embedding') || lower.includes('embed')) {
-    return MODEL_PRICING_TABLE['text-embedding-005'];
-  }
-  if (lower.includes('muse-wonder')) {
+  if (
+    lower.includes('muse-wonder') ||
+    lower.includes('muse-pro') ||
+    lower.includes('meta-muse-pro')
+  ) {
     return MODEL_PRICING_TABLE['muse-wonder-1.0'];
   }
   if (lower.includes('muse-spark')) {
     return MODEL_PRICING_TABLE['muse-spark-1.3'];
+  }
+  if (lower.includes('muse-light') || lower.includes('muse-flash')) {
+    return MODEL_PRICING_TABLE['muse-light'];
   }
   if (lower.includes('muse-glimmer')) {
     return MODEL_PRICING_TABLE['muse-glimmer-30b'];
@@ -392,39 +291,18 @@ export function getModelPricing(modelId: string): ModelPricingSpec {
   if (lower.includes('muse-voice')) {
     return MODEL_PRICING_TABLE['muse-voice'];
   }
-  if (lower.includes('claude-opus')) {
-    return MODEL_PRICING_TABLE['claude-opus-4-20250514'];
-  }
-  if (lower.includes('claude-3-5-haiku') || lower.includes('claude-haiku')) {
-    return MODEL_PRICING_TABLE['claude-3-5-haiku-latest'];
-  }
-  if (lower.includes('claude')) {
-    return MODEL_PRICING_TABLE['claude-sonnet-4-20250514'];
-  }
-  if (lower.includes('gpt-4.1-mini') || lower.includes('gpt-4o-mini')) {
-    return MODEL_PRICING_TABLE['gpt-4.1-mini'];
-  }
-  if (lower.includes('gpt-4') || lower === 'o3') {
-    return MODEL_PRICING_TABLE['gpt-4.1'];
-  }
-  if (lower.includes('o4-mini')) {
-    return MODEL_PRICING_TABLE['o4-mini'];
-  }
-  if (lower.includes('llama-3.3') || lower.includes('llama3.3')) {
-    return MODEL_PRICING_TABLE['llama-3.3-70b'];
+  if (lower.includes('embedding') || lower.includes('embed')) {
+    return MODEL_PRICING_TABLE['muse-embed-1.0'];
   }
   if (lower.includes('llama-4') || lower.includes('llama4')) {
     return MODEL_PRICING_TABLE['llama-4-maverick'];
   }
-  if (lower.includes('qwen')) {
-    return MODEL_PRICING_TABLE['qwen2.5-coder:32b'];
-  }
-  if (lower.includes('deepseek')) {
-    return MODEL_PRICING_TABLE['deepseek-r1:70b'];
+  if (lower.includes('llama')) {
+    return MODEL_PRICING_TABLE['llama-3.3-70b'];
   }
 
-  // Default fallback to Gemini 2.5 Flash pricing
-  return MODEL_PRICING_TABLE['gemini-2.0-flash'];
+  // Default fallback to Muse Spark pricing
+  return MODEL_PRICING_TABLE['muse-spark-1.3'];
 }
 
 /**
@@ -489,7 +367,7 @@ export class TokenTracker {
    */
   public recordStepUsage(input: RecordStepUsageInput): RunTokenBudgetCheck {
     const runId = input.runId || 'global-ephemeral-run';
-    const modelId = input.modelId || 'gemini-2.0-flash';
+    const modelId = input.modelId || 'muse-spark-1.3';
     const maxTokensPerRun = input.max_tokens_per_run ?? this.defaultMaxTokensPerRun;
 
     const tokensIn = Math.max(0, Math.round(input.tokens_in || 0));

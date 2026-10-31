@@ -20,10 +20,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STATE_DIR = path.join(ROOT, '.state');
 const ONBOARDED_FILE = path.join(STATE_DIR, 'onboarded.json');
 const PROJECTS_YAML = path.join(ROOT, 'projects.yaml');
-const CLAUDE_DIR = path.join(ROOT, '.claude');
-const SETTINGS_LOCAL = path.join(CLAUDE_DIR, 'settings.local.json');
-const SETTINGS_DEFAULT = path.join(CLAUDE_DIR, 'settings.json');
-const SETTINGS_EXAMPLE = path.join(CLAUDE_DIR, 'settings.example.json');
+const MUSE_DIR = path.join(ROOT, '.claude');
+const SETTINGS_LOCAL = path.join(MUSE_DIR, 'settings.local.json');
+const SETTINGS_DEFAULT = path.join(MUSE_DIR, 'settings.json');
+const SETTINGS_EXAMPLE = path.join(MUSE_DIR, 'settings.example.json');
 
 export function isOnboarded() {
   if (!fs.existsSync(ONBOARDED_FILE)) return false;
@@ -35,8 +35,8 @@ export function isOnboarded() {
   }
 }
 
-export function updateClaudeSettings(repoPaths = []) {
-  fs.mkdirSync(CLAUDE_DIR, { recursive: true });
+export function updateMuseSettings(repoPaths = []) {
+  fs.mkdirSync(MUSE_DIR, { recursive: true });
   let settings = {
     permissions: {
       allow: [
@@ -100,7 +100,7 @@ export function updateClaudeSettings(repoPaths = []) {
   }
 
   fs.writeFileSync(SETTINGS_LOCAL, JSON.stringify(settings, null, 2) + '\n', 'utf8');
-  console.log(`Updated Claude settings at: ${SETTINGS_LOCAL}`);
+  console.log(`Updated Muse settings at: ${SETTINGS_LOCAL}`);
   return settings;
 }
 

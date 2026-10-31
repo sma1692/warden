@@ -2,7 +2,7 @@
 
 Warden is an open-source multi-agent orchestration framework designed for founders and engineering leaders. One human operator interacts with a single executive agent, `warden`. Warden orchestrates a corporate-style hierarchy of specialized agents across engineering, product, infrastructure, security, and growth, delivering compact, decision-ready briefs.
 
-The framework runs natively inside AI agent IDEs (Google Antigravity, Claude Code) and operates as a standalone orchestrator with a live React web dashboard, dual Markdown/Postgres state engines, multi-channel reminders, and automated CLI/daemon execution.
+The framework runs natively inside Muse and operates as a standalone orchestrator with a live React web dashboard, dual Markdown/Postgres state engines, multi-channel reminders, and automated CLI/daemon execution.
 
 ---
 
@@ -45,8 +45,8 @@ Warden features a decoupled execution pipeline called **Scout → Plan → Apply
 
 - **Three-Stage Execution Flow**:
   - **Phase 1: Fast Read Scout (Scout pass)**: Level 2 `reader_scout` subagents inspect raw source trees, execute AST and grep lookups, and emit an ultra-compact symbol and line-range digest ($\le 150$ words). Tier 1 models NEVER ingest full source files.
-  - **Phase 2: High-Reasoning Architect (Tier 1)**: Level 0 and Level 1 agents (`warden`, `cto`, `pm`, `tech_lead`, `sec_lead`, `infra_head`) consume only the compressed digest. Using frontier reasoning models (Claude 3.7 Sonnet, Gemini 2.5 Pro, GPT-4o, Grok-2), they solve architectural constraints and produce minimal `FileEditDirective[]` manifests.
-  - **Phase 3: Fast File Applier (Apply pass)**: Level 2 developer subagents (`coder_applier`, `frontend_dev`, `backend_dev`, etc.) consume the manifest and apply file modifications using high-speed models (Gemini 2.5 Flash, Gemini 2.5 Flash-Lite, Claude 3.5 Haiku, GPT-4o-mini) or local offline models via Ollama and vLLM (Qwen 2.5 Coder 14B, Llama 3.3 70B).
+  - **Phase 2: High-Reasoning Architect (Tier 1)**: Level 0 and Level 1 agents (`warden`, `cto`, `pm`, `tech_lead`, `sec_lead`, `infra_head`) consume only the compressed digest. Using frontier reasoning models (Muse Wonder 1.0, Muse Pro), they solve architectural constraints and produce minimal `FileEditDirective[]` manifests.
+  - **Phase 3: Fast File Applier (Apply pass)**: Level 2 developer subagents (`coder_applier`, `frontend_dev`, `backend_dev`, etc.) consume the manifest and apply file modifications using high-speed models (Muse Spark 1.3, Muse Light, Muse Flash) or local offline Meta open-weights models via Ollama and vLLM (Llama 3.3 70B, Muse Glimmer 30B).
 - **Verified Read + Write Cost Benchmark**:
   - **Zero Raw-Code Reads at Tier 1**: Eliminates 85% to 92% of input tokens on architectural planning turns by substituting raw code with $\le 150$-word digests.
   - **Cumulative Input Token Costs: 75% Reduction** (dropping effective blended rates from $0.60 per 1M tokens down to $0.15 per 1M tokens).
@@ -62,16 +62,17 @@ Warden features a decoupled execution pipeline called **Scout → Plan → Apply
 
 ---
 
-## 3. Multi-Model Support & Runtime Auto-Discovery
+## 3. Meta-Native Model Routing & Runtime Auto-Discovery
 
-Warden provides dynamic, vendor-agnostic LLM routing across commercial APIs and local runtimes.
+Warden routes every agent to Meta models across the Meta Model API and local open-weights runtimes.
 
-- **Heterogeneous Model Support**:
-  - **Anthropic**: Claude 3.7 Sonnet, Claude 3.5 Haiku.
-  - **Google Cloud / Vertex AI**: Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.5 Flash-Lite.
-  - **OpenAI**: GPT-4o, GPT-4o-mini, o3-mini.
-  - **xAI**: Grok-2, Grok-2-mini.
-  - **Meta & Open Weights**: Llama 3.3 70B, Meta Muse, DeepSeek R1, Qwen 2.5 Coder via Ollama, vLLM, and Hugging Face endpoints.
+- **Meta-Native Model Portfolio**:
+  - **Muse Wonder 1.0**: Tier 1 frontier reasoning for architects and planners.
+  - **Muse Spark 1.3**: Tier 2 high-speed coding and tool loops.
+  - **Muse Light / Muse Flash**: Tier 2 fast file appliers.
+  - **Muse Glimmer 30B**: context compaction, local or cloud.
+  - **Muse Image / Muse Voice**: creative visuals and voice notes.
+  - **Meta Open Weights**: Llama 3.3 70B and Llama 4 Maverick via Ollama, vLLM, and Hugging Face endpoints.
 - **Runtime Unknown-Model Discovery**:
   - If a user specifies a new or unlisted model identifier in configuration or via CLI arguments, Warden automatically triggers model auto-discovery.
   - The discovery engine queries model endpoint metadata or applies heuristic capability profiling to detect context window limits, tool-calling capabilities, and pricing metrics.
@@ -133,10 +134,9 @@ All code modifications adhere to a safe repository lifecycle:
 ```text
 warden/
 ├── projects.example.yaml             # Template mapping project keys to repository folders
-├── .env.example                      # Configuration template for multi-provider API keys
+├── .env.example                      # Configuration template for the Meta Model API key
 ├── AGENTS.md                         # Canonical corporate hierarchy and communication protocol
-├── CLAUDE.md                         # Claude Code entrypoint and agent definitions
-├── GEMINI.md                         # Google Antigravity and Gemini command center rules
+├── MUSE.md                           # Muse entrypoint and agent definitions
 ├── README.md                         # System documentation and architecture guide
 ├── packages/
 │   ├── orchestrator/                 # Control plane, model router, and reminder service
@@ -145,13 +145,13 @@ warden/
 │   └── web/                          # Live web dashboard UI (React + Vite + Tailwind)
 ├── scripts/
 │   ├── repo-tool.mjs                 # Multi-repo synchronization and mirror manager
-│   ├── commando-vertex.mjs           # Vertex AI CLI orchestrator and standup daemon
+│   ├── commando-muse.mjs           # Meta Muse CLI orchestrator and standup daemon
 │   ├── token-report.mjs              # Token consumption and cost telemetry reporter
 │   ├── token-firewall.mjs            # Static token audit and file access verifier
 │   ├── export-oss-md.mjs             # Open-source zero-leak markdown & public repo exporter
 │   └── publish-public.mjs            # Production allowlist publisher and sanitizer
 ├── .agents/skills/                   # Standardized runbooks (orchestrator, standup, pushit)
-├── .claude/agents/                   # Dedicated subagent prompts for Claude Code
+├── .claude/agents/                   # Agent prompt library (roles, hierarchy, runbooks)
 └── docs/                             # Setup guides (WhatsApp Cloud API, privacy policies)
 ```
 

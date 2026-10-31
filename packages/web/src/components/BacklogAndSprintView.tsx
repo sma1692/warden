@@ -76,7 +76,7 @@ const EXTRA_VERTICAL_BACKLOG_ITEMS: (BacklogItem & {
 })[] = [
   {
     id: 'bl-aeo-llms-txt',
-    title: 'Publish /llms.txt & /llms-full.txt for Perplexity & ChatGPT Search Citation',
+    title: 'Publish /llms.txt & /llms-full.txt for Meta AI Citation',
     spec_md:
       'Generate structured markdown indexes referencing NovaPulse AI checkout, programmatic AEO schemas, and edge latency benchmarks.',
     stage: 'IN_PROGRESS',

@@ -39,12 +39,12 @@ export const TokenBreakdownBar: React.FC<TokenBreakdownBarProps> = ({
         <div
           style={{ width: `${cachedPct}%` }}
           className="bg-[var(--surface-accent-gold)] transition-all duration-300"
-          title={`Vertex Context Cached: ${formatCompactTokens(tokensCached)}`}
+          title={`Muse Context Cached: ${formatCompactTokens(tokensCached)}`}
         />
         <div
           style={{ width: `${thinkingPct}%` }}
           className="bg-[var(--surface-accent)] transition-all duration-300"
-          title={`Argon / Gemini Thinking Tokens: ${formatCompactTokens(tokensThinking)}`}
+          title={`Muse Thinking Tokens: ${formatCompactTokens(tokensThinking)}`}
         />
         <div
           style={{ width: `${outPct}%` }}

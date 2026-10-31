@@ -9,7 +9,7 @@ description: >-
 # Warden Orchestrator Skill (Bottom-Heavy Token Pyramid)
 
 1. **`warden` (Root Chief of Staff)**:
-   - Reads **0** repo, backlog, or cache files. Uses the inline `cto` / `cbo` blueprints in [`GEMINI.md`](../../../GEMINI.md) to invoke Level 0 immediately.
+   - Reads **0** repo, backlog, or cache files. Uses the `cto` / `cbo` bindings in [`MUSE.md`](../../../MUSE.md) to invoke Level 0 immediately.
    - Never reads or edits `chats/<session>.md`. Passes the session file path to downstairs agents, who append to it.
 2. **`cto` & `cbo` (Level 0)**:
    - `cto` reads **ONLY** `context/cto.md` and `memory/cto.md` (never `.state/topology-cache.json`, `context/<project>/<repo>.md`, or `worklist/*`).

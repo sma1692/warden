@@ -2,7 +2,7 @@
 # DYNAMO COMMANDO — Wildcard Live Preview Reverse Proxy (`infra/docker/Caddyfile`)
 # ==============================================================================
 # Routes live agent branch previews from:
-#   1. Production GCP Wildcard HTTPS: https://preview-{runId}.$PREVIEW_BASE_DOMAIN
+#   1. Production cloud wildcard HTTPS: https://preview-{runId}.$PREVIEW_BASE_DOMAIN
 #   2. Local Dev Wildcard HTTP:       http://preview-{runId}.localhost
 # directly to the dynamic host preview port (15000–15999) managed by PreviewRouter,
 # or via the Control Plane Preview Proxy upstream map.
@@ -12,7 +12,7 @@
 
 {
 	admin 0.0.0.0:2019
-	# On GCP production, Caddy automatically provisions Let's Encrypt / ZeroSSL
+	# On cloud production, Caddy automatically provisions Let's Encrypt / ZeroSSL
 	# wildcard certificates via Cloudflare DNS challenge when CF_API_TOKEN is set.
 }
 

@@ -126,7 +126,7 @@ export const UNIFIED_REPORTS_CATALOG: UnifiedReportItem[] = [
   {
     id: 'rep-aeo-citation-share',
     title: 'LLM Citation Share & Answer Engine Visibility Audit',
-    subtitle: 'Share-of-voice tracking across ChatGPT Search, Perplexity, and Gemini for AI Commerce & Growth SaaS queries.',
+    subtitle: 'Share-of-voice tracking across Meta AI answers and Muse for AI Commerce & Growth SaaS queries.',
     vertical: 'SEO_AEO',
     authorSlug: '@aeo_lead',
     projectSlug: 'pulse-seo',
@@ -140,8 +140,8 @@ export const UNIFIED_REPORTS_CATALOG: UnifiedReportItem[] = [
 
 ## LLM Citation Share by Engine
 - **Perplexity AI**: \`41.2%\` citation rate on *"best AI commerce growth engine"* and *"automated AEO schema SaaS"*
-- **ChatGPT Search**: \`32.5%\` direct link inclusion when querying AI-native storefront optimization platforms
-- **Google Gemini / AI Overviews**: \`30.7%\` structured card presence via \`SoftwareApplication\` JSON-LD schema
+- **Meta AI answers**: \`32.5%\` direct link inclusion when querying AI-native storefront optimization platforms
+- **Meta AI summaries**: \`30.7%\` structured card presence via \`SoftwareApplication\` JSON-LD schema
 
 ## Recommended High-EV Actions
 - Publish \`/llms.txt\` and \`/llms-full.txt\` on \`novapulse.io\` and \`docs.novapulse.io\`

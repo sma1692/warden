@@ -527,7 +527,7 @@ export class ControlPlaneServer {
       heartbeat_ok: watchdogTelemetry.overallStatus === 'HEALTHY',
       active_subagents: watchdogTelemetry.activeSubagentsTotal,
       max_subagents_pool: watchdogTelemetry.maxSubagentsCapacity,
-      gcp_sandbox_latency_ms: watchdogTelemetry.sandboxLatencyMs,
+      sandbox_latency_ms: watchdogTelemetry.sandboxLatencyMs,
       active_docker_sandboxes: watchdogTelemetry.workingAgentsCount,
       total_tokens_today: watchdogTelemetry.todayTokensBurned,
       theoretical_usd_burn_today: Number(
@@ -538,7 +538,7 @@ export class ControlPlaneServer {
         : 'SIMULATED',
       db_pgvector_status: this.store.isDatabaseConnected() ? 'ONLINE' : 'OFFLINE',
       commando_source: this.store.source,
-      vertex_cache_hit_rate_pct: cacheHitPct,
+      muse_cache_hit_rate_pct: cacheHitPct,
       routing_profile: this.store.getRoutingProfile(),
       sync_status: this.store.getSyncStatus(),
       recent_telegram_alerts: this.telegramPager.getRecentAlerts(10),
@@ -725,10 +725,10 @@ export class ControlPlaneServer {
           profile: this.store.getRoutingProfile(),
           available_profiles: [
             {
-              id: 'GCP_ZERO_COST',
-              label: 'GCP Zero-Cost Credits (Vertex Gemini 3.1 Pro / 3 Flash + GPU Ollama)',
+              id: 'LOCAL_ZERO_COST',
+              label: 'Local Zero-Cost (Ollama Llama + Glimmer)',
               description:
-                'Routes all executive/lead reasoning to Vertex Gemini 3.1 Pro and executors to Gemini 3 Flash / Ollama.',
+                'Routes all reasoning to local Ollama Llama 3.3 70B and compaction to Muse Glimmer 30B.',
             },
             {
               id: 'META_MUSE_HACKATHON',
@@ -753,10 +753,10 @@ export class ControlPlaneServer {
       ) {
         const body = await this.readJsonBody(req);
         const requestedProfile = String(
-          body.profile || body.routing_profile || 'GCP_ZERO_COST'
+          body.profile || body.routing_profile || 'META_MUSE_HACKATHON'
         ).toUpperCase() as RoutingProfile;
         const validProfiles: RoutingProfile[] = [
-          'GCP_ZERO_COST',
+          'LOCAL_ZERO_COST',
           'META_MUSE_HACKATHON',
           'CUSTOM_HYBRID',
         ];
@@ -903,8 +903,8 @@ export class ControlPlaneServer {
           project_scope: body.project_scope ?? null,
           model_provider:
             ((body.model_provider ?? body.modelProvider) as ModelProvider) ||
-            'vertex',
-          model_id: body.model_id || body.modelId || 'gemini-3-flash-preview',
+            'meta_muse',
+          model_id: body.model_id || body.modelId || 'muse-spark-1.3',
           fallback_provider:
             ((body.fallback_provider ?? body.fallbackProvider) as ModelProvider) ||
             'meta_muse',
@@ -1210,7 +1210,7 @@ export class ControlPlaneServer {
                 processedAttachments.push({
                   type: uploaded.type,
                   filename: uploaded.filename,
-                  gcs_uri: uploaded.gcs_uri || undefined,
+                  media_uri: uploaded.media_uri || undefined,
                   public_url: uploaded.public_url,
                   size_bytes: uploaded.size_bytes,
                 });
@@ -1223,7 +1223,7 @@ export class ControlPlaneServer {
               id: rawAtt.id,
               type: rawAtt.type || 'image/png',
               filename: rawAtt.filename || 'attachment.png',
-              gcs_uri: rawAtt.gcs_uri,
+              media_uri: rawAtt.media_uri,
               public_url: rawAtt.public_url || '/media/attachment.png',
               size_bytes: rawAtt.size_bytes,
             });

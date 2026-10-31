@@ -1,230 +1,20 @@
 {
   "_schema": "warden.model-registry.v1",
-  "description": "Auto-discovered and statically registered model endpoints, capabilities, and pricing metrics.",
-  "updatedAt": "2026-10-27T21:27:58.946Z",
+  "description": "Meta-only model endpoints, capabilities, and pricing metrics.",
+  "updatedAt": "2026-10-30T00:00:00.000Z",
   "models": {
-    "gemini-2.5-pro": {
-      "provider": "google",
+    "muse-wonder-1.0": {
+      "provider": "meta_muse",
       "tier": "tier1_architect",
-      "displayName": "Gemini 2.5 Pro",
-      "contextWindow": 1048576,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": true,
-      "pricing": {
-        "inputPer1MUsd": 1.25,
-        "outputPer1MUsd": 10,
-        "cachedInputPer1MUsd": 0.6
-      }
-    },
-    "gemini-2.5-flash": {
-      "provider": "google",
-      "tier": "tier2_applier",
-      "displayName": "Gemini 2.5 Flash",
-      "contextWindow": 1048576,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": true,
-      "pricing": {
-        "inputPer1MUsd": 0.15,
-        "outputPer1MUsd": 0.6,
-        "cachedInputPer1MUsd": 0.15
-      }
-    },
-    "gemini-2.5-flash-lite": {
-      "provider": "google",
-      "tier": "tier2_applier",
-      "displayName": "Gemini 2.5 Flash-Lite",
-      "contextWindow": 1048576,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": false,
-      "pricing": {
-        "inputPer1MUsd": 0.075,
-        "outputPer1MUsd": 0.3,
-        "cachedInputPer1MUsd": 0.075
-      }
-    },
-    "gemini-1.5-pro": {
-      "provider": "google",
-      "tier": "tier1_architect",
-      "displayName": "Gemini 1.5 Pro",
-      "contextWindow": 2097152,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": false,
-      "pricing": {
-        "inputPer1MUsd": 1.25,
-        "outputPer1MUsd": 5,
-        "cachedInputPer1MUsd": 0.6
-      }
-    },
-    "gemini-1.5-flash": {
-      "provider": "google",
-      "tier": "tier2_applier",
-      "displayName": "Gemini 1.5 Flash",
-      "contextWindow": 1048576,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": false,
-      "pricing": {
-        "inputPer1MUsd": 0.075,
-        "outputPer1MUsd": 0.3,
-        "cachedInputPer1MUsd": 0.075
-      }
-    },
-    "claude-3-7-sonnet": {
-      "provider": "anthropic",
-      "tier": "tier1_architect",
-      "displayName": "Claude 3.7 Sonnet",
-      "contextWindow": 200000,
-      "maxOutputTokens": 64000,
-      "supportsToolUse": true,
-      "supportsThinking": true,
-      "pricing": {
-        "inputPer1MUsd": 3,
-        "outputPer1MUsd": 15,
-        "cachedInputPer1MUsd": 0.3
-      }
-    },
-    "claude-3-5-sonnet": {
-      "provider": "anthropic",
-      "tier": "tier1_architect",
-      "displayName": "Claude 3.5 Sonnet",
-      "contextWindow": 200000,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": true,
-      "pricing": {
-        "inputPer1MUsd": 3,
-        "outputPer1MUsd": 15,
-        "cachedInputPer1MUsd": 0.3
-      }
-    },
-    "claude-3-5-haiku": {
-      "provider": "anthropic",
-      "tier": "tier2_applier",
-      "displayName": "Claude 3.5 Haiku",
-      "contextWindow": 200000,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": false,
-      "pricing": {
-        "inputPer1MUsd": 0.8,
-        "outputPer1MUsd": 4,
-        "cachedInputPer1MUsd": 0.08
-      }
-    },
-    "gpt-4o": {
-      "provider": "openai",
-      "tier": "tier1_architect",
-      "displayName": "GPT-4o",
+      "displayName": "Meta Muse Wonder 1.0",
       "contextWindow": 128000,
-      "maxOutputTokens": 16384,
-      "supportsToolUse": true,
-      "supportsThinking": false,
-      "pricing": {
-        "inputPer1MUsd": 2.5,
-        "outputPer1MUsd": 10,
-        "cachedInputPer1MUsd": 0.6
-      }
-    },
-    "gpt-4o-mini": {
-      "provider": "openai",
-      "tier": "tier2_applier",
-      "displayName": "GPT-4o mini",
-      "contextWindow": 128000,
-      "maxOutputTokens": 16384,
-      "supportsToolUse": true,
-      "supportsThinking": false,
-      "pricing": {
-        "inputPer1MUsd": 0.15,
-        "outputPer1MUsd": 0.6,
-        "cachedInputPer1MUsd": 0.075
-      }
-    },
-    "o1": {
-      "provider": "openai",
-      "tier": "tier1_architect",
-      "displayName": "OpenAI o1",
-      "contextWindow": 200000,
-      "maxOutputTokens": 100000,
+      "maxOutputTokens": 8192,
       "supportsToolUse": true,
       "supportsThinking": true,
       "pricing": {
-        "inputPer1MUsd": 15,
-        "outputPer1MUsd": 60,
-        "cachedInputPer1MUsd": 7.5
-      }
-    },
-    "o1-mini": {
-      "provider": "openai",
-      "tier": "tier2_applier",
-      "displayName": "OpenAI o1-mini",
-      "contextWindow": 128000,
-      "maxOutputTokens": 65536,
-      "supportsToolUse": true,
-      "supportsThinking": true,
-      "pricing": {
-        "inputPer1MUsd": 1.1,
-        "outputPer1MUsd": 4.4,
-        "cachedInputPer1MUsd": 0.55
-      }
-    },
-    "o3-mini": {
-      "provider": "openai",
-      "tier": "tier2_applier",
-      "displayName": "OpenAI o3-mini",
-      "contextWindow": 200000,
-      "maxOutputTokens": 100000,
-      "supportsToolUse": true,
-      "supportsThinking": true,
-      "pricing": {
-        "inputPer1MUsd": 1.1,
-        "outputPer1MUsd": 4.4,
-        "cachedInputPer1MUsd": 0.55
-      }
-    },
-    "grok-2": {
-      "provider": "xai",
-      "tier": "tier1_architect",
-      "displayName": "Grok 2",
-      "contextWindow": 131072,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": false,
-      "pricing": {
-        "inputPer1MUsd": 2,
-        "outputPer1MUsd": 10,
-        "cachedInputPer1MUsd": 0.5
-      }
-    },
-    "grok-2-mini": {
-      "provider": "xai",
-      "tier": "tier2_applier",
-      "displayName": "Grok 2 mini",
-      "contextWindow": 131072,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": false,
-      "pricing": {
-        "inputPer1MUsd": 0.2,
-        "outputPer1MUsd": 1,
-        "cachedInputPer1MUsd": 0.05
-      }
-    },
-    "grok-beta": {
-      "provider": "xai",
-      "tier": "tier1_architect",
-      "displayName": "Grok Beta",
-      "contextWindow": 131072,
-      "maxOutputTokens": 8192,
-      "supportsToolUse": true,
-      "supportsThinking": false,
-      "pricing": {
-        "inputPer1MUsd": 5,
-        "outputPer1MUsd": 15,
-        "cachedInputPer1MUsd": 1.25
+        "inputPer1MUsd": 1.0,
+        "outputPer1MUsd": 4.0,
+        "cachedInputPer1MUsd": 0.25
       }
     },
     "muse-pro": {
@@ -236,8 +26,8 @@
       "supportsToolUse": true,
       "supportsThinking": true,
       "pricing": {
-        "inputPer1MUsd": 1,
-        "outputPer1MUsd": 4,
+        "inputPer1MUsd": 1.0,
+        "outputPer1MUsd": 4.0,
         "cachedInputPer1MUsd": 0.6
       }
     },
@@ -250,9 +40,23 @@
       "supportsToolUse": true,
       "supportsThinking": true,
       "pricing": {
-        "inputPer1MUsd": 1,
-        "outputPer1MUsd": 4,
+        "inputPer1MUsd": 1.0,
+        "outputPer1MUsd": 4.0,
         "cachedInputPer1MUsd": 0.6
+      }
+    },
+    "muse-spark-1.3": {
+      "provider": "meta_muse",
+      "tier": "tier2_applier",
+      "displayName": "Meta Muse Spark 1.3",
+      "contextWindow": 128000,
+      "maxOutputTokens": 8192,
+      "supportsToolUse": true,
+      "supportsThinking": true,
+      "pricing": {
+        "inputPer1MUsd": 0.2,
+        "outputPer1MUsd": 0.8,
+        "cachedInputPer1MUsd": 0.05
       }
     },
     "muse-light": {
@@ -283,46 +87,116 @@
         "cachedInputPer1MUsd": 0.05
       }
     },
-    "muse-spark-1.3": {
+    "muse-glimmer-30b": {
       "provider": "meta_muse",
       "tier": "tier2_applier",
-      "displayName": "Meta Muse Spark 1.3",
+      "displayName": "Meta Muse Glimmer 30B",
       "contextWindow": 128000,
       "maxOutputTokens": 8192,
       "supportsToolUse": true,
-      "supportsThinking": true,
+      "supportsThinking": false,
       "pricing": {
-        "inputPer1MUsd": 0.2,
-        "outputPer1MUsd": 0.8,
-        "cachedInputPer1MUsd": 0.05
+        "inputPer1MUsd": 0.12,
+        "outputPer1MUsd": 0.25,
+        "cachedInputPer1MUsd": 0.03
       }
     },
-    "muse-wonder-1.0": {
+    "muse-image": {
       "provider": "meta_muse",
-      "tier": "tier1_architect",
-      "displayName": "Meta Muse Wonder 1.0",
+      "tier": "tier2_applier",
+      "displayName": "Meta Muse Image",
       "contextWindow": 128000,
       "maxOutputTokens": 8192,
       "supportsToolUse": true,
-      "supportsThinking": true,
+      "supportsThinking": false,
       "pricing": {
-        "inputPer1MUsd": 1,
-        "outputPer1MUsd": 4,
-        "cachedInputPer1MUsd": 0.25
+        "inputPer1MUsd": 0.8,
+        "outputPer1MUsd": 2.4,
+        "cachedInputPer1MUsd": 0.2
       }
     },
-    "qwen2.5-coder:14b": {
+    "muse-voice": {
+      "provider": "meta_muse",
+      "tier": "tier2_applier",
+      "displayName": "Meta Muse Voice",
+      "contextWindow": 128000,
+      "maxOutputTokens": 8192,
+      "supportsToolUse": true,
+      "supportsThinking": false,
+      "pricing": {
+        "inputPer1MUsd": 0.5,
+        "outputPer1MUsd": 1.5,
+        "cachedInputPer1MUsd": 0.125
+      }
+    },
+    "muse-voice-transcribe-1.0": {
+      "provider": "meta_muse",
+      "tier": "tier2_applier",
+      "displayName": "Meta Muse Voice Transcribe 1.0",
+      "contextWindow": 128000,
+      "maxOutputTokens": 8192,
+      "supportsToolUse": false,
+      "supportsThinking": false,
+      "pricing": {
+        "inputPer1MUsd": 0.5,
+        "outputPer1MUsd": 1.5,
+        "cachedInputPer1MUsd": 0.125
+      }
+    },
+    "muse-embed-1.0": {
+      "provider": "meta_muse",
+      "tier": "tier2_applier",
+      "displayName": "Meta Muse Embed 1.0",
+      "contextWindow": 8192,
+      "maxOutputTokens": 0,
+      "supportsToolUse": false,
+      "supportsThinking": false,
+      "pricing": {
+        "inputPer1MUsd": 0.025,
+        "outputPer1MUsd": 0.0,
+        "cachedInputPer1MUsd": 0.0
+      }
+    },
+    "llama-3.3-70b": {
       "provider": "ollama",
       "tier": "tier2_applier",
-      "displayName": "Qwen 2.5 Coder 14B (Local)",
+      "displayName": "Llama 3.3 70B (Local)",
       "contextWindow": 32768,
       "maxOutputTokens": 8192,
       "supportsToolUse": true,
       "supportsThinking": false,
       "pricing": {
-        "inputPer1MUsd": 0,
-        "outputPer1MUsd": 0,
-        "cachedInputPer1MUsd": 0
+        "inputPer1MUsd": 0.0,
+        "outputPer1MUsd": 0.0,
+        "cachedInputPer1MUsd": 0.0
+      }
+    },
+    "meta-llama/Llama-3.3-70B-Instruct": {
+      "provider": "huggingface",
+      "tier": "tier2_applier",
+      "displayName": "Llama 3.3 70B Instruct (Local vLLM)",
+      "contextWindow": 32768,
+      "maxOutputTokens": 8192,
+      "supportsToolUse": true,
+      "supportsThinking": false,
+      "pricing": {
+        "inputPer1MUsd": 0.0,
+        "outputPer1MUsd": 0.0,
+        "cachedInputPer1MUsd": 0.0
+      }
+    },
+    "llama-4-maverick": {
+      "provider": "ollama",
+      "tier": "tier2_applier",
+      "displayName": "Llama 4 Maverick (Local)",
+      "contextWindow": 32768,
+      "maxOutputTokens": 8192,
+      "supportsToolUse": true,
+      "supportsThinking": false,
+      "pricing": {
+        "inputPer1MUsd": 0.0,
+        "outputPer1MUsd": 0.0,
+        "cachedInputPer1MUsd": 0.0
       }
     }
   }

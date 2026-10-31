@@ -262,7 +262,7 @@ export class IdleBacklogMonitor {
     this.store.addInferenceStep({
       run_id: run.id,
       step_type: 'LLM_INFERENCE',
-      model_used: 'gemini-2.5-pro',
+      model_used: 'muse-wonder-1.0',
       thinking_text: `Auditing ${cfg.scope} completed tasks, architecture docs, and GTM conversion funnel to synthesize 3 high-ROI next tasks for CEO approval.`,
       message_text: `Generated 3 prioritized specs (${suggestedSpecs.map((s) => s.priority).join(', ')}) for ${cfg.scope}.`,
       tool_name: null,

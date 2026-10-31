@@ -26,7 +26,7 @@ export interface RunQAGateOptions {
   runId: string;
   repoSlug: string;
   workspacePath: string;
-  mode: 'docker' | 'local' | 'gcp-ephemeral';
+  mode: 'docker' | 'local' | 'cloud-ephemeral';
   containerName?: string;
   shortRunId?: string;
   previewPort?: number;
@@ -209,7 +209,7 @@ export class PlaywrightQAGate {
     let scripts: Record<string, string> = {};
     try {
       const pkgRaw =
-        opts.mode === 'gcp-ephemeral' && opts.shortRunId
+        opts.mode === 'cloud-ephemeral' && opts.shortRunId
           ? (
               await execFileAsync('ssh', [
                 '-S',
@@ -242,7 +242,7 @@ export class PlaywrightQAGate {
       cmd: string
     ): Promise<{ ok: boolean; output: string }> => {
       try {
-        if (opts.mode === 'gcp-ephemeral' && opts.shortRunId) {
+        if (opts.mode === 'cloud-ephemeral' && opts.shortRunId) {
           const { stdout, stderr } = await execFileAsync(
             'ssh',
             ['-S', `/tmp/commando-ssh-${opts.shortRunId}.sock`, 'commando@127.0.0.1', 'bash', '-lc', `cd ${opts.workspacePath} && ${cmd}`],
@@ -302,7 +302,7 @@ export class PlaywrightQAGate {
       Boolean(scripts.preview || scripts.dev || scripts['dev:runtime']);
 
     if (typecheckPassed && buildPassed && hasWebPreview) {
-      if (opts.mode === 'gcp-ephemeral' && opts.shortRunId) {
+      if (opts.mode === 'cloud-ephemeral' && opts.shortRunId) {
         const containerQaCmd = [
           `(npx vite preview --host 0.0.0.0 --port ${previewPort} >/tmp/commando-qa/vite.log 2>&1 || npm run preview -- --host 0.0.0.0 --port ${previewPort} >/tmp/commando-qa/vite.log 2>&1) &`,
           'PREVIEW_PID=$!',

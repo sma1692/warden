@@ -1,7 +1,7 @@
 # ==============================================================================
 # DYNAMO COMMANDO — Ephemeral Agent Workspace Base Image (`commando-workspace:latest`)
 # ==============================================================================
-# Provides an isolated, zero-permission-prompt execution environment on GCP or
+# Provides an isolated, zero-permission-prompt execution environment on any cloud or
 # local Docker for backend, frontend, WebXR/WebGL, and cloud infra agents:
 # - Base: Microsoft Playwright v1.50.0 (Ubuntu 24.04 Noble) with Chromium & WebGL
 # - Runtime: Node.js 22 LTS, Python 3, Git, ripgrep, jq, curl, rsync, openssh-client

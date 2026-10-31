@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 
 export const COMMANDO_ROOT = path.resolve(__dirname, '../../..');
 
-// Auto-load root `.env` so DATABASE_URL, GEMINI_API_KEY, ANTHROPIC_API_KEY, TELEGRAM_* work from any workspace cwd
+// Auto-load root `.env` so DATABASE_URL, META_MUSE_API_KEY, TELEGRAM_* work from any workspace cwd
 (function loadRootEnv() {
   const envPath = path.join(COMMANDO_ROOT, '.env');
   if (!fs.existsSync(envPath)) return;
@@ -72,7 +72,7 @@ export function cosineSimilarity(
 /**
  * Generates a deterministic, L2-normalized 768-dimensional embedding vector using
  * token + character n-gram feature hashing. Used as an instant zero-latency fallback
- * when Vertex AI (`text-embedding-005`) or Ollama (`nomic-embed-text`) is not called.
+ * when Meta Muse (`muse-embed-1.0`) embeddings are unavailable.
  */
 export function generateDeterministicEmbedding(text: string, dimensions = 768): number[] {
   const vec = new Float64Array(dimensions);

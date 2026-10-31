@@ -64,7 +64,7 @@ Write all collected data to disk using the standard Commando schema:
   - Write `projects.yaml` in the workspace root using the format defined in `projects.example.yaml`.
   - Include project names, descriptions, departments, and absolute folder paths.
   - Include `shared_search_roots` if projects share a parent directory.
-- **Claude Permissions (`.claude/settings.local.json`)**:
+- **IDE Permissions (`.claude/settings.local.json`)**:
   - Read existing `.claude/settings.local.json` (or start from `.claude/settings.example.json`).
   - Add each onboarded repository path and the Commando root to `additionalDirectories`.
   - Add matching `Read(<repo>/**)`, `Edit(<repo>/**)`, `Write(<repo>/**)`, and git command execution patterns to `permissions.allow`.
@@ -120,12 +120,12 @@ Write all collected data to disk using the standard Commando schema:
 Finalize system integrity checks:
 
 - **Environment Verification**:
-  - Check whether `.env` exists. If missing, copy `.env.example` to `.env` and inform operator of required API keys (e.g. `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `DATABASE_URL`).
+  - Check whether `.env` exists. If missing, copy `.env.example` to `.env` and inform operator of required API keys (e.g. `META_MUSE_API_KEY`, `DATABASE_URL`).
 - **Topology Check**:
   - Run `node scripts/repo-tool.mjs list` to verify that all repository aliases and paths resolve cleanly.
 - **Executive Hand-off**:
   - Present a concise ASD-STE100 completion summary to the operator.
-  - Outline active project aliases, registered mirror folders, and Claude permissions.
+  - Outline active project aliases, registered mirror folders, and IDE permissions.
   - Confirm readiness for executive directives, `@<agent>` direct routing, or the Daily Standup (`standup`).
 
 ---

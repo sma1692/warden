@@ -3,9 +3,9 @@
  * Commando Unified Repo Access Tool (`scripts/repo-tool.mjs`)
  *
  * Why this exists:
- * Antigravity's native `read_file` / `edit_file` / `write_file` tools prompt
+ * The agent IDE's native `read_file` / `edit_file` / `write_file` tools prompt
  * the user on EVERY individual file outside the Commando workspace, and shell
- * chains (`&&`, `;`, `|`, `$(...)`) disable Antigravity's prefix-based "Always Allow".
+ * chains (`&&`, `;`, `|`, `$(...)`) disable the IDE's prefix-based "Always Allow".
  *
  * By routing all external repository reads, writes, edits, directory listings,
  * and commands through:
@@ -304,16 +304,48 @@ switch (action) {
 
     // Also recover any in-progress subagent transcripts into .state/mirror/RESUMED_STATE.md
     try {
-      const brainDir = process.env.AGENT_BRAIN_DIR || path.join(os.homedir(), '.gemini', 'antigravity', 'brain');
+      const sessionsDir = process.env.AGENT_BRAIN_DIR || process.env.MUSE_SESSIONS_DIR || path.join(os.homedir(), '.local/share/muse/sessions');
+      const findSession = (id) => {
+        const direct = path.join(sessionsDir, id, 'session.jsonl');
+        if (fs.existsSync(direct)) return direct;
+        const stack = [sessionsDir];
+        let guard = 0;
+        while (stack.length > 0 && guard++ < 2000) {
+          const dir = stack.pop();
+          let entries = [];
+          try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+          for (const ent of entries) {
+            if (!ent.isDirectory()) continue;
+            const full = path.join(dir, ent.name);
+            if (ent.name === id) {
+              const cand = path.join(full, 'session.jsonl');
+              if (fs.existsSync(cand)) return cand;
+            }
+            stack.push(full);
+          }
+        }
+        return null;
+      };
       // Optional private list of [role, transcriptId] pairs to recover.
       const recoverFile = path.join(COMMANDO_ROOT, 'private-data', 'repo-tool', 'recover-agents.json');
       const killedAgents = fs.existsSync(recoverFile) ? JSON.parse(fs.readFileSync(recoverFile, 'utf8')) : [];
       const reportLines = ['# Recovered Subagent Progress Snapshot\n'];
       for (const [role, id] of killedAgents) {
-        const tf = path.join(brainDir, id, '.system_generated/logs/transcript_full.jsonl');
-        if (!fs.existsSync(tf)) continue;
+        const tf = findSession(id);
+        if (!tf) continue;
         const lines = fs.readFileSync(tf, 'utf8').trim().split('\n').map((l) => {
-          try { return JSON.parse(l); } catch { return {}; }
+          try {
+            const e = JSON.parse(l);
+            if (e && e.payload_type && e.payload) {
+              return {
+                thinking: e.payload.thinking,
+                content: JSON.stringify(e.payload).slice(0, 2000),
+                source: /assistant|message|response/i.test(String(e.payload_type)) ? 'MODEL' : 'EVENT',
+                tool_calls: e.payload.tool_calls,
+              };
+            }
+            return e;
+          } catch { return {}; }
         });
         reportLines.push(`## ${role} (\`${id}\` — ${lines.length} steps)`);
         for (const step of lines.slice(-6)) {
@@ -486,7 +518,7 @@ switch (action) {
   case 'pushit-self': {
     const msgFile = path.join(COMMANDO_ROOT, '.state', 'commit-msg.txt');
     execSync(
-      'git add package.json AGENTS.md GEMINI.md scripts/repo-tool.mjs scripts/commando-vertex.mjs .agents/skills/commando-orchestrator/SKILL.md .agents/skills/standup/SKILL.md .claude/agents/ worklist/ packages/orchestrator/ packages/web/',
+      'git add package.json AGENTS.md MUSE.md scripts/repo-tool.mjs scripts/commando-muse.mjs .agents/skills/commando-orchestrator/SKILL.md .agents/skills/standup/SKILL.md .claude/agents/ worklist/ packages/orchestrator/ packages/web/',
       { cwd: COMMANDO_ROOT, stdio: 'inherit' }
     );
     execSync(`git commit -F "${msgFile}"`, { cwd: COMMANDO_ROOT, stdio: 'inherit' });

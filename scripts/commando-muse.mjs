@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * COMMANDO — Programmatic Vertex AI / Gemini Orchestrator & 12:00 PM IST Standup Runner
+ * COMMANDO — Programmatic Meta Muse Orchestrator & 12:00 PM IST Standup Runner
  *
  * Bypasses IDE UI permission prompts by running the Commando agent hierarchy
  * (`warden`, `cto`, `pm`, `tech_lead`, `infra_head`, `backend_dev`, `frontend_dev`, `infra_jr`)
- * directly against Google Cloud Vertex AI (or Gemini API) with native Node.js tool execution.
+ * directly against the Meta Model API with native Node.js tool execution.
  *
  * Usage:
- *   node scripts/commando-vertex.mjs standup [--auto-execute]
- *   node scripts/commando-vertex.mjs daemon [--interval=8h] [--auto-execute]
- *   node scripts/commando-vertex.mjs chat [@agent] [project]
- *   node scripts/commando-vertex.mjs ask "@infra_head" "What is the status of the infra repo?"
+ *   node scripts/commando-muse.mjs standup [--auto-execute]
+ *   node scripts/commando-muse.mjs daemon [--interval=8h] [--auto-execute]
+ *   node scripts/commando-muse.mjs chat [@agent] [project]
+ *   node scripts/commando-muse.mjs ask "@infra_head" "What is the status of the infra repo?"
  */
 
 import fs from 'node:fs';
@@ -44,15 +44,14 @@ loadEnvFile(path.join(ROOT, '.env'));
 
 // ── 2. Configuration & Model Routing ─────────────────────────────────────────
 const CONFIG = {
-  project: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT_ID || '',
-  location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
-  apiKey: process.env.GEMINI_API_KEY || process.env.VERTEX_API_KEY || '',
-  proModel: process.env.COMMANDO_PRO_MODEL || 'gemini-2.5-pro',
-  defaultModel: process.env.COMMANDO_DEFAULT_MODEL || 'gemini-2.5-flash',
+  baseUrl: (process.env.META_MUSE_BASE_URL || 'https://api.meta.ai/v1').replace(/\/+$/, ''),
+  apiKey: process.env.META_MUSE_API_KEY || process.env.META_MUSE_BACKUP_API_KEY || '',
+  proModel: process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0',
+  defaultModel: process.env.COMMANDO_DEFAULT_MODEL || 'muse-spark-1.3',
   standupTimeIst: process.env.STANDUP_TIME_IST || '12:00',
 };
 
-// ── 2b. Project Registry (projects.yaml + optional private-data/vertex/config.json) ──
+// ── 2b. Project Registry (projects.yaml + optional private-data/meta_muse/config.json) ──
 function loadProjectSlugs() {
   // Minimal parser for the `projects:` map in projects.yaml (zero dependencies).
   const file = path.join(ROOT, 'projects.yaml');
@@ -79,7 +78,7 @@ function loadProjectSlugs() {
   return out;
 }
 
-function loadVertexConfig() {
+function loadMuseConfig() {
   const projects = loadProjectSlugs();
   const tech = projects.filter((p) => p.department !== 'infra').map((p) => p.slug);
   const infra = projects.filter((p) => p.department === 'infra').map((p) => p.slug);
@@ -90,23 +89,23 @@ function loadVertexConfig() {
     pmContextProjects: projects.map((p) => p.slug),
     standupLeads: null,
   };
-  const privateFile = path.join(ROOT, 'private-data', 'vertex', 'config.json');
+  const privateFile = path.join(ROOT, 'private-data', 'meta_muse', 'config.json');
   if (!fs.existsSync(privateFile)) return fallback;
   try {
     return { ...fallback, ...JSON.parse(fs.readFileSync(privateFile, 'utf8')) };
   } catch (err) {
-    console.warn(`[commando-vertex] Ignoring invalid ${privateFile}: ${err.message}`);
+    console.warn(`[commando-muse] Ignoring invalid ${privateFile}: ${err.message}`);
     return fallback;
   }
 }
-const VERTEX_CFG = loadVertexConfig();
+const MUSE_CFG = loadMuseConfig();
 
 function fillTemplate(text, vars) {
   return String(text).replace(/\$\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 }
 
 function getStandupLeads() {
-  if (Array.isArray(VERTEX_CFG.standupLeads) && VERTEX_CFG.standupLeads.length) return VERTEX_CFG.standupLeads;
+  if (Array.isArray(MUSE_CFG.standupLeads) && MUSE_CFG.standupLeads.length) return MUSE_CFG.standupLeads;
   const leads = [
     {
       agent: 'pm',
@@ -114,11 +113,11 @@ function getStandupLeads() {
       prompt:
         'We are in the 12:00 PM IST Daily Standup (${dateStr}).\n' +
         '1. Review worklist/inbox.md and worklist/todo/.\n' +
-        `2. Provide your concise Standup update: (a) Inbox items ready to triage into P0/P1/P2 specs, (b) Recommended top priorities across ${VERTEX_CFG.knownProjects.join(', ') || 'all projects'} for today's sprint, and (c) Any business/GTM questions for the CEO.`,
+        `2. Provide your concise Standup update: (a) Inbox items ready to triage into P0/P1/P2 specs, (b) Recommended top priorities across ${MUSE_CFG.knownProjects.join(', ') || 'all projects'} for today's sprint, and (c) Any business/GTM questions for the CEO.`,
     },
   ];
-  for (const slug of VERTEX_CFG.knownProjects) {
-    const isInfra = slug === VERTEX_CFG.infraProject;
+  for (const slug of MUSE_CFG.knownProjects) {
+    const isInfra = slug === MUSE_CFG.infraProject;
     leads.push({
       agent: isInfra ? 'infra_head' : 'tech_lead',
       project: slug,
@@ -161,7 +160,7 @@ function getIstTimeHHMM() {
   return fmt.format(now); // HH:MM in IST
 }
 
-const SESSION_ID = `vertex-${Date.now().toString(36).slice(-5)}`;
+const SESSION_ID = `muse-${Date.now().toString(36).slice(-5)}`;
 function getSessionChatPath() {
   const dateStr = getTodayDateIst();
   const chatDir = path.join(ROOT, 'chats');
@@ -175,7 +174,7 @@ function appendSessionLog(sender, recipient, message) {
     fs.writeFileSync(
       chatFile,
       `# Commando Session Log — ${getTodayDateIst()} (${SESSION_ID})\n\n` +
-        `> **Runner**: \`scripts/commando-vertex.mjs\`\n\n---\n\n`,
+        `> **Runner**: \`scripts/commando-muse.mjs\`\n\n---\n\n`,
       'utf8'
     );
   }
@@ -217,7 +216,7 @@ function getRepoGitSnapshot() {
 // ── 4. Agent Hierarchy Registry & Context Loader ─────────────────────────────
 function buildAgentProfile(agentName, projectScope = '') {
   const normalized = agentName.replace(/^@/, '').toLowerCase();
-  const proj = projectScope || (normalized.includes('infra') ? VERTEX_CFG.infraProject : VERTEX_CFG.defaultProject);
+  const proj = projectScope || (normalized.includes('infra') ? MUSE_CFG.infraProject : MUSE_CFG.defaultProject);
 
   const baseRules =
     `You are operating inside COMMANDO (${ROOT}), the Founder/CEO's enterprise agent command center.\n` +
@@ -241,7 +240,7 @@ function buildAgentProfile(agentName, projectScope = '') {
     case 'cto':
       return {
         name: 'cto',
-        role: 'Level 0 Head of Tech (Argon High / Pro)',
+        role: 'Level 0 Head of Tech (Wonder / Pro)',
         model: CONFIG.proModel,
         systemInstruction:
           baseRules +
@@ -255,7 +254,7 @@ function buildAgentProfile(agentName, projectScope = '') {
     case 'cbo':
       return {
         name: 'cbo',
-        role: 'Level 0 Chief Business Officer (Argon High / Pro)',
+        role: 'Level 0 Chief Business Officer (Wonder / Pro)',
         model: CONFIG.proModel,
         systemInstruction:
           baseRules +
@@ -281,7 +280,7 @@ function buildAgentProfile(agentName, projectScope = '') {
           '\n\n## CEO Raw Backlog Inbox (worklist/inbox.md):\n' +
           readSafe('worklist/inbox.md', 8000) +
           '\n\n## Project Contexts:\n' +
-          VERTEX_CFG.pmContextProjects.map((slug) => readSafe(`context/${slug}.md`, 8000)).join('\n'),
+          MUSE_CFG.pmContextProjects.map((slug) => readSafe(`context/${slug}.md`, 8000)).join('\n'),
       };
 
     case 'tech_lead':
@@ -301,31 +300,31 @@ function buildAgentProfile(agentName, projectScope = '') {
     case 'infra_head':
       return {
         name: 'infra_head',
-        role: `Level 1 Head of Infrastructure (${VERTEX_CFG.infraProject} & Cloud Ops)`,
+        role: `Level 1 Head of Infrastructure (${MUSE_CFG.infraProject} & Cloud Ops)`,
         model: CONFIG.defaultModel,
         systemInstruction:
           baseRules +
           readSafe('.claude/agents/infra_head.md', 8000) +
           '\n\n## Infra Head Memory (memory/infra_head.md):\n' +
           readSafe('memory/infra_head.md', 8000) +
-          `\n\n## Infra Project Context (context/${VERTEX_CFG.infraProject}.md):\n` +
-          readSafe(`context/${VERTEX_CFG.infraProject}.md`, 10000) +
-          `\n\n## Repo Technical Context (context/${VERTEX_CFG.infraProject}/${VERTEX_CFG.infraProject}.md):\n` +
-          readSafe(`context/${VERTEX_CFG.infraProject}/${VERTEX_CFG.infraProject}.md`, 12000),
+          `\n\n## Infra Project Context (context/${MUSE_CFG.infraProject}.md):\n` +
+          readSafe(`context/${MUSE_CFG.infraProject}.md`, 10000) +
+          `\n\n## Repo Technical Context (context/${MUSE_CFG.infraProject}/${MUSE_CFG.infraProject}.md):\n` +
+          readSafe(`context/${MUSE_CFG.infraProject}/${MUSE_CFG.infraProject}.md`, 12000),
       };
 
     case 'infra_jr':
       return {
         name: 'infra_jr',
-        role: `Level 2 Infrastructure & DevOps Engineer (${VERTEX_CFG.infraProject})`,
+        role: `Level 2 Infrastructure & DevOps Engineer (${MUSE_CFG.infraProject})`,
         model: CONFIG.defaultModel,
         systemInstruction:
           baseRules +
           readSafe('.claude/agents/infra_jr.md', 8000) +
           '\n\n## Infra Jr Memory (memory/infra_jr.md):\n' +
           readSafe('memory/infra_jr.md', 8000) +
-          `\n\n## Repo Technical Context (context/${VERTEX_CFG.infraProject}/${VERTEX_CFG.infraProject}.md):\n` +
-          readSafe(`context/${VERTEX_CFG.infraProject}/${VERTEX_CFG.infraProject}.md`, 14000),
+          `\n\n## Repo Technical Context (context/${MUSE_CFG.infraProject}/${MUSE_CFG.infraProject}.md):\n` +
+          readSafe(`context/${MUSE_CFG.infraProject}/${MUSE_CFG.infraProject}.md`, 14000),
       };
 
     case 'backend_dev':
@@ -369,11 +368,11 @@ const TOOL_DECLARATIONS = [
     name: 'read_file',
     description: 'Read a file from Commando or any project repository on disk.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        filePath: { type: 'STRING', description: 'Absolute path or path relative to Commando root.' },
-        startLine: { type: 'INTEGER', description: 'Optional 1-based start line.' },
-        endLine: { type: 'INTEGER', description: 'Optional 1-based end line.' },
+        filePath: { type: 'string', description: 'Absolute path or path relative to Commando root.' },
+        startLine: { type: 'integer', description: 'Optional 1-based start line.' },
+        endLine: { type: 'integer', description: 'Optional 1-based end line.' },
       },
       required: ['filePath'],
     },
@@ -382,10 +381,10 @@ const TOOL_DECLARATIONS = [
     name: 'write_file',
     description: 'Create or overwrite a file on disk (creates parent directories automatically).',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        filePath: { type: 'STRING', description: 'Absolute path or path relative to Commando root.' },
-        content: { type: 'STRING', description: 'Full file content to write.' },
+        filePath: { type: 'string', description: 'Absolute path or path relative to Commando root.' },
+        content: { type: 'string', description: 'Full file content to write.' },
       },
       required: ['filePath', 'content'],
     },
@@ -394,11 +393,11 @@ const TOOL_DECLARATIONS = [
     name: 'edit_file',
     description: 'Replace an exact target string in an existing file with replacement content.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        filePath: { type: 'STRING', description: 'Absolute path or path relative to Commando root.' },
-        target: { type: 'STRING', description: 'Exact string to find.' },
-        replacement: { type: 'STRING', description: 'Replacement string.' },
+        filePath: { type: 'string', description: 'Absolute path or path relative to Commando root.' },
+        target: { type: 'string', description: 'Exact string to find.' },
+        replacement: { type: 'string', description: 'Replacement string.' },
       },
       required: ['filePath', 'target', 'replacement'],
     },
@@ -407,10 +406,10 @@ const TOOL_DECLARATIONS = [
     name: 'list_tree',
     description: 'List directory contents up to a specified depth.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        dirPath: { type: 'STRING', description: 'Absolute or Commando-relative directory path.' },
-        maxDepth: { type: 'INTEGER', description: 'Max recursion depth (default 2).' },
+        dirPath: { type: 'string', description: 'Absolute or Commando-relative directory path.' },
+        maxDepth: { type: 'integer', description: 'Max recursion depth (default 2).' },
       },
       required: ['dirPath'],
     },
@@ -419,10 +418,10 @@ const TOOL_DECLARATIONS = [
     name: 'run_command',
     description: 'Run a shell command in a specified working directory (git, npm, node, build, deploy).',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        cwd: { type: 'STRING', description: 'Working directory (absolute or relative to Commando root).' },
-        command: { type: 'STRING', description: 'Shell command to execute.' },
+        cwd: { type: 'string', description: 'Working directory (absolute or relative to Commando root).' },
+        command: { type: 'string', description: 'Shell command to execute.' },
       },
       required: ['cwd', 'command'],
     },
@@ -497,25 +496,56 @@ function executeToolCall(call) {
   }
 }
 
-// ── 6. Vertex AI & Gemini REST Client with Automatic Tool Loop ───────────────
-function getVertexAccessToken() {
-  if (process.env.VERTEX_ACCESS_TOKEN) return process.env.VERTEX_ACCESS_TOKEN;
-  try {
-    return execSync('gcloud auth application-default print-access-token 2>/dev/null || gcloud auth print-access-token', {
-      encoding: 'utf8',
-    }).trim();
-  } catch {
-    throw new Error(
-      'Vertex AI credentials not found. Set GEMINI_API_KEY / VERTEX_API_KEY in .env, OR set GOOGLE_CLOUD_PROJECT and run `gcloud auth application-default login`.'
-    );
+// ── 6. Meta Muse REST Client with Automatic Tool Loop ───────────────
+function toMuseMessages(systemInstruction, contents) {
+  const messages = [{ role: 'system', content: systemInstruction }];
+  for (const turn of contents) {
+    if (!Array.isArray(turn.parts)) {
+      if (turn.content) {
+        messages.push({
+          role: turn.role === 'model' ? 'assistant' : 'user',
+          content: turn.content,
+        });
+      }
+      continue;
+    }
+    const chunks = [];
+    for (const part of turn.parts) {
+      if (part.text) {
+        chunks.push(part.text);
+      } else if (part.functionCall) {
+        chunks.push(
+          `[Tool call: ${part.functionCall.name}(${JSON.stringify(part.functionCall.args || {})})]`
+        );
+      } else if (part.functionResponse) {
+        chunks.push(
+          `[Tool ${part.functionResponse.name} Output]: ${JSON.stringify(part.functionResponse.response)}`
+        );
+      }
+    }
+    messages.push({
+      role: turn.role === 'model' ? 'assistant' : 'user',
+      content: chunks.join('\n'),
+    });
   }
+  return messages;
+}
+
+function toMuseTools() {
+  return TOOL_DECLARATIONS.map((t) => ({
+    type: 'function',
+    function: { name: t.name, description: t.description, parameters: t.parameters },
+  }));
 }
 
 async function callModelGenerate({ model, systemInstruction, contents, enableTools = true }) {
-  let url = '';
-  const headers = { 'Content-Type': 'application/json' };
+  if (!CONFIG.apiKey) {
+    throw new Error(
+      'Missing credentials in .env: set META_MUSE_API_KEY (or META_MUSE_BACKUP_API_KEY).'
+    );
+  }
 
-  // TOKEN SAVING OPTIMIZATION: Compress multimodal contexts (images) to save tokens, 
+  // TOKEN SAVING OPTIMIZATION: Compress multimodal contexts (images) to save tokens,
   // particularly for designer / UI iteration tasks that span multiple turns.
   const optimizedContents = contents.map(turn => {
     if (!turn.parts) return turn;
@@ -535,40 +565,18 @@ async function callModelGenerate({ model, systemInstruction, contents, enableToo
     };
   });
 
-  if (CONFIG.apiKey) {
-    // Direct Gemini / Vertex Express API Key endpoint
-    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${CONFIG.apiKey}`;
-  } else if (CONFIG.project) {
-    // Google Cloud Vertex AI Regional / Global Endpoint
-    const token = getVertexAccessToken();
-    headers.Authorization = `Bearer ${token}`;
-    const host =
-      CONFIG.location === 'global'
-        ? 'aiplatform.googleapis.com'
-        : `${CONFIG.location}-aiplatform.googleapis.com`;
-    url = `https://${host}/v1/projects/${CONFIG.project}/locations/${CONFIG.location}/publishers/google/models/${model}:generateContent`;
-  } else {
-    throw new Error(
-      'Missing credentials in .env: set either GEMINI_API_KEY (or VERTEX_API_KEY) OR GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_LOCATION.'
-    );
-  }
-
-  const body = {
-    systemInstruction: { parts: [{ text: systemInstruction }] },
-    contents: optimizedContents,
-    generationConfig: {
-      temperature: 0.2,
-    },
-  };
-
-  if (enableTools) {
-    body.tools = [{ functionDeclarations: TOOL_DECLARATIONS }];
-  }
-
-  const res = await fetch(url, {
+  const res = await fetch(`${CONFIG.baseUrl}/chat/completions`, {
     method: 'POST',
-    headers,
-    body: JSON.stringify(body),
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${CONFIG.apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: toMuseMessages(systemInstruction, optimizedContents),
+      tools: enableTools ? toMuseTools() : undefined,
+      temperature: 0.2,
+    }),
   });
 
   if (!res.ok) {
@@ -588,25 +596,36 @@ async function runAgentTurn(profile, conversationContents, { maxToolSteps = 12, 
       enableTools,
     });
 
-    const candidate = data.candidates?.[0];
-    const content = candidate?.content;
-    if (!content?.parts?.length) {
+    const msg = data.choices?.[0]?.message;
+    const rawToolCalls = (msg?.tool_calls || []).filter((tc) => tc.function?.name);
+    if (!msg || (!msg.content && rawToolCalls.length === 0)) {
       return '[No response from model]';
     }
 
-    conversationContents.push(content);
+    const toolCalls = rawToolCalls.map((tc) => {
+      let args = {};
+      try {
+        args = JSON.parse(tc.function.arguments || '{}');
+      } catch {
+        args = { raw: tc.function.arguments };
+      }
+      return { id: tc.id, name: tc.function.name, args };
+    });
 
-    const functionCalls = content.parts.filter((p) => p.functionCall).map((p) => p.functionCall);
-    if (functionCalls.length === 0) {
-      const text = content.parts
-        .filter((p) => p.text)
-        .map((p) => p.text)
-        .join('\n');
-      return text;
+    conversationContents.push({
+      role: 'model',
+      parts: [
+        ...(msg.content ? [{ text: msg.content }] : []),
+        ...toolCalls.map((tc) => ({ functionCall: { name: tc.name, args: tc.args } })),
+      ],
+    });
+
+    if (toolCalls.length === 0) {
+      return msg.content || '';
     }
 
     const responseParts = [];
-    for (const fc of functionCalls) {
+    for (const fc of toolCalls) {
       console.log(`  🔧 [${profile.name}] -> ${fc.name}(${JSON.stringify(fc.args || {}).slice(0, 100)})`);
       const result = executeToolCall(fc);
       responseParts.push({
@@ -639,7 +658,7 @@ async function runDailyStandup({ autoExecute = false } = {}) {
   const gitSnapshot = getRepoGitSnapshot();
 
   // Step 1: Poll Level 1 Senior Leads in parallel (pm, tech_lead per project, infra_head)
-  console.log(`📡 Stage 1: Polling Level 1 Senior Leads (${VERTEX_CFG.standupLeadsLabel || 'pm, tech_leads, infra_head'})...`);
+  console.log(`📡 Stage 1: Polling Level 1 Senior Leads (${MUSE_CFG.standupLeadsLabel || 'pm, tech_leads, infra_head'})...`);
 
   const leads = getStandupLeads().map(({ agent, project, prompt }) => ({
     profile: buildAgentProfile(agent, project || ''),
@@ -659,7 +678,7 @@ async function runDailyStandup({ autoExecute = false } = {}) {
   );
 
   // Step 2: CTO synthesizes MoM & Sprint Plan into standups/<YYYY-MM-DD>-standup.md
-  console.log(`\n🧠 Stage 2: CTO (Pro / Argon High) synthesizing MoM & Daily Sprint Plan...`);
+  console.log(`\n🧠 Stage 2: CTO (Wonder / Pro) synthesizing MoM & Daily Sprint Plan...`);
   const ctoProfile = buildAgentProfile('cto');
   const templateText = readSafe('standups/TEMPLATE.md', 6000);
   const ctoPrompt =
@@ -726,7 +745,7 @@ async function runInteractiveChat(initialAgent = '@warden', initialProject = '')
   let history = [];
 
   console.log(`\n================================================================`);
-  console.log(`🎙️  COMMANDO DIRECT-TO-AGENT CLI (Vertex AI / Gemini Autonomous)`);
+  console.log(`🎙️  COMMANDO DIRECT-TO-AGENT CLI (Meta Muse Autonomous)`);
   console.log(`================================================================`);
   console.log(`Active Agent : @${profile.name} — ${profile.role} [Model: ${profile.model}]`);
   console.log(`Session Log  : ${getSessionChatPath()}`);
@@ -750,7 +769,7 @@ async function runInteractiveChat(initialAgent = '@warden', initialProject = '')
     if (input.startsWith('@')) {
       const tokens = input.split(/\s+/);
       const targetAgent = tokens[0];
-      const knownProjects = VERTEX_CFG.knownProjects.map((p) => p.toLowerCase());
+      const knownProjects = MUSE_CFG.knownProjects.map((p) => p.toLowerCase());
       let targetProj = currentProject;
       let restIdx = 1;
       if (tokens[1] && knownProjects.includes(tokens[1].toLowerCase())) {
@@ -846,7 +865,7 @@ async function main() {
     const agentArg = args[1] || '@warden';
     const promptText = args.slice(2).join(' ').trim();
     if (!promptText) {
-      console.error('Usage: node scripts/commando-vertex.mjs ask "@agent" "Your question or instruction"');
+      console.error('Usage: node scripts/commando-muse.mjs ask "@agent" "Your question or instruction"');
       process.exit(1);
     }
     const profile = buildAgentProfile(agentArg);
@@ -860,7 +879,7 @@ async function main() {
   }
 
   console.log(`
-COMMANDO — Programmatic Vertex AI / Gemini Orchestrator
+COMMANDO — Programmatic Meta Muse Orchestrator
 
 Commands:
   npm run standup                            Run the 12:00 PM IST Daily Standup (with CEO approval prompt)
@@ -869,13 +888,11 @@ Commands:
   npm run chat                               Interactive CLI chat with @warden (switchable to any @agent)
   npm run chat -- @infra_head                Direct 1-on-1 granular chat with @infra_head
   npm run chat -- @backend_dev <project>     Direct 1-on-1 granular chat with a project's @backend_dev
-  node scripts/commando-vertex.mjs ask "@cto" "What is our top technical priority today?"
+  node scripts/commando-muse.mjs ask "@cto" "What is our top technical priority today?"
 
 Environment (.env):
-  GOOGLE_CLOUD_PROJECT=your-gcp-project-id   (Uses Vertex AI via gcloud ADC)
-  GOOGLE_CLOUD_LOCATION=us-central1
-  # OR:
-  GEMINI_API_KEY=your-api-key                (Uses Gemini API directly)
+  META_MUSE_API_KEY=your-api-key                (Uses Meta Model API directly)
+  META_MUSE_BASE_URL=https://api.meta.ai/v1     (Override only for proxies)
 `);
 }
 

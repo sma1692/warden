@@ -20,7 +20,7 @@ import { PushitExecutor, type PushitResult } from './PushitExecutor.js';
 import { COMMANDO_ROOT, loadPrivateJson } from './privateData.js';
 
 /**
- * Resolves the ephemeral-VM infra CLI (`gcp-ephemeral launch|snapshot|terminate`).
+ * Resolves the ephemeral-VM infra CLI (`cloud-ephemeral launch|snapshot|terminate`).
  * Order: `INFRA_EPHEMERAL_CLI` env, then candidates from
  * `private-data/sandbox/infra-cli.json` (relative paths resolve from the repo root).
  */
@@ -50,7 +50,7 @@ const execFileAsync = promisify(execFile);
 export interface SandboxTelemetry {
   runId: string;
   containerId: string;
-  mode: 'docker' | 'local' | 'gcp-ephemeral';
+  mode: 'docker' | 'local' | 'cloud-ephemeral';
   cpuPercent: number;
   memUsedMb: number;
   memLimitMb: number;
@@ -71,7 +71,7 @@ export interface SpawnSandboxOptions {
   allowedRepos?: string[];
   permissionTier?: PermissionTier;
   preferLocalFallback?: boolean;
-  preferGcpEphemeralShift?: boolean;
+  preferCloudEphemeralShift?: boolean;
   onHeartbeat?: (telemetry: SandboxTelemetry) => void | Promise<void>;
 }
 
@@ -81,7 +81,7 @@ export interface SandboxSession {
   agentSlug: string;
   repoSlug: string;
   taskId: string;
-  mode: 'docker' | 'local' | 'gcp-ephemeral';
+  mode: 'docker' | 'local' | 'cloud-ephemeral';
   containerName: string;
   containerId: string;
   workspacePath: string;
@@ -141,24 +141,24 @@ function parseMemoryToMb(memStr: string): number {
   return Math.round(val / (1024 * 1024));
 }
 
-export interface GcpShiftInstanceInfo {
+export interface CloudShiftInstanceInfo {
   instanceId: string;
   ip: string;
   expiresAt: number;
 }
 
-export interface GcpShiftSession extends SandboxSession {
-  mode: 'gcp-ephemeral';
-  gcpInstance: GcpShiftInstanceInfo;
+export interface CloudShiftSession extends SandboxSession {
+  mode: 'cloud-ephemeral';
+  cloudInstance: CloudShiftInstanceInfo;
 }
 
 export class SandboxManager {
-  private async spawnShiftInstance(opts: SpawnSandboxOptions, agentSlug: string, shortRunId: string, repoSlug: string, gitBranch: string, previewRoute: PreviewRoute): Promise<GcpShiftSession | null> {
+  private async spawnShiftInstance(opts: SpawnSandboxOptions, agentSlug: string, shortRunId: string, repoSlug: string, gitBranch: string, previewRoute: PreviewRoute): Promise<CloudShiftSession | null> {
     const shiftKey = `${agentSlug}-${repoSlug}`;
     let activeShift = this.shiftSessions.get(shiftKey);
     const now = Date.now();
 
-    if (activeShift && now < activeShift.gcpInstance.expiresAt - 15 * 60 * 1000) {
+    if (activeShift && now < activeShift.cloudInstance.expiresAt - 15 * 60 * 1000) {
       // Warm handoff
       try {
         await execFileAsync('ssh', ['-S', `/tmp/commando-ssh-${activeShift.shortRunId}.sock`, 'commando@127.0.0.1', 'bash', '-lc', `cd /workspace/repos/${repoSlug} && git checkout -B ${gitBranch}`]);
@@ -179,7 +179,7 @@ export class SandboxManager {
 
       const { stdout } = await execFileAsync('node', [
         infraCliScript,
-        'gcp-ephemeral', 'launch',
+        'cloud-ephemeral', 'launch',
         '--run-id', shortRunId,
         '--agent', agentSlug,
         '--project', repoSlug,
@@ -210,13 +210,13 @@ export class SandboxManager {
       await execFileAsync('ssh', ['-S', sockPath, `${sshUser}@127.0.0.1`, 'bash', '-lc', `mkdir -p /workspace/repos/${repoSlug} && cd /workspace/repos/${repoSlug} && git checkout -B ${gitBranch}`]).catch(() => {});
 
       const expiresAt = result.expiresAt ? new Date(result.expiresAt).getTime() : now + ttl * 1000;
-      const session: GcpShiftSession = {
+      const session: CloudShiftSession = {
         runId: opts.runId,
         shortRunId,
         agentSlug,
         repoSlug,
         taskId: opts.taskId || shortRunId,
-        mode: 'gcp-ephemeral',
+        mode: 'cloud-ephemeral',
         containerName: instanceName,
         containerId: result.instanceId || instanceName,
         workspacePath: result.workspacePath || `/workspace/repos/${repoSlug}`,
@@ -229,13 +229,13 @@ export class SandboxManager {
         telemetry: {
           runId: opts.runId,
           containerId: result.instanceId || instanceName,
-          mode: 'gcp-ephemeral',
+          mode: 'cloud-ephemeral',
           cpuPercent: 0,
           memUsedMb: 0,
           memLimitMb: 16384,
           lastHeartbeatAt: new Date().toISOString()
         },
-        gcpInstance: {
+        cloudInstance: {
           instanceId: instanceName,
           ip: instanceIp,
           expiresAt
@@ -263,7 +263,7 @@ export class SandboxManager {
       const infraCliScript = await resolveEphemeralInfraCli();
       await execFileAsync('node', [
         infraCliScript,
-        'gcp-ephemeral', 'snapshot',
+        'cloud-ephemeral', 'snapshot',
         '--instance', runIdOrInstanceName,
         '--json'
       ]);
@@ -278,7 +278,7 @@ export class SandboxManager {
       const infraCliScript = await resolveEphemeralInfraCli();
       await execFileAsync('node', [
         infraCliScript,
-        'gcp-ephemeral', 'terminate',
+        'cloud-ephemeral', 'terminate',
         '--instance', runIdOrInstanceName,
         '--json'
       ]);
@@ -289,7 +289,7 @@ export class SandboxManager {
   }
 
   private readonly sessions = new Map<string, SandboxSession>();
-  private readonly shiftSessions = new Map<string, GcpShiftSession>();
+  private readonly shiftSessions = new Map<string, CloudShiftSession>();
   private readonly heartbeatTimers = new Map<string, NodeJS.Timeout>();
   private readonly previewRouter: PreviewRouter;
 
@@ -357,7 +357,7 @@ export class SandboxManager {
       repoSlug: opts.repoSlug,
       containerPort: repoDef.defaultPreviewPort ?? 4173
     });
-    if (opts.preferGcpEphemeralShift) {
+    if (opts.preferCloudEphemeralShift) {
       const shiftSession = await this.spawnShiftInstance(opts, agentSlug, shortRunId, opts.repoSlug, gitBranch, previewRoute);
       if (shiftSession) {
         this.sessions.set(opts.runId, shiftSession);
@@ -372,7 +372,7 @@ export class SandboxManager {
       !opts.preferLocalFallback &&
       (await this.isDockerWorkspaceAvailable(dockerImage));
 
-    let mode: 'docker' | 'local' | 'gcp-ephemeral' = 'local';
+    let mode: 'docker' | 'local' | 'cloud-ephemeral' = 'local';
     let containerId = `local-${shortRunId}`;
     let workspacePath = repoDef.hostPath;
 
@@ -534,7 +534,7 @@ export class SandboxManager {
     // 2. Execute inside Docker container or Local workspace
     try {
       const { stdout, stderr } =
-        session.mode === 'gcp-ephemeral'
+        session.mode === 'cloud-ephemeral'
           ? await execFileAsync(
               'ssh',
               [
@@ -656,7 +656,7 @@ export class SandboxManager {
 
     try {
       let content: string;
-      if (session.mode === 'gcp-ephemeral') {
+      if (session.mode === 'cloud-ephemeral') {
         const { stdout } = await execFileAsync('ssh', [
           '-S',
           `/tmp/commando-ssh-${session.shortRunId}.sock`,
@@ -750,7 +750,7 @@ export class SandboxManager {
     }
 
     try {
-      if (session.mode === 'gcp-ephemeral') {
+      if (session.mode === 'cloud-ephemeral') {
         const b64 = Buffer.from(content, 'utf8').toString('base64');
         const dir = path.posix.dirname(relativePath);
         await execFileAsync('ssh', [

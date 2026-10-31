@@ -39,7 +39,7 @@ import {
 
 const DIRECT_AGENT_TARGETS = [
   { slug: '@warden', label: '⚡ @warden (Default Executive Router)' },
-  { slug: '@cto', label: '🎙️ @cto (Level 0 Head of Tech — Argon High)' },
+  { slug: '@cto', label: '🎙️ @cto (Level 0 Head of Tech — Wonder)' },
   { slug: '@cmo', label: '🎙️ @cmo (Level 0 Chief Marketing Officer)' },
   { slug: '@pm', label: '🎙️ @pm (Level 1 Product, Funnel & Backlog)' },
   { slug: '@seo_aeo_head', label: '🎙️ @seo_aeo_head (Level 1 Head of SEO & AEO)' },
@@ -202,7 +202,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
         id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         type: file.type || 'application/octet-stream',
         filename: file.name || `clipboard-${Date.now()}.png`,
-        gcs_uri: `${MEDIA_BUCKET_URI}/uploads/${Date.now()}-${encodeURIComponent(file.name || 'capture.png')}`,
+        media_uri: `${MEDIA_BUCKET_URI}/uploads/${Date.now()}-${encodeURIComponent(file.name || 'capture.png')}`,
         public_url: dataUrl,
         base64_data: dataUrl,
         size_bytes: file.size,
@@ -277,10 +277,10 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
       agent_id: targetAgentSlug,
       agent_slug: targetAgentSlug,
       phase: 'ROUTING',
-      thought: `Analyzing directive for ${targetAgentSlug} using gemini-3.1-pro-preview...`,
+      thought: `Analyzing directive for ${targetAgentSlug} using muse-wonder-1.0...`,
       completed_step: 'CEO message received & logged',
       next_action: `Clocking in ${targetAgentSlug} and warming context + procedural memory`,
-      model_used: 'vertex/gemini-3.1-pro-preview',
+      model_used: 'meta_muse/muse-wonder-1.0',
       timestamp: new Date().toISOString(),
     });
 
@@ -509,7 +509,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
               Drop screenshots, Figma mockups, architecture diagrams, videos, or PDFs
             </p>
             <p className="text-xs text-[var(--surface-text-secondary)] mt-1">
-              Uploaded to {MEDIA_BUCKET_URI} &amp; passed natively to Vertex AI Argon / Gemini 2.5 Pro
+              Uploaded to {MEDIA_BUCKET_URI} &amp; passed natively to Meta Muse
             </p>
           </div>
         )}
@@ -603,7 +603,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
 
                     return (
                       <div className="space-y-2">
-                        {/* Antigravity-style Inline Thinking Process Accordion */}
+                        {/* Inline Thinking Process Accordion */}
                         {!isCeo && hasThinking && (
                           <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-card)] overflow-hidden text-xs">
                             <button
@@ -664,7 +664,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
                                                     ? `Delegation: ${st.tool_name || 'subagent'}`
                                                     : st.step_type === 'QA_CHECK'
                                                       ? `QA Gate: ${st.tool_name || 'verify'}`
-                                                      : `Inference: ${st.model_used || 'vertex/gemini-3.1-pro-preview'}`}
+                                                      : `Inference: ${st.model_used || 'meta_muse/muse-wonder-1.0'}`}
                                               </span>
                                             </div>
                                             <span className="text-gold-400 font-semibold">{st.duration_ms}ms</span>
@@ -726,7 +726,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
                           </div>
                         )}
 
-                        {/* Rich Antigravity-style Markdown Renderer */}
+                        {/* Rich Markdown Renderer */}
                         <div className="text-xs sm:text-sm leading-relaxed">
                           <MarkdownRenderer content={cleanContent} />
                         </div>
@@ -758,7 +758,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
                             )}
                             <div className="px-2.5 py-1.5 bg-[var(--surface-card)] border-t border-[var(--surface-border)] flex items-center justify-between text-[10px] font-mono text-[var(--surface-text-secondary)]">
                               <span className="truncate">{att.filename}</span>
-                              <span className="text-gold-400">Vertex fileData</span>
+                              <span className="text-gold-400">Muse fileData</span>
                             </div>
                           </div>
                         );
@@ -789,7 +789,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
             );
           })}
 
-          {/* LIVE STREAMING ANTIGRAVITY BRAIN TRACE WHILE AGENT IS EXECUTING */}
+          {/* LIVE STREAMING MUSE TRACE WHILE AGENT IS EXECUTING */}
           {isSending && (
             <div className="flex justify-start">
               <div className="max-w-3xl w-full rounded-2xl border border-gold-500/50 bg-[var(--surface-card)] p-4 shadow-xl shadow-gold-950/20 space-y-3">
@@ -808,11 +808,11 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
                     </span>
                   </div>
                   <span className="rounded-md bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/30 px-2 py-0.5 text-[10px] font-mono font-semibold text-[var(--surface-accent-gold)]">
-                    {liveBrainStatus?.model_used || 'vertex/gemini-3.1-pro-preview'}
+                    {liveBrainStatus?.model_used || 'meta_muse/muse-wonder-1.0'}
                   </span>
                 </div>
 
-                {/* Live 3-Pillar Antigravity Status: Thought / Completed Step / Next Action */}
+                {/* Live 3-Pillar Status: Thought / Completed Step / Next Action */}
                 <div className="space-y-2 text-xs font-mono">
                   <div className="rounded-xl border border-gold-500/30 bg-[var(--surface-panel)] p-2.5">
                     <div className="text-[10px] uppercase tracking-wider text-gold-400 font-bold mb-1">
@@ -839,7 +839,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
                         → Doing Next
                       </div>
                       <div className="text-[var(--surface-accent-gold)] text-[11px]">
-                        {liveBrainStatus?.next_action || 'Streaming Gemini 3.1 Pro inference...'}
+                        {liveBrainStatus?.next_action || 'Streaming Muse 3.1 Pro inference...'}
                       </div>
                     </div>
                   </div>
@@ -958,7 +958,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
                     handleSend(e);
                   }
                 }}
-                placeholder={`Message ${targetAgentSlug}... (Paste screenshots with Cmd+V or drag & drop files for Vertex AI Argon/Gemini)`}
+                placeholder={`Message ${targetAgentSlug}... (Paste screenshots with Cmd+V or drag & drop files for Meta Muse)`}
                 className="w-full rounded-xl bg-[var(--surface-panel)] border border-[var(--surface-border)] px-3.5 py-2 text-xs sm:text-sm text-[var(--surface-text)] placeholder:text-[var(--surface-text-secondary)] focus:outline-none focus:border-gold-500/60 resize-none"
               />
             </div>
@@ -976,7 +976,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-[var(--surface-text-secondary)]">
             <span className="flex items-center gap-1">
               <Sparkles className="h-3 w-3 text-gold-400" />
-              Multimodal Vertex AI (`{MEDIA_BUCKET_URI}` + inline base64) • Cmd+V Clipboard Paste Supported
+              Multimodal Meta Muse (`{MEDIA_BUCKET_URI}` + inline base64) • Cmd+V Clipboard Paste Supported
             </span>
             <span className="flex items-center gap-1">
               <BellRing className="h-3 w-3 text-[var(--semantic-warning)]" />

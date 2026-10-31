@@ -6,37 +6,28 @@ export type DepartmentUnit =
   | 'PLANNED_CSUITE';
 
 export type ModelProvider =
-  | 'vertex'
   | 'meta_muse'
-  | 'anthropic'
-  | 'openai'
   | 'ollama'
   | 'huggingface';
 
 export type GlobalRoutingProfile =
-  | 'GCP_ZERO_COST'
+  | 'LOCAL_ZERO_COST'
   | 'META_MUSE_HACKATHON'
   | 'CUSTOM_HYBRID';
 
 export const PROVIDER_MODELS: Record<ModelProvider, string[]> = {
-  vertex: [
-    'gemini-2.5-pro-argon-high',
-    'gemini-2.5-pro',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-  ],
   meta_muse: [
     'muse-wonder-1.0',
+    'muse-pro',
     'muse-spark-1.3',
+    'muse-light',
+    'muse-flash',
     'muse-glimmer-30b',
     'muse-image',
     'muse-voice',
   ],
-  anthropic: ['claude-sonnet-4-20250514', 'claude-3-7-sonnet-latest'],
-  openai: ['gpt-4.1', 'gpt-4.1-mini', 'o3'],
-  ollama: ['llama-3.3-70b', 'qwen2.5-coder:32b', 'muse-glimmer-30b'],
+  ollama: ['llama-3.3-70b', 'muse-glimmer-30b'],
   huggingface: [
-    'Qwen/Qwen2.5-Coder-32B-Instruct',
     'meta-llama/Llama-3.3-70B-Instruct',
   ],
 };
@@ -228,7 +219,7 @@ export interface MediaAttachment {
   id: string;
   type: string;
   filename: string;
-  gcs_uri: string;
+  media_uri: string;
   public_url: string;
   base64_data?: string;
   size_bytes?: number;
@@ -384,13 +375,13 @@ export interface SystemHealthTelemetry {
   heartbeat_ok: boolean;
   active_subagents: number;
   max_subagents_pool: number;
-  gcp_sandbox_latency_ms: number;
+  sandbox_latency_ms: number;
   active_docker_sandboxes: number;
   total_tokens_today: number;
   theoretical_usd_burn_today: number;
   telegram_pager_status: 'CONNECTED' | 'DEGRADED' | 'SIMULATED';
   db_pgvector_status: 'ONLINE' | 'FALLBACK_SEED';
-  vertex_cache_hit_rate_pct: number;
+  muse_cache_hit_rate_pct: number;
   active_routing_profile?: GlobalRoutingProfile;
   last_md_db_sync_at?: string;
   embedding_model_pinned?: string;

@@ -63,7 +63,7 @@ const QA_SCREENSHOT_SEO_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
   <rect x="52" y="80" width="696" height="145" rx="10" fill="#090d16" stroke="#06b6d4" stroke-opacity="0.4"/>
   <text x="72" y="112" fill="#22d3ee" font-family="monospace" font-size="16" font-weight="bold"># demo-game.example.com — AI Answer Engine Optimization (AEO) Manifest</text>
   <text x="72" y="140" fill="#cbd5e1" font-family="monospace" font-size="13">&gt; WebXR Hand-Tracking Dungeon Crawler on Meta Quest Browser &amp; Desktop WebGL2</text>
-  <text x="72" y="168" fill="#10b981" font-family="monospace" font-size="12">✓ GPTBot: ALLOW | ✓ PerplexityBot: ALLOW | ✓ ClaudeBot: ALLOW | ✓ Google-Extended: ALLOW</text>
+  <text x="72" y="168" fill="#10b981" font-family="monospace" font-size="12">✓ Meta-ExternalAgent: ALLOW | ✓ FacebookBot: ALLOW | ✓ MuseBot: ALLOW</text>
   <text x="72" y="196" fill="#a855f7" font-family="monospace" font-size="12">✓ Rich Snippet Validation: VideoGame + SoftwareApplication + FAQPage (0 warnings)</text>
   <rect x="52" y="245" width="335" height="150" rx="10" fill="#090d16" stroke="#1e293b"/>
   <text x="72" y="275" fill="#f8fafc" font-family="monospace" font-size="13" font-weight="bold">Lighthouse SEO &amp; Perf</text>
@@ -72,7 +72,7 @@ const QA_SCREENSHOT_SEO_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
   <rect x="413" y="245" width="335" height="150" rx="10" fill="#090d16" stroke="#1e293b"/>
   <text x="433" y="275" fill="#f8fafc" font-family="monospace" font-size="13" font-weight="bold">AI Citation Share of Voice</text>
   <text x="433" y="315" fill="#38bdf8" font-family="monospace" font-size="28" font-weight="bold">68.4% (+19%)</text>
-  <text x="433" y="348" fill="#64748b" font-family="monospace" font-size="12">Perplexity + ChatGPT Search #1 Rank</text>
+  <text x="433" y="348" fill="#64748b" font-family="monospace" font-size="12">Meta AI Answers #1 Rank</text>
 </svg>
 `)}`;
 
@@ -84,16 +84,16 @@ export const INITIAL_HEALTH_TELEMETRY: SystemHealthTelemetry = {
   heartbeat_ok: true,
   active_subagents: 32,
   max_subagents_pool: 64,
-  gcp_sandbox_latency_ms: 38,
+  sandbox_latency_ms: 38,
   active_docker_sandboxes: 4,
   total_tokens_today: 5_854_275,
   theoretical_usd_burn_today: 15.24,
   telegram_pager_status: 'CONNECTED',
   db_pgvector_status: 'ONLINE',
-  vertex_cache_hit_rate_pct: 87.4,
-  active_routing_profile: 'GCP_ZERO_COST',
+  muse_cache_hit_rate_pct: 87.4,
+  active_routing_profile: 'LOCAL_ZERO_COST',
   last_md_db_sync_at: minsAgo(2),
-  embedding_model_pinned: 'text-embedding-005 (768-dim Pinned)',
+  embedding_model_pinned: 'muse-embed-1.0 (768-dim Pinned)',
 };
 
 export const INITIAL_PROJECT_CONTEXTS: ProjectContext[] = [
@@ -184,7 +184,7 @@ export const INITIAL_PROJECT_CONTEXTS: ProjectContext[] = [
     test_cmd: 'npm run test:infra',
     dev_preview_port: null,
     architecture_doc_md:
-      '# Multi-Cloud Infra & FinOps (`infra-ops`)\n- Manages GCP Cloud SQL/Sandbox VMs, GCS binary buckets (`demo-game-assets`, `arena-demo-assets`), Cloudflare Pages (`demo-game-app`, `demo-game-landing`, `studio-landing`, `arena-demo`), and AWS pruning.',
+      '# Multi-Cloud Infra & FinOps (`infra-ops`)\n- Manages cloud SQL/Sandbox VMs, media binary buckets (`demo-game-assets`, `arena-demo-assets`), Cloudflare Pages (`demo-game-app`, `demo-game-landing`, `studio-landing`, `arena-demo`), and AWS pruning.',
     updated_at: minsAgo(11),
   },
   {
@@ -215,8 +215,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: -1,
     parent_agent_id: null,
     project_scope: 'ALL',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @warden, Chief of Staff to the Founder/CEO. Route cross-company directives across Unit A: Tech (@cto) and Unit B: Marketing (@cmo), compress upward telemetry into crisp executive briefs, and enforce zero-idle department SLAs.',
     allowed_repos: ['GLOBAL'],
@@ -244,17 +244,17 @@ export const INITIAL_AGENTS: Agent[] = [
   {
     id: 'agent_cto',
     slug: '@cto',
-    name: 'CTO (Argon High)',
+    name: 'CTO (Wonder)',
     role_title: 'Level 0 Head of Tech & Daily Standup Chair',
     department: 'TECH',
     unit_label: 'Unit A: Tech (@cto)',
     hierarchy_level: 0,
     parent_agent_id: 'agent_warden',
     project_scope: 'ALL',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-argon-high',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
-      'You are @cto (Level 0 Head of Tech) running on Argon High / Gemini 2.5 Pro. You chair the 12:00 PM IST Daily Standups, own cross-project architecture across demo-game, arcade-hub, and infra-ops, and direct @pm, @tech_lead:demo-game, @tech_lead:arcade-hub, and @infra_head.',
+      'You are @cto (Level 0 Head of Tech) running on Muse Wonder 1.0. You chair the 12:00 PM IST Daily Standups, own cross-project architecture across demo-game, arcade-hub, and infra-ops, and direct @pm, @tech_lead:demo-game, @tech_lead:arcade-hub, and @infra_head.',
     allowed_repos: ['demo-game-web', 'demo-game-api', 'grid-duel', 'sky-runner', 'infra-ops'],
     permission_tier: 'full_overdrive',
     status: 'IDLE',
@@ -287,8 +287,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 0,
     parent_agent_id: 'agent_warden',
     project_scope: 'marketing',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-argon-high',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @cmo (Level 0 Chief Marketing Officer). Own organic distribution, top-of-funnel growth, brand positioning, and Answer Engine Optimization (AEO) across demo-game.example.com, arcade-hub, example.com, and arena-demo. Direct @seo_aeo_head and coordinate laterally with @pm and @infra_head.',
     allowed_repos: ['demo-game-landing', 'studio-landing'],
@@ -323,8 +323,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 1,
     parent_agent_id: 'agent_cto',
     project_scope: 'ALL',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @pm (Level 1 Lead Product Manager). Coordinate with @pm:demo-game, @pm:arcade-hub, and @infra_head so every project maintains its prioritized P0/P1/P2 backlog and @cto has a live Collated Master Backlog (worklist/COLLATED_BACKLOG.md). Surface NEEDS_CEO human intervention tasks (questions, API keys, manual actions) and weekly standup task movements.',
     allowed_repos: ['demo-game-web', 'demo-game-landing', 'grid-duel'],
@@ -359,8 +359,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 1,
     parent_agent_id: 'agent_cto',
     project_scope: 'demo-game',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @pm:demo-game (Level 1 Project PM for Demo Game). Own worklist/demo-game/backlog.md with P0/P1/P2 priorities, flag NEEDS_CEO human intervention tasks (questions, API keys like VR_ARCADE_PUBLISH_API_KEY, manual Meta Horizon Store actions), and drive weekly sprint commitments with @tech_lead:demo-game.',
     allowed_repos: ['demo-game-web', 'demo-game-api', 'demo-game-ui', 'demo-game-docs'],
@@ -395,8 +395,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 1,
     parent_agent_id: 'agent_cto',
     project_scope: 'arcade-hub',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @pm:arcade-hub (Level 1 Project PM for arcade-hub). Own worklist/arcade-hub/backlog.md across Grid Duel (grid-duel) and Sky Runner (sky-runner), flag NEEDS_CEO human intervention tasks (questions, RUNDOT_PRODUCTION_DEPLOY_TOKEN), and drive weekly sprint commitments with @tech_lead:arcade-hub.',
     allowed_repos: ['grid-duel', 'sky-runner', 'hands-sdk'],
@@ -431,8 +431,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 1,
     parent_agent_id: 'agent_cto',
     project_scope: 'demo-game',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @tech_lead:demo-game. Own architecture and API contracts across demo-game-web, demo-game-api, and demo-game-ui. Negotiate 1-round payload contracts between @backend_dev:demo-game and @frontend_dev:demo-game and enforce Playwright WebGL QA before merge.',
     allowed_repos: ['demo-game-web', 'demo-game-api', 'demo-game-landing'],
@@ -467,8 +467,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 1,
     parent_agent_id: 'agent_cto',
     project_scope: 'arcade-hub',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @tech_lead:arcade-hub. Own architecture and contracts across grid-duel and sky-runner. Keep multiplayer matchmaking latency <40ms and verify mobile 60fps canvas rendering.',
     allowed_repos: ['grid-duel', 'sky-runner'],
@@ -503,10 +503,10 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 1,
     parent_agent_id: 'agent_cto',
     project_scope: 'infra-ops',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
-      'You are @infra_head (Level 1 Head of Infrastructure). Own infra-ops, GCP ephemeral Docker Sandbox pool, Cloud SQL pgvector, Cloudflare Pages deployments, and GCS binary asset buckets. Direct @infra_jr.',
+      'You are @infra_head (Level 1 Head of Infrastructure). Own infra-ops, ephemeral Docker Sandbox pool, cloud SQL pgvector, Cloudflare Pages deployments, and media binary asset buckets. Direct @infra_jr.',
     allowed_repos: ['infra-ops'],
     permission_tier: 'strict_gate',
     status: 'IDLE',
@@ -539,10 +539,10 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 1,
     parent_agent_id: 'agent_cmo',
     project_scope: 'marketing',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
-      'You are @seo_aeo_head (Level 1 Lead under @cmo). Drive organic discovery on Google Search and AI Answer Engines (ChatGPT Search, Perplexity, Gemini, Claude). Direct @seo_content_dev and @aeo_analyst, and coordinate deploys with @infra_head.',
+      'You are @seo_aeo_head (Level 1 Lead under @cmo). Drive organic discovery on Meta AI answers (Meta AI, Muse, Muse). Direct @seo_content_dev and @aeo_analyst, and coordinate deploys with @infra_head.',
     allowed_repos: ['demo-game-landing', 'studio-landing'],
     permission_tier: 'standard_autonomous',
     status: 'IDLE',
@@ -575,8 +575,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 2,
     parent_agent_id: 'agent_tech_lead_demo_game',
     project_scope: 'demo-game',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @backend_dev:demo-game. Modify only backend repositories (demo-game-api). Build deterministic Colyseus room state authorities, Express REST endpoints, and Redis pub/sub handlers with full integration tests.',
     allowed_repos: ['demo-game-api'],
@@ -611,8 +611,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 2,
     parent_agent_id: 'agent_tech_lead_demo_game',
     project_scope: 'demo-game',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @frontend_dev:demo-game. Modify only frontend repositories (demo-game-web, demo-game-ui). Maintain 90fps on Meta Quest 3 WebXR, zero console.error in Headless Playwright WebGL gate, and publish live preview URLs.',
     allowed_repos: ['demo-game-web'],
@@ -648,9 +648,9 @@ export const INITIAL_AGENTS: Agent[] = [
     parent_agent_id: 'agent_tech_lead_arcadehub',
     project_scope: 'arcade-hub',
     model_provider: 'ollama',
-    model_id: 'qwen2.5-coder:32b',
+    model_id: 'llama-3.3-70b',
     init_prompt:
-      'You are @backend_dev:arcade-hub running on GCP L4 Ollama (qwen2.5-coder:32b). Build ultra-fast matchmaking rooms and ELO ranking endpoints inside sky-runner.',
+      'You are @backend_dev:arcade-hub running on local GPU Ollama (llama-3.3-70b). Build ultra-fast matchmaking rooms and ELO ranking endpoints inside sky-runner.',
     allowed_repos: ['sky-runner'],
     permission_tier: 'full_overdrive',
     status: 'IDLE',
@@ -683,8 +683,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 2,
     parent_agent_id: 'agent_tech_lead_arcadehub',
     project_scope: 'arcade-hub',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @frontend_dev:arcade-hub. Build responsive 60fps multiplayer board & arcade experiences in grid-duel with instant guest onboarding.',
     allowed_repos: ['grid-duel'],
@@ -722,7 +722,7 @@ export const INITIAL_AGENTS: Agent[] = [
     model_provider: 'ollama',
     model_id: 'llama-3.3-70b',
     init_prompt:
-      'You are @infra_jr reporting to @infra_head. Execute infra-ops.js scripts for Cloudflare Pages static deploys, GCS asset sync (demo-game-assets, arena-demo-assets), and GCE Docker sandbox image warmups.',
+      'You are @infra_jr reporting to @infra_head. Execute infra-ops.js scripts for Cloudflare Pages static deploys, media asset sync (demo-game-assets, arena-demo-assets), and Docker sandbox image warmups.',
     allowed_repos: ['infra-ops'],
     permission_tier: 'strict_gate',
     status: 'IDLE',
@@ -755,8 +755,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 2,
     parent_agent_id: 'agent_seo_aeo_head',
     project_scope: 'marketing',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @seo_content_dev reporting to @seo_aeo_head. Implement llms.txt, llms-full.txt, Schema.org VideoGame/SoftwareApplication/FAQPage JSON-LD, AI crawler robots.txt rules, and high-converting programmatic landing pages across demo-game-landing and studio-landing.',
     allowed_repos: ['demo-game-landing', 'studio-landing'],
@@ -791,10 +791,10 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 2,
     parent_agent_id: 'agent_seo_aeo_head',
     project_scope: 'marketing',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
-      'You are @aeo_analyst reporting to @seo_aeo_head. Continuously benchmark citation share-of-voice across ChatGPT Search, Perplexity, Gemini, and Google AI Overviews for target WebXR & casual multiplayer prompts, and file P1/P2 AEO backlog specs.',
+      'You are @aeo_analyst reporting to @seo_aeo_head. Continuously benchmark citation share-of-voice across Meta AI answers and Muse for target WebXR & casual multiplayer prompts, and file P1/P2 AEO backlog specs.',
     allowed_repos: ['demo-game-landing', 'studio-landing'],
     permission_tier: 'standard_autonomous',
     status: 'IDLE',
@@ -827,8 +827,8 @@ export const INITIAL_AGENTS: Agent[] = [
     hierarchy_level: 0,
     parent_agent_id: 'agent_warden',
     project_scope: 'ALL',
-    model_provider: 'vertex',
-    model_id: 'gemini-3.1-pro-preview',
+    model_provider: 'meta_muse',
+    model_id: 'muse-wonder-1.0',
     init_prompt:
       'You are @cbo (Level 0 Chief Business Officer). Own B2B licensing, Meta Quest Store partnerships, publisher deals, and creator sponsorships.',
     allowed_repos: ['GLOBAL'],
@@ -925,7 +925,7 @@ export const INITIAL_AGENT_RUNS: AgentRun[] = [
     backlog_item_id: 'bl_mkt_201',
     trigger_type: 'DAILY_STANDUP',
     input_prompt:
-      'Generate /llms.txt, /llms-full.txt, and Schema.org VideoGame + FAQPage JSON-LD on demo-game-landing so ChatGPT Search and Perplexity cite demo-game.example.com #1 for WebXR dungeon crawler queries.',
+      'Generate /llms.txt, /llms-full.txt, and Schema.org VideoGame + FAQPage JSON-LD on demo-game-landing so Meta AI answers cite demo-game.example.com #1 for WebXR dungeon crawler queries.',
     output_summary:
       'Created public/llms.txt & llms-full.txt, injected structured JSON-LD into index.html, verified 100/100 Lighthouse SEO score in Playwright container.',
     status: 'RUNNING',
@@ -1015,7 +1015,7 @@ export const INITIAL_INFERENCE_STEPS: Record<string, InferenceStep[]> = {
       run_id: 'run_fe_dj_402',
       step_index: 1,
       step_type: 'LLM_INFERENCE',
-      model_used: 'vertex/gemini-2.5-pro',
+      model_used: 'meta_muse/muse-wonder-1.0',
       thinking_text:
         'Reading contracts/demo-game-spatial-loot.md and demo-game-web ECS architecture from project_contexts. Need to ensure the 3D Loot Chest HUD uses instanced BufferGeometry so Meta Quest 3 stays locked at 90Hz without GC spikes during pinch-to-equip.',
       message_text:
@@ -1035,7 +1035,7 @@ export const INITIAL_INFERENCE_STEPS: Record<string, InferenceStep[]> = {
       run_id: 'run_fe_dj_402',
       step_index: 2,
       step_type: 'TOOL_CALL',
-      model_used: 'vertex/gemini-2.5-pro',
+      model_used: 'meta_muse/muse-wonder-1.0',
       thinking_text:
         'Applying patch to `src/ecs/systems/LootInteractionSystem.ts` to subscribe to Colyseus `onLootChestOpened` state patches and bind XRHand index-thumb pinch threshold (< 0.018m).',
       message_text: 'Edited `src/ecs/systems/LootInteractionSystem.ts` and `src/ui/SpatialLootModal.tsx`.',
@@ -1067,7 +1067,7 @@ export const INITIAL_INFERENCE_STEPS: Record<string, InferenceStep[]> = {
       run_id: 'run_fe_dj_402',
       step_index: 3,
       step_type: 'QA_CHECK',
-      model_used: 'vertex/gemini-2.5-pro',
+      model_used: 'meta_muse/muse-wonder-1.0',
       thinking_text:
         'Running `npm run build` followed by Headless Playwright Chromium with WebGL2 software/GPU rasterizer to verify HTTP 200, DOM mount, 90fps frame budget, and 0 console.error.',
       message_text:
@@ -1105,7 +1105,7 @@ Running 3 tests using 1 worker (Chromium Headless + WebGL2):
       run_id: 'run_be_dj_401',
       step_index: 1,
       step_type: 'LLM_INFERENCE',
-      model_used: 'vertex/gemini-2.5-pro',
+      model_used: 'meta_muse/muse-wonder-1.0',
       thinking_text:
         'Designing Redis-backed atomic claim lock in `demo-game-api` so two players pinching the same mythic item simultaneously in WebXR cannot duplicate the item in MongoDB.',
       message_text: 'Implementing `SET NX PX 250` claim mutex in `src/rooms/DungeonRoom.ts`.',
@@ -1132,14 +1132,14 @@ Running 3 tests using 1 worker (Chromium Headless + WebGL2):
       run_id: 'run_seo_dev_801',
       step_index: 1,
       step_type: 'TOOL_CALL',
-      model_used: 'vertex/gemini-2.5-pro',
+      model_used: 'meta_muse/muse-wonder-1.0',
       thinking_text:
-        'Generating `/llms.txt` and `/llms-full.txt` following the Answer Engine Optimization spec so PerplexityBot, GPTBot, ClaudeBot, and Google-Extended index Demo Game WebXR mechanics, controls, and direct play links.',
+        'Generating `/llms.txt` and `/llms-full.txt` following the Answer Engine Optimization spec so Meta-ExternalAgent, FacebookBot, and MuseBot index Demo Game WebXR mechanics, controls, and direct play links.',
       message_text: 'Wrote `public/llms.txt`, `public/llms-full.txt`, and `VideoGame` JSON-LD schema.',
       tool_name: 'verify_aeo_schema',
       tool_args_json: {
         repo: 'demo-game-landing',
-        validate_bots: ['GPTBot', 'PerplexityBot', 'ClaudeBot', 'Google-Extended'],
+        validate_bots: ['Meta-ExternalAgent', 'FacebookBot', 'MuseBot'],
       },
       tool_output_json: {
         exit_code: 0,
@@ -1163,7 +1163,7 @@ export const INITIAL_AGENT_MEMORIES: AgentMemory[] = [
     project_scope: 'ALL',
     memory_type: 'CEO_DECISION',
     content:
-      'All frontend and backend tasks MUST execute inside ephemeral GCP Docker containers with automated Playwright WebGL verification and expose a live preview URL before marking QA_REVIEW.',
+      'All frontend and backend tasks MUST execute inside ephemeral Docker containers with automated Playwright WebGL verification and expose a live preview URL before marking QA_REVIEW.',
     source_run_id: 'run_tl_dj_901',
     is_pinned: true,
     similarity_score: 0.99,
@@ -1199,7 +1199,7 @@ export const INITIAL_AGENT_MEMORIES: AgentMemory[] = [
     project_scope: 'marketing',
     memory_type: 'PINNED_PREFERENCE',
     content:
-      'Every public landing site (demo-game.example.com, example.com, arcade-hub) must serve /llms.txt, /llms-full.txt, and explicit Allow rules for GPTBot, PerplexityBot, ClaudeBot, and Google-Extended.',
+      'Every public landing site (demo-game.example.com, example.com, arcade-hub) must serve /llms.txt, /llms-full.txt, and explicit Allow rules for Meta-ExternalAgent, FacebookBot, and MuseBot.',
     source_run_id: 'run_seo_dev_801',
     is_pinned: true,
     similarity_score: 0.98,
@@ -1211,7 +1211,7 @@ export const INITIAL_AGENT_MEMORIES: AgentMemory[] = [
     project_scope: 'infra-ops',
     memory_type: 'REPO_GOTCHA',
     content:
-      'Large 3D GLB and KTX2 textures must never be committed to git; upload via infra-ops GCS pipeline to gs://demo-game-assets with immutable Cache-Control headers.',
+      'Large 3D GLB and KTX2 textures must never be committed to git; upload via infra-ops media pipeline to media://demo-game-assets with immutable Cache-Control headers.',
     source_run_id: null,
     is_pinned: true,
     similarity_score: 0.95,
@@ -1394,7 +1394,7 @@ export const INITIAL_CHAT_MESSAGES: Record<string, ChatMessage[]> = {
       sender_agent_id: '@warden',
       recipient_agent_id: 'CEO',
       content:
-        '**Executive Routing Complete:** Dispatched `@cto` $\\rightarrow$ `@tech_lead:demo-game`. Contract `contracts/demo-game-spatial-loot.md` is locked and two ephemeral GCP Docker sandboxes (`ctr-demo-game-api-401f` and `ctr-demo-game-web-402b`) are actively executing.',
+        '**Executive Routing Complete:** Dispatched `@cto` $\\rightarrow$ `@tech_lead:demo-game`. Contract `contracts/demo-game-spatial-loot.md` is locked and two ephemeral Docker sandboxes (`ctr-demo-game-api-401f` and `ctr-demo-game-web-402b`) are actively executing.',
       run_id: 'run_tl_dj_901',
       attachments_json: [],
       created_at: minsAgo(10.5),
@@ -1413,7 +1413,7 @@ export const INITIAL_CHAT_MESSAGES: Record<string, ChatMessage[]> = {
           id: 'att_qa_dj_402',
           type: 'image/svg+xml',
           filename: 'playwright-webgl-quest3-loot-hud.svg',
-          gcs_uri: 'gs://demo-media-bucket/runs/run_fe_dj_402/qa-pass.svg',
+          media_uri: 'media://demo-media-bucket/runs/run_fe_dj_402/qa-pass.svg',
           public_url: QA_SCREENSHOT_DEMO_GAME_SVG,
         },
       ],
@@ -1454,7 +1454,7 @@ export const INITIAL_CHAT_MESSAGES: Record<string, ChatMessage[]> = {
       sender_agent_id: null,
       recipient_agent_id: '@seo_aeo_head',
       content:
-        '@seo_aeo_head Make sure ChatGPT Search, Perplexity, and Gemini rank demo-game.example.com and Acme Studio at the top for WebXR dungeon crawler and browser multiplayer queries.',
+        '@seo_aeo_head Make sure Meta AI answers and Muse rank demo-game.example.com and Acme Studio at the top for WebXR dungeon crawler and browser multiplayer queries.',
       run_id: null,
       attachments_json: [],
       created_at: minsAgo(40),
@@ -1466,14 +1466,14 @@ export const INITIAL_CHAT_MESSAGES: Record<string, ChatMessage[]> = {
       sender_agent_id: '@seo_aeo_head',
       recipient_agent_id: 'CEO',
       content:
-        '`[🎙️ Direct: @seo_aeo_head]` Understood! I paired `@seo_content_dev` and `@aeo_analyst` across `demo-game-landing` and `studio-landing`:\n\n1. **Answer Engine Manifests (`/llms.txt` & `/llms-full.txt`)**: Structured markdown digests of gameplay mechanics, Meta Quest 3 hand-tracking controls, and instant play URLs.\n2. **AI Bot Whitelisting (`robots.txt`)**: Explicit `Allow: /` for `GPTBot`, `OAI-SearchBot`, `PerplexityBot`, `ClaudeBot`, and `Google-Extended`.\n3. **Rich JSON-LD Graph**: Embedded `VideoGame`, `SoftwareApplication`, and `FAQPage` schemas (100/100 Lighthouse SEO verified).',
+        '`[🎙️ Direct: @seo_aeo_head]` Understood! I paired `@seo_content_dev` and `@aeo_analyst` across `demo-game-landing` and `studio-landing`:\n\n1. **Answer Engine Manifests (`/llms.txt` & `/llms-full.txt`)**: Structured markdown digests of gameplay mechanics, Meta Quest 3 hand-tracking controls, and instant play URLs.\n2. **AI Bot Whitelisting (`robots.txt`)**: Explicit `Allow: /` for `Meta-ExternalAgent`, `FacebookBot`, and `MuseBot`.\n3. **Rich JSON-LD Graph**: Embedded `VideoGame`, `SoftwareApplication`, and `FAQPage` schemas (100/100 Lighthouse SEO verified).',
       run_id: 'run_seo_dev_801',
       attachments_json: [
         {
           id: 'att_qa_seo_801',
           type: 'image/svg+xml',
           filename: 'aeo-lighthouse-citation-report.svg',
-          gcs_uri: 'gs://demo-media-bucket/runs/run_seo_dev_801/aeo-qa.svg',
+          media_uri: 'media://demo-media-bucket/runs/run_seo_dev_801/aeo-qa.svg',
           public_url: QA_SCREENSHOT_SEO_SVG,
         },
       ],
@@ -1488,7 +1488,7 @@ export const INITIAL_CHAT_MESSAGES: Record<string, ChatMessage[]> = {
       sender_agent_id: '@cto',
       recipient_agent_id: 'CEO',
       content:
-        '**12:00 PM IST Daily Standup Complete (`spr_2026_10_24`)**: Polled `@pm`, `@tech_lead:demo-game`, `@tech_lead:arcade-hub`, `@infra_head`, and `@seo_aeo_head`. All cross-team handshakes (GCS KTX2 asset sync + Cloudflare Pages preview routing) are locked. Review in the Standup tab or approve directly from the Gate queue.',
+        '**12:00 PM IST Daily Standup Complete (`spr_2026_10_24`)**: Polled `@pm`, `@tech_lead:demo-game`, `@tech_lead:arcade-hub`, `@infra_head`, and `@seo_aeo_head`. All cross-team handshakes (media KTX2 asset sync + Cloudflare Pages preview routing) are locked. Review in the Standup tab or approve directly from the Gate queue.',
       run_id: null,
       attachments_json: [],
       created_at: minsAgo(30),
@@ -1508,7 +1508,7 @@ export const INITIAL_SPRINT: Sprint = {
   tokens_burned: 1_842_910,
   cost_usd: 6.48,
   mom_summary_md: `### 🕛 12:00 PM IST Standup: Weekly Plan & Task Movements (Week 2026-W43)
-**Chair:** \`@cto (Argon High)\` • **Project PMs:** \`@pm:demo-game\`, \`@pm:arcade-hub\`, \`@pm\` • **Leads:** \`@tech_lead:demo-game\`, \`@tech_lead:arcade-hub\`, \`@infra_head\`, \`@seo_aeo_head\`
+**Chair:** \`@cto (Wonder)\` • **Project PMs:** \`@pm:demo-game\`, \`@pm:arcade-hub\`, \`@pm\` • **Leads:** \`@tech_lead:demo-game\`, \`@tech_lead:arcade-hub\`, \`@infra_head\`, \`@seo_aeo_head\`
 
 #### 1. 🚨 Human / CEO Intervention Tasks in Backlogs (\`NEEDS_CEO\`: 7 Items)
 - **[P0 | QUESTION]** \`[DJ-HI-01]\` Confirm production WebXR target domain (\`app.demo-game.example.com\` vs \`beta.demo-game.example.com\`) before Cloudflare Pages cutover.
@@ -1527,7 +1527,7 @@ export const INITIAL_SPRINT: Sprint = {
 #### 3. 🗓️ What is Decided for the Week (\`2026-W43\`)
 - **Demo Game (\`@pm:demo-game\` + \`@tech_lead:demo-game\`)**: Co-Op Spatial Loot Chest Sync (\`bl_dj_101\`), Boss Room Spatial Audio & Haptic Pulse (\`bl_todo_1\`), and Funnel Telemetry API.
 - **Arcade Hub (\`@pm:arcade-hub\` + \`@tech_lead:arcade-hub\`)**: Instant Rematch & Coin Wager Overlay (\`bl_rw_302\`) and Sky Runner Mobile Touch HUD Polish.
-- **Infra (\`@infra_head\` + \`@infra_jr\`)**: Demo Game Cloudflare Pages production cutover, Post-Deploy \`--verify\` flag, and GCP Sandbox Idle Reaper (\`bl_todo_2\`).
+- **Infra (\`@infra_head\` + \`@infra_jr\`)**: Demo Game Cloudflare Pages production cutover, Post-Deploy \`--verify\` flag, and Sandbox Idle Reaper (\`bl_todo_2\`).
 - **Marketing / SEO & AEO (\`@seo_aeo_head\`)**: \`/llms.txt\`, \`/llms-full.txt\`, and \`VideoGame\` JSON-LD schema (\`bl_mkt_201\`).`,
   weekly_plan_json: [
     {
@@ -1562,7 +1562,7 @@ export const INITIAL_SPRINT: Sprint = {
     },
     {
       backlog_item_id: 'bl_todo_2',
-      title: 'Automated GCP Sandbox Idle Container Reaper (15m TTL)',
+      title: 'Automated Sandbox Idle Container Reaper (15m TTL)',
       project_slug: 'infra-ops',
       pm_owner_id: '@infra_head',
       assigned_agent_id: '@infra_jr',
@@ -1637,7 +1637,7 @@ export const INITIAL_SPRINT: Sprint = {
     {
       id: 'mv_seed_5',
       backlog_item_id: 'bl_done_1',
-      title: 'GCS KTX2 BasisU Texture Pipeline & Cloudflare CDN Cache Rules',
+      title: 'Media KTX2 BasisU Texture Pipeline & Cloudflare CDN Cache Rules',
       project_slug: 'infra-ops',
       from_stage: 'QA_REVIEW',
       to_stage: 'DONE',
@@ -1855,7 +1855,7 @@ export const INITIAL_BACKLOG_ITEMS: BacklogItem[] = [
   },
   {
     id: 'bl_todo_2',
-    title: 'Automated GCP Sandbox Idle Container Reaper (15m TTL)',
+    title: 'Automated Sandbox Idle Container Reaper (15m TTL)',
     spec_md:
       'Prune paused preview containers older than 15 minutes after branch merge while snapshotting logs to Cloud SQL.',
     stage: 'TODO',
@@ -1889,7 +1889,7 @@ export const INITIAL_BACKLOG_ITEMS: BacklogItem[] = [
     id: 'bl_mkt_201',
     title: 'Ship /llms.txt, /llms-full.txt & Schema.org VideoGame JSON-LD on demo-game.example.com',
     spec_md:
-      'Full AI Answer Engine Optimization package for ChatGPT Search, PerplexityBot, ClaudeBot, and Google AI Overviews.',
+      'Full AI Answer Engine Optimization package for Meta AI answers and MuseBot.',
     stage: 'IN_PROGRESS',
     priority: 'P0',
     project_slug: 'marketing',
@@ -1921,7 +1921,7 @@ export const INITIAL_BACKLOG_ITEMS: BacklogItem[] = [
   },
   {
     id: 'bl_done_1',
-    title: 'GCS KTX2 BasisU Texture Pipeline & Cloudflare CDN Cache Rules',
+    title: 'Media KTX2 BasisU Texture Pipeline & Cloudflare CDN Cache Rules',
     spec_md:
       'Compressed 4K dungeon textures by 78% via BasisU KTX2 and deployed immutable CDN caching via infra-ops.',
     stage: 'DONE',
@@ -1952,11 +1952,11 @@ export const INITIAL_BACKLOG_ITEMS: BacklogItem[] = [
 
 export const INITIAL_PROVIDER_CREDENTIALS: ProviderCredential[] = [
   {
-    id: 'cred_vertex_primary',
-    provider: 'vertex',
-    label: 'GCP Startup Credits — Vertex AI Primary SA',
-    api_key_masked: 'gcp-sa://commando-vertex-prod@...iam.gserviceaccount.com',
-    endpoint_url: 'https://us-central1-aiplatform.googleapis.com/v1',
+    id: 'cred_meta_muse_primary',
+    provider: 'meta_muse',
+    label: 'Meta Muse Hackathon Grant — Primary',
+    api_key_masked: 'muse_live_9f8a...4d2e',
+    endpoint_url: 'https://api.meta.ai/v1',
     remaining_budget_usd: 2_480.0,
     rpm_limit: 600,
     priority_order: 1,
@@ -1993,7 +1993,7 @@ export const INITIAL_PROVIDER_CREDENTIALS: ProviderCredential[] = [
   {
     id: 'cred_ollama_gpu',
     provider: 'ollama',
-    label: 'GCP L4 GPU Self-Hosted Ollama Cluster',
+    label: 'Local GPU Self-Hosted Ollama Cluster',
     api_key_masked: 'internal-vpc://127.0.0.1:11434 (Zero Cost)',
     endpoint_url: 'http://127.0.0.1:11434/v1',
     remaining_budget_usd: 9_999.0,
@@ -2004,11 +2004,11 @@ export const INITIAL_PROVIDER_CREDENTIALS: ProviderCredential[] = [
     last_used_at: minsAgo(1.2),
   },
   {
-    id: 'cred_anthropic_1',
-    provider: 'anthropic',
-    label: 'Anthropic Claude Sonnet 4 Tier-4 Key',
-    api_key_masked: 'sk-ant-api03-77d1...90a2',
-    endpoint_url: 'https://api.anthropic.com/v1',
+    id: 'cred_meta_muse_2',
+    provider: 'meta_muse',
+    label: 'Meta Muse Wonder Architect Key',
+    api_key_masked: 'muse_live_71c4...90a2',
+    endpoint_url: 'https://api.meta.ai/v1',
     remaining_budget_usd: 340.5,
     rpm_limit: 400,
     priority_order: 2,
@@ -2017,11 +2017,11 @@ export const INITIAL_PROVIDER_CREDENTIALS: ProviderCredential[] = [
     last_used_at: hoursAgo(3),
   },
   {
-    id: 'cred_openai_1',
-    provider: 'openai',
-    label: 'OpenAI GPT-4.1 / o3 Backup Key',
-    api_key_masked: 'sk-proj-44f9...c118',
-    endpoint_url: 'https://api.openai.com/v1',
+    id: 'cred_meta_muse_3',
+    provider: 'meta_muse',
+    label: 'Meta Muse Spark Backup Key',
+    api_key_masked: 'muse_live_b3d9...c118',
+    endpoint_url: 'https://api.meta.ai/v1',
     remaining_budget_usd: 215.0,
     rpm_limit: 500,
     priority_order: 3,
@@ -2032,7 +2032,7 @@ export const INITIAL_PROVIDER_CREDENTIALS: ProviderCredential[] = [
   {
     id: 'cred_hf_vllm',
     provider: 'huggingface',
-    label: 'HF Dedicated vLLM Endpoint (Qwen2.5-Coder-32B)',
+    label: 'HF Dedicated vLLM Endpoint (Llama-3.3-70B)',
     api_key_masked: 'hf_prod_88e2...19d4',
     endpoint_url: 'https://localhost/v1',
     remaining_budget_usd: 1_200.0,

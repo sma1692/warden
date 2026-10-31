@@ -36,14 +36,14 @@ import {
 
 /**
  * Pinned Vector Embedding Invariance (`dynamocommando.md` Section 4.8.4):
- * Regardless of which chat model an agent is using (`muse-spark-1.3`, `gemini-2.5-pro`,
- * `claude-sonnet-4`, `qwen2.5-coder`), all vector embeddings (`agent_memories.embedding`,
+ * Regardless of which chat model an agent is using (`muse-spark-1.3`, `muse-wonder-1.0`,
+ * `muse-wonder-1.0`, `llama-3.3-70b`), all vector embeddings (`agent_memories.embedding`,
  * `chat_messages.embedding`, `code_chunks.embedding`) are ALWAYS computed by the single
- * pinned embedding pipeline (`text-embedding-005` on Vertex AI, `nomic-embed-text` on Ollama,
+ * pinned embedding pipeline (`muse-embed-1.0` on Meta Muse, `muse-embed-1.0` on Ollama,
  * or deterministic 768-dim trigram vector) so `pgvector` (`vector(768)`) never drifts.
  */
-export const PINNED_EMBEDDING_PROVIDER = 'vertex' as const;
-export const PINNED_EMBEDDING_MODEL_ID = 'text-embedding-005' as const;
+export const PINNED_EMBEDDING_PROVIDER = 'meta_muse' as const;
+export const PINNED_EMBEDDING_MODEL_ID = 'muse-embed-1.0' as const;
 
 export type MemoryType =
   | 'PINNED_PREFERENCE'
@@ -587,13 +587,13 @@ export class HybridMemoryEngine {
 
   /**
    * Pinned Vector Embedding Invariance (`dynamocommando.md` Section 4.8.4):
-   * Always routes through the pinned 768-dim embedding pipeline (`text-embedding-005` on Vertex AI,
-   * `nomic-embed-text` on Ollama, or deterministic 768-dim trigram vector) regardless of which
-   * chat model (`muse-spark-1.3`, `gemini-2.5-pro`, `claude-sonnet-4`, `qwen2.5-coder`) an agent uses.
+   * Always routes through the pinned 768-dim embedding pipeline (`muse-embed-1.0` on Meta Muse,
+   * `muse-embed-1.0` on Ollama, or deterministic 768-dim trigram vector) regardless of which
+   * chat model (`muse-spark-1.3`, `muse-wonder-1.0`, `muse-wonder-1.0`, `llama-3.3-70b`) an agent uses.
    */
   public async embedWithPinnedPipeline(text: string): Promise<number[]> {
     const pinnedProvider =
-      (process.env.PINNED_EMBEDDING_PROVIDER as 'vertex' | 'ollama' | 'deterministic' | undefined) ||
+      (process.env.PINNED_EMBEDDING_PROVIDER as 'meta_muse' | 'ollama' | 'deterministic' | undefined) ||
       PINNED_EMBEDDING_PROVIDER;
     const pinnedModelId =
       process.env.PINNED_EMBEDDING_MODEL || PINNED_EMBEDDING_MODEL_ID;

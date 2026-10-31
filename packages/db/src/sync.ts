@@ -2,7 +2,7 @@
  * DynamoCommando Bi-Directional Markdown <-> Database Sync Engine (`packages/db/src/sync.ts`)
  *
  * Bridges the two co-existing operating modes of Commando:
- *  1. **Native IDE Mode (Antigravity / Claude Code)**: Reads & writes `context/**`, `memory/**`,
+ *  1. **Native IDE Mode (Muse)**: Reads & writes `context/**`, `memory/**`,
  *     `worklist/**`, `standups/**`, and `chats/**` directly on disk without needing Docker or PostgreSQL.
  *  2. **Production Web OS & Orchestrator Mode**: Reads & writes PostgreSQL 16 + pgvector (and
  *     `.state/dynamocommando-db.json` dual-mode snapshot).
