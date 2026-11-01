@@ -1,5 +1,5 @@
 // ============================================================================
-// @commando/db — Drizzle ORM PostgreSQL + pgvector Schema & TypeScript Types
+// @warden/db — Drizzle ORM PostgreSQL + pgvector Schema & TypeScript Types
 // ============================================================================
 
 export type Department =
@@ -636,7 +636,7 @@ export const project_contexts = pgTable('project_contexts', {
   local_path: text('local_path'),
   default_branch: text('default_branch').notNull().default('main'),
   role: text('role').$type<RepoRole>().notNull(),
-  docker_base_image: text('docker_base_image').notNull().default('commando-workspace:latest'),
+  docker_base_image: text('docker_base_image').notNull().default('warden-workspace:latest'),
   build_cmd: text('build_cmd'),
   test_cmd: text('test_cmd'),
   dev_preview_port: integer('dev_preview_port'),

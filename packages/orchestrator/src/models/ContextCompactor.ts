@@ -1,6 +1,6 @@
 /**
- * DYNAMO COMMANDO — Automatic Context Compaction (`60K Token Threshold`) & Meta Muse Context Cache Manager
- * (`dynamocommando.md` Section 4.7)
+ * WARDEN — Automatic Context Compaction (`60K Token Threshold`) & Meta Muse Context Cache Manager
+ * (the architecture spec Section 4.7)
  *
  * Responsibilities:
  * 1. Monitors cumulative conversation / turn context token volume.

@@ -58,7 +58,7 @@ Collect the technical portfolio details:
 
 ### Phase 3: Automated Artifact & Configuration Generation
 
-Write all collected data to disk using the standard Commando schema:
+Write all collected data to disk using the standard Warden schema:
 
 - **`projects.yaml` Configuration**:
   - Write `projects.yaml` in the workspace root using the format defined in `projects.example.yaml`.
@@ -66,14 +66,14 @@ Write all collected data to disk using the standard Commando schema:
   - Include `shared_search_roots` if projects share a parent directory.
 - **IDE Permissions (`.claude/settings.local.json`)**:
   - Read existing `.claude/settings.local.json` (or start from `.claude/settings.example.json`).
-  - Add each onboarded repository path and the Commando root to `additionalDirectories`.
+  - Add each onboarded repository path and the Warden root to `additionalDirectories`.
   - Add matching `Read(<repo>/**)`, `Edit(<repo>/**)`, `Write(<repo>/**)`, and git command execution patterns to `permissions.allow`.
   - Write the updated file to `.claude/settings.local.json`.
 - **Zero-Popup Sandbox Mirroring (`.state/mirror/<repo>`)**:
   - For each configured project, execute:
     `node scripts/repo-tool.mjs sync-in <project>`
   - This clones/pulls the external repository and mirrors the fresh source tree into `.state/mirror/<repo-alias>/`.
-  - **Zero-Popup Guarantee**: All Level 2 developers (`frontend_dev`, `backend_dev`, `systems_cpp_dev`, `rust_lowlat_dev`, `xr_3d_dev`, `sec_auditor`, `infra_jr`) are instructed to work exclusively inside `.state/mirror/<repo-alias>/` with `BypassSandbox: false`. This keeps all file modifications inside the Commando workspace root, preventing IDE and OS security permission popups.
+  - **Zero-Popup Guarantee**: All Level 2 developers (`frontend_dev`, `backend_dev`, `systems_cpp_dev`, `rust_lowlat_dev`, `xr_3d_dev`, `sec_auditor`, `infra_jr`) are instructed to work exclusively inside `.state/mirror/<repo-alias>/` with `BypassSandbox: false`. This keeps all file modifications inside the Warden workspace root, preventing IDE and OS security permission popups.
   - Upon task completion, changes are synced back and pushed using `node scripts/repo-tool.mjs sync-out <project>`.
 - **`context/` Directory Initialization**:
   - `context/warden.md`: Write founder profile, core operating philosophy, working cadence, and delegation rules.

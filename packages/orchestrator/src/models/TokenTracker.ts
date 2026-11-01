@@ -1,6 +1,6 @@
 /**
- * DYNAMO COMMANDO — Full-Spectrum Token Telemetry & Budget Guardrail Engine
- * (`dynamocommando.md` Section 4.7)
+ * WARDEN — Full-Spectrum Token Telemetry & Budget Guardrail Engine
+ * (the architecture spec Section 4.7)
  *
  * Tracks:
  * - `tokens_in` (fresh prompt/input tokens)

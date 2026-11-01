@@ -1,11 +1,11 @@
 /**
- * DynamoCommando Bi-Directional Markdown <-> Database Sync Engine (`packages/db/src/sync.ts`)
+ * Warden Bi-Directional Markdown <-> Database Sync Engine (`packages/db/src/sync.ts`)
  *
- * Bridges the two co-existing operating modes of Commando:
+ * Bridges the two co-existing operating modes of Warden:
  *  1. **Native IDE Mode (Muse)**: Reads & writes `context/**`, `memory/**`,
  *     `worklist/**`, `standups/**`, and `chats/**` directly on disk without needing Docker or PostgreSQL.
  *  2. **Production Web OS & Orchestrator Mode**: Reads & writes PostgreSQL 16 + pgvector (and
- *     `.state/dynamocommando-db.json` dual-mode snapshot).
+ *     `.state/warden-db.json` dual-mode snapshot).
  *
  * Exports:
  *  - `syncDiskToDb(options?)`: Ingests latest Markdown edits from disk into DB + 768-dim vector index.

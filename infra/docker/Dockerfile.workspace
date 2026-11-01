@@ -1,5 +1,5 @@
 # ==============================================================================
-# DYNAMO COMMANDO — Ephemeral Agent Workspace Base Image (`commando-workspace:latest`)
+# WARDEN — Ephemeral Agent Workspace Base Image (`warden-workspace:latest`)
 # ==============================================================================
 # Provides an isolated, zero-permission-prompt execution environment on any cloud or
 # local Docker for backend, frontend, WebXR/WebGL, and cloud infra agents:
@@ -7,22 +7,22 @@
 # - Runtime: Node.js 22 LTS, Python 3, Git, ripgrep, jq, curl, rsync, openssh-client
 # - Cloud & Deploy CLIs: Cloudflare Wrangler, PM2
 # - Built-in Entrypoint & QA Helpers:
-#     * /usr/local/bin/commando-entrypoint.sh (30s CPU/RAM heartbeat + idle daemon)
-#     * /usr/local/bin/commando-webgl-qa.mjs (Headless Chromium + SwiftShader WebGL QA)
+#     * /usr/local/bin/warden-entrypoint.sh (30s CPU/RAM heartbeat + idle daemon)
+#     * /usr/local/bin/warden-webgl-qa.mjs (Headless Chromium + SwiftShader WebGL QA)
 # ==============================================================================
 
 FROM mcr.microsoft.com/playwright:v1.50.0-noble
 
-LABEL org.opencontainers.image.title="commando-workspace"
-LABEL org.opencontainers.image.description="DynamoCommando Ephemeral Agent Sandbox with Node 22, Python 3, Playwright Chromium + SwiftShader WebGL, and Wrangler"
-ARG IMAGE_VENDOR="Commando"
+LABEL org.opencontainers.image.title="warden-workspace"
+LABEL org.opencontainers.image.description="Warden Ephemeral Agent Sandbox with Node 22, Python 3, Playwright Chromium + SwiftShader WebGL, and Wrangler"
+ARG IMAGE_VENDOR="Warden"
 LABEL org.opencontainers.image.vendor="${IMAGE_VENDOR}"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     NODE_ENV=development \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     FORCE_COLOR=1 \
-    COMMANDO_SANDBOX=1 \
+    WARDEN_SANDBOX=1 \
     WORKSPACE_ROOT=/workspace
 
 # 1. Install system utilities, Python 3, ripgrep, jq, rsync, and Mesa/EGL/GLES for headless WebGL
@@ -61,7 +61,7 @@ RUN npm install -g \
 # 3. Pre-configure Git identity for automated `pushit` commits.
 #    Override with --build-arg GIT_USER_NAME=... --build-arg GIT_USER_EMAIL=...
 ARG GIT_USER_NAME="S.M:A"
-ARG GIT_USER_EMAIL="commando-bot@users.noreply.github.com"
+ARG GIT_USER_EMAIL="warden-bot@users.noreply.github.com"
 RUN git config --system user.name "${GIT_USER_NAME}" \
     && git config --system user.email "${GIT_USER_EMAIL}" \
     && git config --system init.defaultBranch main \
@@ -69,14 +69,14 @@ RUN git config --system user.name "${GIT_USER_NAME}" \
     && git config --system advice.detachedHead false
 
 # 4. Create workspace & state directories
-RUN mkdir -p /workspace /var/log/commando /tmp/commando-qa
+RUN mkdir -p /workspace /var/log/warden /tmp/warden-qa
 
 # 5. Install in-container Headless Playwright + WebGL verification script
-RUN cat <<'EOF' > /usr/local/bin/commando-webgl-qa.mjs
+RUN cat <<'EOF' > /usr/local/bin/warden-webgl-qa.mjs
 #!/usr/bin/env node
 /**
  * In-container Playwright Headless Chromium + SwiftShader WebGL QA Runner
- * Usage: node /usr/local/bin/commando-webgl-qa.mjs --url http://localhost:4173 --out /tmp/commando-qa/qa.png
+ * Usage: node /usr/local/bin/warden-webgl-qa.mjs --url http://localhost:4173 --out /tmp/warden-qa/qa.png
  */
 import { chromium } from 'playwright';
 
@@ -87,7 +87,7 @@ function getArg(flag, fallback) {
 }
 
 const targetUrl = getArg('--url', 'http://127.0.0.1:4173');
-const screenshotPath = getArg('--out', '/tmp/commando-qa/qa-screenshot.png');
+const screenshotPath = getArg('--out', '/tmp/warden-qa/qa-screenshot.png');
 const timeoutMs = Number(getArg('--timeout', '25000'));
 
 const consoleErrors = [];
@@ -210,13 +210,13 @@ try {
 EOF
 
 # 6. Install container entrypoint script (emits 30s CPU/RAM heartbeat + keeps sandbox warm)
-RUN cat <<'EOF' > /usr/local/bin/commando-entrypoint.sh
+RUN cat <<'EOF' > /usr/local/bin/warden-entrypoint.sh
 #!/usr/bin/env bash
 set -euo pipefail
 
-HEARTBEAT_FILE="/var/log/commando/heartbeat.json"
-RUN_ID="${COMMANDO_RUN_ID:-unknown}"
-AGENT_SLUG="${COMMANDO_AGENT_SLUG:-unknown}"
+HEARTBEAT_FILE="/var/log/warden/heartbeat.json"
+RUN_ID="${WARDEN_RUN_ID:-unknown}"
+AGENT_SLUG="${WARDEN_AGENT_SLUG:-unknown}"
 
 emit_heartbeat() {
   local ts
@@ -258,9 +258,9 @@ else
 fi
 EOF
 
-RUN chmod +x /usr/local/bin/commando-webgl-qa.mjs /usr/local/bin/commando-entrypoint.sh
+RUN chmod +x /usr/local/bin/warden-webgl-qa.mjs /usr/local/bin/warden-entrypoint.sh
 
 WORKDIR /workspace
 EXPOSE 4173 5173 8080 9001
 
-ENTRYPOINT ["/usr/local/bin/commando-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/warden-entrypoint.sh"]

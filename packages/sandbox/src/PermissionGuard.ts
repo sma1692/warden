@@ -138,7 +138,7 @@ const BLOCKED_READ_PATH_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
 ];
 
 /**
- * Enforces the 8,000-token maximum ceiling per tool output (Section 4.7 of `dynamocommando.md`).
+ * Enforces the 8,000-token maximum ceiling per tool output (Section 4.7 of the architecture spec).
  * Uses a conservative 4 chars/token heuristic (32,000 chars for 8,000 tokens) and preserves both
  * the head (75%) and tail (25%) of the output so build/test errors at the end of logs are never lost.
  */

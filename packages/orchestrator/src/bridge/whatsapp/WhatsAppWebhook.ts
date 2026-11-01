@@ -350,7 +350,7 @@ async function replyWithAck(to: string, run: () => Promise<string | null>): Prom
     answer = await run();
   } catch (err) {
     console.warn(`[WHATSAPP] handler error: ${(err as Error).message}`);
-    answer = 'Something went wrong while processing your message. Check the Commando dashboard.';
+    answer = 'Something went wrong while processing your message. Check the Warden dashboard.';
   } finally {
     clearTimeout(timer);
   }

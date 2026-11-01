@@ -1,5 +1,5 @@
 // ============================================================================
-// @commando/db — Corporate & Technical Agent Roster Seed Definitions
+// @warden/db — Corporate & Technical Agent Roster Seed Definitions
 // ============================================================================
 
 import type {

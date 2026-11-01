@@ -30,7 +30,7 @@ Go to **App settings > Basic** and copy the **App secret**. The bridge uses it t
 
 ## 5. Environment variables
 
-Add these to `.env` at the Commando root:
+Add these to `.env` at the Warden root:
 
 ```bash
 WHATSAPP_API_TOKEN=EAAG...                 # temp or System User token
@@ -39,7 +39,7 @@ WHATSAPP_CEO_NUMBER=919812345678           # your number, digits only, country c
 WHATSAPP_VERIFY_TOKEN=pick-any-long-random-string
 WHATSAPP_APP_SECRET=abc123...              # App settings > Basic
 WHATSAPP_GRAPH_VERSION=v26.0               # optional
-WHATSAPP_REMINDER_TEMPLATE=commando_reminder   # optional, see section 9
+WHATSAPP_REMINDER_TEMPLATE=warden_reminder   # optional, see section 9
 WHATSAPP_TEMPLATE_LANG=en_US               # optional
 WHATSAPP_OTP_TEMPLATE=warden_login       # optional, fallback sign-in codes, see section 11
 WHATSAPP_BUSINESS_NUMBER=15551234567      # number users message to sign in, see section 10
@@ -90,10 +90,10 @@ curl "http://localhost:4000/webhook/whatsapp?hub.mode=subscribe&hub.verify_token
 Create a reminder template:
 
 1. Go to **WhatsApp Manager > Message templates** (https://business.facebook.com/wa/manage/message-templates) and click **Create template**.
-2. Pick category **Utility**, name `commando_reminder`, and language **English (US)**.
-3. Set the body to `Commando reminder: {{1}}` and give a sample value.
+2. Pick category **Utility**, name `warden_reminder`, and language **English (US)**.
+3. Set the body to `Warden reminder: {{1}}` and give a sample value.
 4. Submit the template. Approval usually takes minutes.
-5. Set `WHATSAPP_REMINDER_TEMPLATE=commando_reminder` and `WHATSAPP_TEMPLATE_LANG=en_US`.
+5. Set `WHATSAPP_REMINDER_TEMPLATE=warden_reminder` and `WHATSAPP_TEMPLATE_LANG=en_US`.
 
 When free-form text fails with `131047`, the bridge resends it through this template, with the text (up to 1000 characters, on one line) as `{{1}}`.
 

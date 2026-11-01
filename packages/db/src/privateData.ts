@@ -1,8 +1,8 @@
 // ============================================================================
-// @commando/db — Deployment-specific data loader
+// @warden/db — Deployment-specific data loader
 // ============================================================================
 // Private, deployment-specific data (agent rosters with project-scoped prompts,
-// project keyword maps, preview ports) lives in `<COMMANDO_ROOT>/private-data/db/`
+// project keyword maps, preview ports) lives in `<WARDEN_ROOT>/private-data/db/`
 // and is never published. When absent, generic fallbacks are derived from
 // `projects.yaml` (see `projects.example.yaml`).
 
@@ -12,11 +12,11 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import type { Department } from './schema.ts';
 
-export const COMMANDO_ROOT: string =
-  process.env.COMMANDO_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+export const WARDEN_ROOT: string =
+  process.env.WARDEN_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 export const PRIVATE_DATA_DIR: string =
-  process.env.COMMANDO_PRIVATE_DATA_DIR || path.join(COMMANDO_ROOT, 'private-data');
+  process.env.WARDEN_PRIVATE_DATA_DIR || path.join(WARDEN_ROOT, 'private-data');
 
 /**
  * Reads `<PRIVATE_DATA_DIR>/<relPath>` as JSON, or returns `undefined` when missing/invalid.
@@ -43,7 +43,7 @@ export interface ConfiguredProject {
  * Parses the `projects:` map from `projects.yaml` (gitignored). Returns [] when absent.
  */
 export function loadConfiguredProjects(): ConfiguredProject[] {
-  const file = process.env.PROJECTS_YAML || path.join(COMMANDO_ROOT, 'projects.yaml');
+  const file = process.env.PROJECTS_YAML || path.join(WARDEN_ROOT, 'projects.yaml');
   try {
     if (!fs.existsSync(file)) return [];
     const doc = (YAML.parse(fs.readFileSync(file, 'utf8')) || {}) as {
@@ -101,8 +101,8 @@ function buildFallbackProfile(): DeploymentProfile {
   const projects = loadConfiguredProjects();
   const tech = projects.filter((p) => p.department === 'tech').map((p) => p.slug);
   const infra = projects.filter((p) => p.department === 'infra').map((p) => p.slug);
-  const defaultProject = process.env.COMMANDO_DEFAULT_PROJECT || tech[0] || 'demo-app';
-  const infraProject = process.env.COMMANDO_INFRA_PROJECT || infra[0] || 'infra';
+  const defaultProject = process.env.WARDEN_DEFAULT_PROJECT || tech[0] || 'demo-app';
+  const infraProject = process.env.WARDEN_INFRA_PROJECT || infra[0] || 'infra';
   const devScoped = tech.length ? tech : [defaultProject];
 
   const projectKeywordRules: ProjectKeywordRule[] = projects.map((p) => ({

@@ -463,7 +463,7 @@ function getWardenPublicFiles() {
       'scripts/token-report.mjs',
       'scripts/sync-md-db.ts',
       'scripts/migrate-md-to-db.ts',
-      'scripts/commando-muse.mjs',
+      'scripts/warden-muse.mjs',
       'scripts/build-kit.mjs',
       '.agents/skills/**',
       '.claude/agents/**',
@@ -503,7 +503,6 @@ function getWardenPublicFiles() {
       'dist-*/**',
       '**/node_modules/**',
       'projects.yaml',
-      'dynamocommando.md',
       '**/*.patch',
       '.claude/settings*.json',
       '**/*.pem',
@@ -687,7 +686,7 @@ function verifyDirectory(dirPath, rules) {
         const match = rule.re.exec(line);
         if (match) {
           // Allow internal docker-compose postgres password
-          if (rule.id === 'postgres-url-password' && match[0].includes('commando:commando_secret@')) {
+          if (rule.id === 'postgres-url-password' && match[0].includes('warden:warden_secret@')) {
             continue;
           }
           // Allow example emails

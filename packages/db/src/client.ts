@@ -1,5 +1,5 @@
 // ============================================================================
-// @commando/db — Dual-Mode PostgreSQL + pgvector Client & Vector Math Utilities
+// @warden/db — Dual-Mode PostgreSQL + pgvector Client & Vector Math Utilities
 // ============================================================================
 
 import fs from 'node:fs';
@@ -10,11 +10,11 @@ import { schema } from './schema.ts';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const COMMANDO_ROOT = path.resolve(__dirname, '../../..');
+export const WARDEN_ROOT = path.resolve(__dirname, '../../..');
 
 // Auto-load root `.env` so DATABASE_URL, META_MUSE_API_KEY, TELEGRAM_* work from any workspace cwd
 (function loadRootEnv() {
-  const envPath = path.join(COMMANDO_ROOT, '.env');
+  const envPath = path.join(WARDEN_ROOT, '.env');
   if (!fs.existsSync(envPath)) return;
   try {
     const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
@@ -38,12 +38,12 @@ export const COMMANDO_ROOT = path.resolve(__dirname, '../../..');
 })();
 
 export const DEFAULT_SNAPSHOT_PATH =
-  process.env.COMMANDO_DB_SNAPSHOT_PATH ||
-  path.join(COMMANDO_ROOT, '.state', 'dynamocommando-db.json');
-export const INIT_SQL_PATH = path.join(COMMANDO_ROOT, 'infra', 'postgres', 'init.sql');
+  process.env.WARDEN_DB_SNAPSHOT_PATH ||
+  path.join(WARDEN_ROOT, '.state', 'warden-db.json');
+export const INIT_SQL_PATH = path.join(WARDEN_ROOT, 'infra', 'postgres', 'init.sql');
 export const DEFAULT_DATABASE_URL =
   process.env.DATABASE_URL ||
-  'postgresql://commando:commando_secret@localhost:5432/dynamocommando';
+  'postgresql://warden:warden_secret@localhost:5432/warden';
 
 /**
  * Computes cosine similarity in [-1, 1] between two numeric vectors (e.g. 768-dim embeddings).

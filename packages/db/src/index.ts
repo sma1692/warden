@@ -1,8 +1,8 @@
 /**
- * @commando/db — DynamoCommando Database & Vector Layer (PostgreSQL 16 + pgvector + Drizzle ORM)
+ * @warden/db — Warden Database & Vector Layer (PostgreSQL 16 + pgvector + Drizzle ORM)
  *
  * Exports:
- * - Schema definitions & TypeScript row interfaces for all 13 DynamoCommando tables (`schema.ts`)
+ * - Schema definitions & TypeScript row interfaces for all 13 Warden tables (`schema.ts`)
  * - Seed roster for all 19 corporate & technical hierarchy agents, provider credentials, & routing profiles (`seed-agents.ts`)
  * - PostgreSQL + pgvector client & deterministic 768-dim embedding helpers (`client.ts`)
  * - Dual-mode DatabaseStore (`dbStore`, `db`) supporting live PostgreSQL + pgvector and local JSON fallback (`store.ts`)

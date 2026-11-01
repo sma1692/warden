@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * DynamoCommando Bi-Directional Markdown <-> Database Sync CLI (`scripts/sync-md-db.ts`)
+ * Warden Bi-Directional Markdown <-> Database Sync CLI (`scripts/sync-md-db.ts`)
  *
  * Usage:
  *   node scripts/sync-md-db.ts                       # Bi-directional sync (Disk -> DB -> Disk)
@@ -28,7 +28,7 @@ async function main() {
   const writeNewBacklogFiles = args.includes('--write-new-backlog');
 
   console.log('====================================================================');
-  console.log(` DynamoCommando — Bi-Directional IDE Markdown <-> DB Sync (${dirArg})`);
+  console.log(` Warden — Bi-Directional IDE Markdown <-> DB Sync (${dirArg})`);
   console.log('====================================================================');
 
   const { mode } = await dbStore.init();

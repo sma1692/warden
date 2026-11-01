@@ -195,7 +195,7 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
 
 /**
  * AgentRunner — Ephemeral Docker Sandbox + Multi-Step LLM & Tool Execution Engine
- * (dynamocommando.md Sections 2, 3, 4.4, 4.5, 4.6, 4.7)
+ * (the architecture spec Sections 2, 3, 4.4, 4.5, 4.6, 4.7)
  */
 export class AgentRunner {
   private store: OrchestratorStore;
@@ -233,7 +233,7 @@ export class AgentRunner {
       this.store.getAgent('warden')!;
 
     const runStartMs = Date.now();
-    const primaryRepo = agent.allowed_repos[0] || 'commando';
+    const primaryRepo = agent.allowed_repos[0] || 'warden';
     const branchSlug = params.backlogItemId
       ? params.backlogItemId.replace(/[^a-zA-Z0-9_-]/g, '-')
       : `task-${randomUUID().slice(0, 6)}`;
@@ -278,7 +278,7 @@ export class AgentRunner {
       run.id
     );
 
-    // 2. Spawn or reuse Ephemeral Docker Sandbox via @commando/sandbox
+    // 2. Spawn or reuse Ephemeral Docker Sandbox via @warden/sandbox
     const sandboxInfo =
       existingRun?.container_id && existingRun?.preview_url
         ? { containerId: existingRun.container_id, previewUrl: existingRun.preview_url }
@@ -1044,7 +1044,7 @@ export class AgentRunner {
 
   private resolveRepoWorkspaceRoot(repoSlug: string): string {
     const mirrorPath = path.join(
-      this.store.commandoRoot,
+      this.store.wardenRoot,
       '.state',
       'mirror',
       repoSlug
@@ -1059,7 +1059,7 @@ export class AgentRunner {
         fs.existsSync(ctx.local_path)
       ) {
         const subMirror = path.join(
-          this.store.commandoRoot,
+          this.store.wardenRoot,
           '.state',
           'mirror',
           ctx.repo_slug
@@ -1070,7 +1070,7 @@ export class AgentRunner {
         return ctx.local_path;
       }
     }
-    return this.store.commandoRoot;
+    return this.store.wardenRoot;
   }
 
   private accumulateRunTokens(
@@ -1161,7 +1161,7 @@ export class AgentRunner {
     run: AgentRunRecord,
     tc: ToolCallInvocation,
     containerId: string,
-    primaryRepo = 'commando'
+    primaryRepo = 'warden'
   ): Promise<{
     codeModified: boolean;
     pausedForCeo: boolean;
@@ -1840,7 +1840,7 @@ export class AgentRunner {
     const fallbackContainerId = `sbx-${agent.id.replace(/[^a-z0-9]/gi, '-')}-${shortId}`;
 
     try {
-      const modName = '@commando/sandbox';
+      const modName = '@warden/sandbox';
       const sandboxMod = await import(/* @vite-ignore */ modName).catch(
         () => null
       );
@@ -1881,7 +1881,7 @@ export class AgentRunner {
     const screenshotUrl = `/media/qa-${runId.slice(0, 8)}.svg`;
 
     try {
-      const modName = '@commando/sandbox';
+      const modName = '@warden/sandbox';
       const sandboxMod = await import(/* @vite-ignore */ modName).catch(
         () => null
       );

@@ -364,10 +364,10 @@ let poolPromise: Promise<PgPoolLike> | null = null;
 async function getPool(): Promise<PgPoolLike> {
   if (!poolPromise) {
     poolPromise = (async () => {
-      const modName = '@commando/db';
+      const modName = '@warden/db';
       const mod: any = await import(/* @vite-ignore */ modName);
       const client = mod.pgClient;
-      if (!client) throw new Error('@commando/db pgClient not exported');
+      if (!client) throw new Error('@warden/db pgClient not exported');
       const ok = await client.connect();
       const pool = client.getPool?.();
       if (!ok || !pool) throw new Error('PostgreSQL not reachable (reminders require DATABASE_URL)');

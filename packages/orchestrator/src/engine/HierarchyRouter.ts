@@ -33,7 +33,7 @@ export interface RouteChatMessageResult {
 
 /**
  * HierarchyRouter — Corporate & Technical Command Chain Router
- * (dynamocommando.md Section 1.5)
+ * (the architecture spec Section 1.5)
  *
  * Supports:
  * 1. Default Executive Mode (`@warden` -> `@cto` / `@cmo` -> Level 1 -> Level 2) with upward compression.

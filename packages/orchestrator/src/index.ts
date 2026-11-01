@@ -109,12 +109,12 @@ export * from "./media/MediaUploadService.js";
 export async function startOrchestrator(options?: {
   port?: number;
   host?: string;
-  commandoRoot?: string;
+  wardenRoot?: string;
 }): Promise<ControlPlaneServer> {
   const server = new ControlPlaneServer({
     port: options?.port ?? Number(process.env.ORCHESTRATOR_PORT ?? process.env.PORT ?? 4000),
     host: options?.host ?? process.env.ORCHESTRATOR_HOST ?? "0.0.0.0",
-    commandoRoot: options?.commandoRoot
+    wardenRoot: options?.wardenRoot
   });
 
   await server.start();

@@ -29,7 +29,7 @@ export interface ApproveSprintResult {
 
 /**
  * StandupCoordinator — 12:00 PM IST Automated & On-Demand Daily Standup Engine
- * (dynamocommando.md Sections 1.5, 4.8, 5.3)
+ * (the architecture spec Sections 1.5, 4.8, 5.3)
  *
  * 1. Polls `@pm`, each project's `@pm:<project>` / `@tech_lead:<project>`, `@infra_head`, and `@seo_aeo_head`.
  * 2. Triages raw `INBOX` items into `TODO` with assigned priority & executor agent.

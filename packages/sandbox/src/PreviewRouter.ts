@@ -25,7 +25,7 @@ export interface PreviewRouterOptions {
 
 const DEFAULT_MIN_PORT = 15000;
 const DEFAULT_MAX_PORT = 15999;
-const DEFAULT_PREVIEW_DOMAIN = process.env.COMMANDO_PREVIEW_DOMAIN || process.env.PREVIEW_BASE_DOMAIN || 'preview.localhost';
+const DEFAULT_PREVIEW_DOMAIN = process.env.WARDEN_PREVIEW_DOMAIN || process.env.PREVIEW_BASE_DOMAIN || 'preview.localhost';
 
 /**
  * Checks whether a TCP port is available on `127.0.0.1`.
@@ -168,7 +168,7 @@ export class PreviewRouter {
 
   /**
    * Optional HTTP gateway server (defaults to port `4100` matching `infra/docker/Caddyfile`)
-   * that routes incoming Caddy wildcard requests (`X-Commando-Preview-Run-Id`) to `127.0.0.1:<hostPort>`.
+   * that routes incoming Caddy wildcard requests (`X-Warden-Preview-Run-Id`) to `127.0.0.1:<hostPort>`.
    */
   async startGatewayServer(gatewayPort = 4100): Promise<http.Server> {
     if (this.gatewayServer) {
@@ -176,7 +176,7 @@ export class PreviewRouter {
     }
 
     const server = http.createServer((req, res) => {
-      const headerRunId = req.headers['x-commando-preview-run-id'];
+      const headerRunId = req.headers['x-warden-preview-run-id'];
       const hostHeader = req.headers.host || '';
       let targetKey = typeof headerRunId === 'string' ? headerRunId : '';
 

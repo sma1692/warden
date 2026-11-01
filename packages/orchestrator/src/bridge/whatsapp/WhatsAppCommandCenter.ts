@@ -90,7 +90,7 @@ export type WhatsAppIntent =
   | 'other';
 
 /** Leading/trailing filler that never changes the meaning of a command. */
-const LEADING_FILLER = /^(?:(?:hey|hi|hello|ok|okay|yo|warden|commando|please|pls|plz|kindly|can you|could you|would you|will you|lets)\s+)+/;
+const LEADING_FILLER = /^(?:(?:hey|hi|hello|ok|okay|yo|warden|warden|please|pls|plz|kindly|can you|could you|would you|will you|lets)\s+)+/;
 const TRAILING_FILLER = /(?:\s+(?:please|pls|plz|now|thanks|thank you|warden|for me|right now))+$/;
 
 const PLAN_NOUN = '(?:\\s+(?:it|this|that|the plan|this plan|the sprint|this sprint|sprint|plan|sprint plan|the sprint plan))?';
@@ -156,7 +156,7 @@ const NO_PENDING_REPLY = "There's no plan waiting for approval. Send *run standu
 const BUSY_REPLY = "⏳ A standup is already running. I'll message you when it's done.";
 
 const HELP_REPLY = [
-  '*Commando on WhatsApp*',
+  '*Warden on WhatsApp*',
   '• *run standup* — run today\'s standup and get a plan to approve',
   '• *approve* / *reject* — act on the pending sprint plan (or tap the buttons)',
   '• *status* — what is running and what is waiting on you',
@@ -510,7 +510,7 @@ export class WhatsAppCommandCenter {
   // ── Misc ───────────────────────────────────────────────────────────────────
 
   private statusReply(from: string): string {
-    const lines = ['*Commando status*'];
+    const lines = ['*Warden status*'];
     if (this.busy === 'standup') lines.push('• ⏳ A standup is running');
     else if (this.busy === 'execution') lines.push('• ▶️ A sprint is executing');
     else lines.push('• Nothing is running');

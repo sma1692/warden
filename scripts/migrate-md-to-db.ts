@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * DynamoCommando Markdown-to-Database Migration & Vector Ingestion Engine
+ * Warden Markdown-to-Database Migration & Vector Ingestion Engine
  * (`scripts/migrate-md-to-db.ts`)
  *
- * Parses and ingests all existing Commando Markdown files and state caches into
- * PostgreSQL 16 + pgvector (when online) and `.state/dynamocommando-db.json`:
+ * Parses and ingests all existing Warden Markdown files and state caches into
+ * PostgreSQL 16 + pgvector (when online) and `.state/warden-db.json`:
  *  1. `agents` (19 corporate & technical hierarchy agents across Root, Tech, Marketing, & Planned C-Suite)
  *  2. `project_contexts` (`projects.yaml`, `.state/topology-cache.json`, `context/*.md`, `context/<project>/<repo>.md`)
  *  3. `agent_memories` (`memory/*.md`, `memory/<project>/*.md` -> categorized + 768-dim vector embeddings)
@@ -853,7 +853,7 @@ async function seedTelemetryAndCodeChunks(sprintId: string | null): Promise<{
 
 async function main() {
   console.log('====================================================================');
-  console.log(' DynamoCommando — Markdown-to-DB & pgvector Ingestion Engine');
+  console.log(' Warden — Markdown-to-DB & pgvector Ingestion Engine');
   console.log('====================================================================');
 
   const { mode } = await dbStore.init();

@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * COMMANDO — Programmatic Meta Muse Orchestrator & 12:00 PM IST Standup Runner
+ * WARDEN — Programmatic Meta Muse Orchestrator & 12:00 PM IST Standup Runner
  *
- * Bypasses IDE UI permission prompts by running the Commando agent hierarchy
+ * Bypasses IDE UI permission prompts by running the Warden agent hierarchy
  * (`warden`, `cto`, `pm`, `tech_lead`, `infra_head`, `backend_dev`, `frontend_dev`, `infra_jr`)
  * directly against the Meta Model API with native Node.js tool execution.
  *
  * Usage:
- *   node scripts/commando-muse.mjs standup [--auto-execute]
- *   node scripts/commando-muse.mjs daemon [--interval=8h] [--auto-execute]
- *   node scripts/commando-muse.mjs chat [@agent] [project]
- *   node scripts/commando-muse.mjs ask "@infra_head" "What is the status of the infra repo?"
+ *   node scripts/warden-muse.mjs standup [--auto-execute]
+ *   node scripts/warden-muse.mjs daemon [--interval=8h] [--auto-execute]
+ *   node scripts/warden-muse.mjs chat [@agent] [project]
+ *   node scripts/warden-muse.mjs ask "@infra_head" "What is the status of the infra repo?"
  */
 
 import fs from 'node:fs';
@@ -46,8 +46,8 @@ loadEnvFile(path.join(ROOT, '.env'));
 const CONFIG = {
   baseUrl: (process.env.META_MUSE_BASE_URL || 'https://api.meta.ai/v1').replace(/\/+$/, ''),
   apiKey: process.env.META_MUSE_API_KEY || process.env.META_MUSE_BACKUP_API_KEY || '',
-  proModel: process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0',
-  defaultModel: process.env.COMMANDO_DEFAULT_MODEL || 'muse-spark-1.3',
+  proModel: process.env.WARDEN_PRO_MODEL || 'muse-wonder-1.0',
+  defaultModel: process.env.WARDEN_DEFAULT_MODEL || 'muse-spark-1.3',
   standupTimeIst: process.env.STANDUP_TIME_IST || '12:00',
 };
 
@@ -83,8 +83,8 @@ function loadMuseConfig() {
   const tech = projects.filter((p) => p.department !== 'infra').map((p) => p.slug);
   const infra = projects.filter((p) => p.department === 'infra').map((p) => p.slug);
   const fallback = {
-    defaultProject: process.env.COMMANDO_DEFAULT_PROJECT || tech[0] || 'my-project',
-    infraProject: process.env.COMMANDO_INFRA_PROJECT || infra[0] || 'infra',
+    defaultProject: process.env.WARDEN_DEFAULT_PROJECT || tech[0] || 'my-project',
+    infraProject: process.env.WARDEN_INFRA_PROJECT || infra[0] || 'infra',
     knownProjects: projects.map((p) => p.slug),
     pmContextProjects: projects.map((p) => p.slug),
     standupLeads: null,
@@ -94,7 +94,7 @@ function loadMuseConfig() {
   try {
     return { ...fallback, ...JSON.parse(fs.readFileSync(privateFile, 'utf8')) };
   } catch (err) {
-    console.warn(`[commando-muse] Ignoring invalid ${privateFile}: ${err.message}`);
+    console.warn(`[warden-muse] Ignoring invalid ${privateFile}: ${err.message}`);
     return fallback;
   }
 }
@@ -173,8 +173,8 @@ function appendSessionLog(sender, recipient, message) {
   if (!fs.existsSync(chatFile)) {
     fs.writeFileSync(
       chatFile,
-      `# Commando Session Log — ${getTodayDateIst()} (${SESSION_ID})\n\n` +
-        `> **Runner**: \`scripts/commando-muse.mjs\`\n\n---\n\n`,
+      `# Warden Session Log — ${getTodayDateIst()} (${SESSION_ID})\n\n` +
+        `> **Runner**: \`scripts/warden-muse.mjs\`\n\n---\n\n`,
       'utf8'
     );
   }
@@ -219,7 +219,7 @@ function buildAgentProfile(agentName, projectScope = '') {
   const proj = projectScope || (normalized.includes('infra') ? MUSE_CFG.infraProject : MUSE_CFG.defaultProject);
 
   const baseRules =
-    `You are operating inside COMMANDO (${ROOT}), the Founder/CEO's enterprise agent command center.\n` +
+    `You are operating inside WARDEN (${ROOT}), the Founder/CEO's enterprise agent command center.\n` +
     `Current IST Date/Time: ${getTodayDateIst()} ${getIstTimeHHMM()} IST.\n` +
     `You have autonomous tools (read_file, write_file, edit_file, list_tree, run_command) with zero UI prompts.\n` +
     `Always keep your memory file (memory/*.md) and repo context file (context/*.md) updated when you make changes.\n`;
@@ -366,11 +366,11 @@ function buildAgentProfile(agentName, projectScope = '') {
 const TOOL_DECLARATIONS = [
   {
     name: 'read_file',
-    description: 'Read a file from Commando or any project repository on disk.',
+    description: 'Read a file from Warden or any project repository on disk.',
     parameters: {
       type: 'object',
       properties: {
-        filePath: { type: 'string', description: 'Absolute path or path relative to Commando root.' },
+        filePath: { type: 'string', description: 'Absolute path or path relative to Warden root.' },
         startLine: { type: 'integer', description: 'Optional 1-based start line.' },
         endLine: { type: 'integer', description: 'Optional 1-based end line.' },
       },
@@ -383,7 +383,7 @@ const TOOL_DECLARATIONS = [
     parameters: {
       type: 'object',
       properties: {
-        filePath: { type: 'string', description: 'Absolute path or path relative to Commando root.' },
+        filePath: { type: 'string', description: 'Absolute path or path relative to Warden root.' },
         content: { type: 'string', description: 'Full file content to write.' },
       },
       required: ['filePath', 'content'],
@@ -395,7 +395,7 @@ const TOOL_DECLARATIONS = [
     parameters: {
       type: 'object',
       properties: {
-        filePath: { type: 'string', description: 'Absolute path or path relative to Commando root.' },
+        filePath: { type: 'string', description: 'Absolute path or path relative to Warden root.' },
         target: { type: 'string', description: 'Exact string to find.' },
         replacement: { type: 'string', description: 'Replacement string.' },
       },
@@ -408,7 +408,7 @@ const TOOL_DECLARATIONS = [
     parameters: {
       type: 'object',
       properties: {
-        dirPath: { type: 'string', description: 'Absolute or Commando-relative directory path.' },
+        dirPath: { type: 'string', description: 'Absolute or Warden-relative directory path.' },
         maxDepth: { type: 'integer', description: 'Max recursion depth (default 2).' },
       },
       required: ['dirPath'],
@@ -420,7 +420,7 @@ const TOOL_DECLARATIONS = [
     parameters: {
       type: 'object',
       properties: {
-        cwd: { type: 'string', description: 'Working directory (absolute or relative to Commando root).' },
+        cwd: { type: 'string', description: 'Working directory (absolute or relative to Warden root).' },
         command: { type: 'string', description: 'Shell command to execute.' },
       },
       required: ['cwd', 'command'],
@@ -652,7 +652,7 @@ async function runDailyStandup({ autoExecute = false } = {}) {
   fs.mkdirSync(path.dirname(standupFile), { recursive: true });
 
   console.log(`\n================================================================`);
-  console.log(`🚀 COMMANDO DAILY STANDUP — ${dateStr} (${getIstTimeHHMM()} IST)`);
+  console.log(`🚀 WARDEN DAILY STANDUP — ${dateStr} (${getIstTimeHHMM()} IST)`);
   console.log(`================================================================\n`);
 
   const gitSnapshot = getRepoGitSnapshot();
@@ -745,7 +745,7 @@ async function runInteractiveChat(initialAgent = '@warden', initialProject = '')
   let history = [];
 
   console.log(`\n================================================================`);
-  console.log(`🎙️  COMMANDO DIRECT-TO-AGENT CLI (Meta Muse Autonomous)`);
+  console.log(`🎙️  WARDEN DIRECT-TO-AGENT CLI (Meta Muse Autonomous)`);
   console.log(`================================================================`);
   console.log(`Active Agent : @${profile.name} — ${profile.role} [Model: ${profile.model}]`);
   console.log(`Session Log  : ${getSessionChatPath()}`);
@@ -812,7 +812,7 @@ async function runInteractiveChat(initialAgent = '@warden', initialProject = '')
 // ── 9. Background Daemon Mode (12:00 PM IST Daily or 8-Hour Standup Loop) ────
 async function runDaemon({ interval8h = false, autoExecute = false } = {}) {
   const triggerTimes = interval8h ? ['04:00', '12:00', '20:00'] : [CONFIG.standupTimeIst];
-  console.log(`\n⏰ COMMANDO STANDUP DAEMON ACTIVE`);
+  console.log(`\n⏰ WARDEN STANDUP DAEMON ACTIVE`);
   console.log(`   Schedule (IST) : ${triggerTimes.join(', ')} Asia/Kolkata`);
   console.log(`   Auto-Execute   : ${autoExecute ? 'ENABLED' : 'HUMAN-GATE'}`);
   console.log(`   Press Ctrl+C to stop.\n`);
@@ -865,7 +865,7 @@ async function main() {
     const agentArg = args[1] || '@warden';
     const promptText = args.slice(2).join(' ').trim();
     if (!promptText) {
-      console.error('Usage: node scripts/commando-muse.mjs ask "@agent" "Your question or instruction"');
+      console.error('Usage: node scripts/warden-muse.mjs ask "@agent" "Your question or instruction"');
       process.exit(1);
     }
     const profile = buildAgentProfile(agentArg);
@@ -879,7 +879,7 @@ async function main() {
   }
 
   console.log(`
-COMMANDO — Programmatic Meta Muse Orchestrator
+WARDEN — Programmatic Meta Muse Orchestrator
 
 Commands:
   npm run standup                            Run the 12:00 PM IST Daily Standup (with CEO approval prompt)
@@ -888,7 +888,7 @@ Commands:
   npm run chat                               Interactive CLI chat with @warden (switchable to any @agent)
   npm run chat -- @infra_head                Direct 1-on-1 granular chat with @infra_head
   npm run chat -- @backend_dev <project>     Direct 1-on-1 granular chat with a project's @backend_dev
-  node scripts/commando-muse.mjs ask "@cto" "What is our top technical priority today?"
+  node scripts/warden-muse.mjs ask "@cto" "What is our top technical priority today?"
 
 Environment (.env):
   META_MUSE_API_KEY=your-api-key                (Uses Meta Model API directly)
@@ -897,6 +897,6 @@ Environment (.env):
 }
 
 main().catch((err) => {
-  console.error(`\n[Commando Fatal]: ${err.message}`);
+  console.error(`\n[Warden Fatal]: ${err.message}`);
   process.exit(1);
 });

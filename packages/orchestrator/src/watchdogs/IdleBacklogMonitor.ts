@@ -37,7 +37,7 @@ export interface IdleCheckResult {
 }
 
 /**
- * Zero-Idle Department Watchdog (`IdleBacklogMonitor` — dynamocommando.md Section 4.5)
+ * Zero-Idle Department Watchdog (`IdleBacklogMonitor` — the architecture spec Section 4.5)
  *
  * Ensures no department or project ever quietly sits idle with an empty queue.
  * Triggered automatically whenever a `backlog_items` row moves to `DONE`, on a
@@ -425,7 +425,7 @@ export class IdleBacklogMonitor {
             project_slug: cfg.scope,
             assigned_agent_id: 'infra_jr',
             spec_md:
-              'Keep 2 pre-booted `commando-workspace:latest` containers on standby so `@frontend_dev` and `@backend_dev` clock-in latency stays < 800ms.',
+              'Keep 2 pre-booted `warden-workspace:latest` containers on standby so `@frontend_dev` and `@backend_dev` clock-in latency stays < 800ms.',
           },
         ];
 

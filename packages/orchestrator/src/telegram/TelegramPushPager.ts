@@ -46,10 +46,10 @@ export type TelegramBroadcastCallback = (event: string, data: unknown) => void;
 export type TelegramDbPersistCallback = (record: TelegramSentRecord) => Promise<void>;
 
 /**
- * 1-Way Telegram Push Pager (dynamocommando.md Sections 1.5, 4.5, 4.6, 5)
+ * 1-Way Telegram Push Pager (the architecture spec Sections 1.5, 4.5, 4.6, 5)
  *
  * Strictly outbound notifications via Telegram Bot API with an inline URL button
- * that deep-links the CEO directly into the DynamoCommando PWA / App.
+ * that deep-links the CEO directly into the Warden PWA / App.
  * Also maintains an in-memory + DB log so the Dashboard UI can display a live feed
  * of recent Telegram Pager pushes even when TELEGRAM_BOT_TOKEN is not configured.
  */
@@ -89,7 +89,7 @@ export class TelegramPushPager {
   }
 
   /**
-   * Builds the deep-link URL into the DynamoCommando PWA.
+   * Builds the deep-link URL into the Warden PWA.
    */
   public buildDeepLink(params: {
     threadId?: string | null;
@@ -107,7 +107,7 @@ export class TelegramPushPager {
   }
 
   /**
-   * Formats the outbound notification using the canonical DynamoCommando templates.
+   * Formats the outbound notification using the canonical Warden templates.
    */
   public formatMessage(payload: TelegramAlertPayload): string {
     const agent = payload.agentSlug.startsWith('@')
@@ -178,7 +178,7 @@ export class TelegramPushPager {
       }
 
       default:
-        return payload.headline || `🔔 [${agent}] Notification from DynamoCommando`;
+        return payload.headline || `🔔 [${agent}] Notification from Warden`;
     }
   }
 
@@ -213,7 +213,7 @@ export class TelegramPushPager {
               inline_keyboard: [
                 [
                   {
-                    text: 'Open DynamoCommando App',
+                    text: 'Open Warden App',
                     url: deepLinkUrl,
                   },
                 ],

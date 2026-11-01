@@ -17,7 +17,7 @@ import {
 } from './PreviewRouter.js';
 import { PlaywrightQAGate, type QAResult } from './PlaywrightQAGate.js';
 import { PushitExecutor, type PushitResult } from './PushitExecutor.js';
-import { COMMANDO_ROOT, loadPrivateJson } from './privateData.js';
+import { WARDEN_ROOT, loadPrivateJson } from './privateData.js';
 
 /**
  * Resolves the ephemeral-VM infra CLI (`cloud-ephemeral launch|snapshot|terminate`).
@@ -29,7 +29,7 @@ async function resolveEphemeralInfraCli(): Promise<string> {
   const candidates = [
     process.env.INFRA_EPHEMERAL_CLI,
     cfg.legacyEnvVar ? process.env[cfg.legacyEnvVar] : undefined,
-    ...(cfg.ephemeralCliCandidates ?? []).map((p) => path.resolve(COMMANDO_ROOT, p))
+    ...(cfg.ephemeralCliCandidates ?? []).map((p) => path.resolve(WARDEN_ROOT, p))
   ].filter(Boolean) as string[];
   if (candidates.length === 0) {
     throw new Error('No ephemeral infra CLI configured. Set INFRA_EPHEMERAL_CLI.');
@@ -161,7 +161,7 @@ export class SandboxManager {
     if (activeShift && now < activeShift.cloudInstance.expiresAt - 15 * 60 * 1000) {
       // Warm handoff
       try {
-        await execFileAsync('ssh', ['-S', `/tmp/commando-ssh-${activeShift.shortRunId}.sock`, 'commando@127.0.0.1', 'bash', '-lc', `cd /workspace/repos/${repoSlug} && git checkout -B ${gitBranch}`]);
+        await execFileAsync('ssh', ['-S', `/tmp/warden-ssh-${activeShift.shortRunId}.sock`, 'warden@127.0.0.1', 'bash', '-lc', `cd /workspace/repos/${repoSlug} && git checkout -B ${gitBranch}`]);
         activeShift.runId = opts.runId;
         activeShift.shortRunId = shortRunId;
         activeShift.taskId = opts.taskId || shortRunId;
@@ -190,10 +190,10 @@ export class SandboxManager {
       const result = JSON.parse(stdout);
       const instanceName: string = result.instanceName || result.instanceId;
       const instanceIp: string = result.externalIp || result.ip || '127.0.0.1';
-      const sshUser: string = result.sshUser || 'commando';
+      const sshUser: string = result.sshUser || 'warden';
 
       // Start SSH ControlMaster (with identity key if provided)
-      const sockPath = `/tmp/commando-ssh-${shortRunId}.sock`;
+      const sockPath = `/tmp/warden-ssh-${shortRunId}.sock`;
       const sshArgs = [
         '-M', '-S', sockPath,
         '-f', '-N',
@@ -298,10 +298,10 @@ export class SandboxManager {
   }
 
   /**
-   * Checks whether the Docker daemon AND the target image (`commando-workspace:latest`) are available on the host.
+   * Checks whether the Docker daemon AND the target image (`warden-workspace:latest`) are available on the host.
    */
   async isDockerWorkspaceAvailable(
-    image = 'commando-workspace:latest'
+    image = 'warden-workspace:latest'
   ): Promise<boolean> {
     try {
       await execFileAsync('docker', ['info'], { timeout: 3000 });
@@ -313,7 +313,7 @@ export class SandboxManager {
   }
 
   /**
-   * Spawns an isolated ephemeral sandbox (`commando-run-<shortRunId>`) for an agent run:
+   * Spawns an isolated ephemeral sandbox (`warden-run-<shortRunId>`) for an agent run:
    * - Validates `PermissionGuard.canAccessRepo(agentSlug, repoSlug, allowedRepos)`
    * - Allocates a live preview port (`15000-15999`) via `PreviewRouter`
    * - Spawns Docker container (`--cpus=2 --memory=8g`) OR seamlessly falls back to Local Isolated Sandbox mode
@@ -345,8 +345,8 @@ export class SandboxManager {
     const shortRunId = toShortRunId(opts.runId);
     const taskId = sanitizeBranchSegment(opts.taskId || shortRunId);
     const gitBranch = `agent/${sanitizeBranchSegment(agentSlug)}/${taskId}`;
-    const containerName = `commando-run-${shortRunId}`;
-    const dockerImage = opts.dockerImage || 'commando-workspace:latest';
+    const containerName = `warden-run-${shortRunId}`;
+    const dockerImage = opts.dockerImage || 'warden-workspace:latest';
     const cpus = opts.cpus ?? 2;
     const memoryGb = opts.memoryGb ?? 8;
 
@@ -367,7 +367,7 @@ export class SandboxManager {
     }
 
 
-    // 3. Check if Docker daemon + `commando-workspace:latest` is available
+    // 3. Check if Docker daemon + `warden-workspace:latest` is available
     const useDocker =
       !opts.preferLocalFallback &&
       (await this.isDockerWorkspaceAvailable(dockerImage));
@@ -388,11 +388,11 @@ export class SandboxManager {
           '-p',
           `${previewRoute.hostPort}:${previewRoute.containerPort}`,
           '-e',
-          `COMMANDO_RUN_ID=${opts.runId}`,
+          `WARDEN_RUN_ID=${opts.runId}`,
           '-e',
-          `COMMANDO_AGENT_SLUG=${agentSlug}`,
+          `WARDEN_AGENT_SLUG=${agentSlug}`,
           '-e',
-          `COMMANDO_REPO_SLUG=${opts.repoSlug}`
+          `WARDEN_REPO_SLUG=${opts.repoSlug}`
         ];
 
         // Mount or copy repo into `/workspace` inside container
@@ -539,8 +539,8 @@ export class SandboxManager {
               'ssh',
               [
                 '-S',
-                `/tmp/commando-ssh-${session.shortRunId}.sock`,
-                'commando@127.0.0.1',
+                `/tmp/warden-ssh-${session.shortRunId}.sock`,
+                'warden@127.0.0.1',
                 'bash',
                 '-lc',
                 `cd ${session.workspacePath} && ${command}`
@@ -659,8 +659,8 @@ export class SandboxManager {
       if (session.mode === 'cloud-ephemeral') {
         const { stdout } = await execFileAsync('ssh', [
           '-S',
-          `/tmp/commando-ssh-${session.shortRunId}.sock`,
-          'commando@127.0.0.1',
+          `/tmp/warden-ssh-${session.shortRunId}.sock`,
+          'warden@127.0.0.1',
           'bash',
           '-lc',
           `cat ${session.workspacePath}/${relativePath}`
@@ -755,8 +755,8 @@ export class SandboxManager {
         const dir = path.posix.dirname(relativePath);
         await execFileAsync('ssh', [
           '-S',
-          `/tmp/commando-ssh-${session.shortRunId}.sock`,
-          'commando@127.0.0.1',
+          `/tmp/warden-ssh-${session.shortRunId}.sock`,
+          'warden@127.0.0.1',
           'bash',
           '-lc',
           `mkdir -p "${session.workspacePath}/${dir}" && echo "${b64}" | base64 -d > "${session.workspacePath}/${relativePath}"`

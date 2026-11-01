@@ -1,6 +1,6 @@
 /**
- * DYNAMO COMMANDO — Hybrid Memory Engine (`PostgreSQL + pgvector`)
- * (`dynamocommando.md` Section 3 & Section 4.1–4.3)
+ * WARDEN — Hybrid Memory Engine (`PostgreSQL + pgvector`)
+ * (the architecture spec Section 3 & Section 4.1–4.3)
  *
  * Implements the Golden Rule of Hybrid Memory:
  * 1. Deterministic SQL Context (Always Injected 100% Reliably):
@@ -35,7 +35,7 @@ import {
 } from '../config/projectRegistry.js';
 
 /**
- * Pinned Vector Embedding Invariance (`dynamocommando.md` Section 4.8.4):
+ * Pinned Vector Embedding Invariance (the architecture spec Section 4.8.4):
  * Regardless of which chat model an agent is using (`muse-spark-1.3`, `muse-wonder-1.0`,
  * `muse-wonder-1.0`, `llama-3.3-70b`), all vector embeddings (`agent_memories.embedding`,
  * `chat_messages.embedding`, `code_chunks.embedding`) are ALWAYS computed by the single
@@ -586,7 +586,7 @@ export class HybridMemoryEngine {
   }
 
   /**
-   * Pinned Vector Embedding Invariance (`dynamocommando.md` Section 4.8.4):
+   * Pinned Vector Embedding Invariance (the architecture spec Section 4.8.4):
    * Always routes through the pinned 768-dim embedding pipeline (`muse-embed-1.0` on Meta Muse,
    * `muse-embed-1.0` on Ollama, or deterministic 768-dim trigram vector) regardless of which
    * chat model (`muse-spark-1.3`, `muse-wonder-1.0`, `muse-wonder-1.0`, `llama-3.3-70b`) an agent uses.
@@ -867,7 +867,7 @@ export class HybridMemoryEngine {
   /**
    * Scans key TypeScript/JavaScript source files in `repoPath`, extracts functions/classes/interfaces/configs,
    * computes 768-dim embeddings via `ModelRouter.embedText()`, and upserts them into `code_chunks`
-   * for Cross-Repo Codebase Intelligence (`dynamocommando.md` Section 3).
+   * for Cross-Repo Codebase Intelligence (the architecture spec Section 3).
    */
   public async indexRepoCodeChunks(
     projectSlug: string,

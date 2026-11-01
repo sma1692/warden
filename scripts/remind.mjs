@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tiny CLI for the Commando reminders API.
+// Tiny CLI for the Warden reminders API.
 //   node scripts/remind.mjs "tomorrow 6pm call the design team"
 //   node scripts/remind.mjs "every weekday at 9am standup prep" --channels telegram,macos
 //   node scripts/remind.mjs --list [--status PENDING]

@@ -145,7 +145,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       project_scope: null,
       init_prompt:
         'You are @warden (CEO Office Chief of Staff). Route executive tasks across @cto (Tech) and @cmo (Marketing/SEO/AEO), synthesize ultra-dense executive summaries, and protect the CEO from low-level noise unless Direct Mode (@agent) is used.',
-      allowed_repos: ['commando'],
+      allowed_repos: ['warden'],
       permission_tier: 'full_overdrive',
       max_subagents: 6,
     }),
@@ -158,7 +158,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       parent_agent_id: 'warden',
       project_scope: null,
       init_prompt: `You are @cto (Level 0 Head of Tech). You chair the Daily Standup, own cross-project technical architecture across ${techSlugs.join(', ') || 'all projects'}, enforce cross-repo reuse, and direct @pm, the project tech leads, and @infra_head.`,
-      allowed_repos: [...techSlugs, infraSlug, 'commando'],
+      allowed_repos: [...techSlugs, infraSlug, 'warden'],
       permission_tier: 'full_overdrive',
       max_subagents: 6,
     }),
@@ -185,7 +185,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       model_id: 'muse-spark-1.3',
       init_prompt:
         'You are @pm (Level 1 Lead Product Manager). Coordinate with the per-project PMs and @infra_head so every project maintains its prioritized P0/P1/P2 backlog and @cto has a live Collated Master Backlog (worklist/COLLATED_BACKLOG.md). Surface NEEDS_CEO human intervention tasks (questions, API keys, manual actions) and weekly standup task movements.',
-      allowed_repos: [...techSlugs, 'commando'],
+      allowed_repos: [...techSlugs, 'warden'],
     }),
   ];
 
@@ -250,7 +250,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       parent_agent_id: 'cto',
       project_scope: infraSlug,
       init_prompt: `You are @infra_head. You own ${infraSlug}, ephemeral Docker sandboxes, Postgres + pgvector, static site deployments, asset buckets, and direct @infra_jr.`,
-      allowed_repos: [...infraRepos, 'commando'],
+      allowed_repos: [...infraRepos, 'warden'],
       permission_tier: 'strict_gate',
     }),
     agent({
@@ -312,7 +312,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       project_scope: null,
       init_prompt:
         'You are @cbo (Level 0 Chief Business Officer). You oversee partnerships, licensing, distribution, and monetization strategy across all projects.',
-      allowed_repos: ['commando'],
+      allowed_repos: ['warden'],
       max_subagents: 2,
     }),
     agent({
@@ -325,7 +325,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       project_scope: null,
       init_prompt:
         'You are @chro (Level 0 Chief Human & Agent Resources Officer). You oversee agent role definitions, skill blueprints, performance evaluation, and organizational topology.',
-      allowed_repos: ['commando'],
+      allowed_repos: ['warden'],
       max_subagents: 2,
     }),
     agent({
@@ -338,7 +338,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       project_scope: null,
       init_prompt:
         'You are @coo (Level 0 Chief Operating Officer). You manage SLA compliance, support triage, operational readiness, and cross-unit execution velocity.',
-      allowed_repos: ['commando'],
+      allowed_repos: ['warden'],
       max_subagents: 2,
     }),
     agent({
@@ -351,7 +351,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       project_scope: null,
       init_prompt:
         'You are @cfo (Level 0 Chief Financial Officer). You track cloud compute burn, LLM token economics, credit utilization, and unit profitability alongside @infra_head.',
-      allowed_repos: ['commando', ...infraRepos],
+      allowed_repos: ['warden', ...infraRepos],
       max_subagents: 2,
     })
   );
@@ -376,7 +376,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
         local_path: folder,
         default_branch: 'main',
         role,
-        docker_base_image: 'commando-workspace:latest',
+        docker_base_image: 'warden-workspace:latest',
         build_cmd: 'npm run build',
         test_cmd: 'npm test',
         dev_preview_port: port++,
@@ -491,7 +491,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
     {
       id: 'bl_demo_sandbox_pool',
       title: `Warm Docker sandbox pool health check in ${infraSlug}`,
-      spec_md: 'Keep pre-warmed commando-workspace:latest containers ready and expose a preview proxy.',
+      spec_md: 'Keep pre-warmed warden-workspace:latest containers ready and expose a preview proxy.',
       stage: 'TODO',
       priority: 'P1',
       project_slug: infraSlug,
@@ -576,6 +576,6 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
     memories,
     backlogItems,
     sprint,
-    welcomeMessage: `Welcome to **DynamoCommando Control Plane**. All ${agents.length} agents across **Tech (\`@cto\`)**, **Product (\`@pm\`)**, **Infra (\`@infra_head\`)**, **Marketing (\`@cmo\` → \`@seo_aeo_head\`)**, and **C-Suite (\`@cbo\`, \`@chro\`, \`@coo\`, \`@cfo\`)** are online and synced with disk (\`context/\`, \`memory/\`, \`worklist/\`) and PostgreSQL + \`pgvector\`.\n\nSend an instruction here for Executive Routing, or prefix with \`@agent\` (e.g. \`@cto\`, \`@tech_lead:${defaultSlug}\`, \`@infra_head\`) for Direct 1-on-1 Granular Mode.`,
+    welcomeMessage: `Welcome to **Warden Control Plane**. All ${agents.length} agents across **Tech (\`@cto\`)**, **Product (\`@pm\`)**, **Infra (\`@infra_head\`)**, **Marketing (\`@cmo\` → \`@seo_aeo_head\`)**, and **C-Suite (\`@cbo\`, \`@chro\`, \`@coo\`, \`@cfo\`)** are online and synced with disk (\`context/\`, \`memory/\`, \`worklist/\`) and PostgreSQL + \`pgvector\`.\n\nSend an instruction here for Executive Routing, or prefix with \`@agent\` (e.g. \`@cto\`, \`@tech_lead:${defaultSlug}\`, \`@infra_head\`) for Direct 1-on-1 Granular Mode.`,
   };
 }

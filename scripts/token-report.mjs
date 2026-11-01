@@ -215,8 +215,8 @@ export function resolveModel(rawModelId, fallbackContext = {}) {
 
     // Canonical aliases
     const aliases = {
-        'pro': process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0',
-        'flash': process.env.COMMANDO_DEFAULT_MODEL || 'muse-spark-1.3',
+        'pro': process.env.WARDEN_PRO_MODEL || 'muse-wonder-1.0',
+        'flash': process.env.WARDEN_DEFAULT_MODEL || 'muse-spark-1.3',
         'wonder': 'muse-wonder-1.0',
         'spark': 'muse-spark-1.3',
         'light': 'muse-light',
@@ -241,8 +241,8 @@ export function resolveModel(rawModelId, fallbackContext = {}) {
         const depth = fallbackContext.depth ?? 0;
         const isFlashShard = /flash|Apply pass/i.test(role) || typeName === 'pa' || typeName === 'frontend_dev' || typeName === 'backend_dev' || depth >= 2;
         norm = isFlashShard
-            ? (process.env.COMMANDO_DEFAULT_MODEL || 'muse-spark-1.3')
-            : (process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0');
+            ? (process.env.WARDEN_DEFAULT_MODEL || 'muse-spark-1.3')
+            : (process.env.WARDEN_PRO_MODEL || 'muse-wonder-1.0');
     }
 
     // Direct lookup in registry

@@ -1,5 +1,5 @@
 // ============================================================================
-// @commando/db — Dual-Mode DatabaseStore (PostgreSQL + pgvector <-> JSON Snapshot)
+// @warden/db — Dual-Mode DatabaseStore (PostgreSQL + pgvector <-> JSON Snapshot)
 // ============================================================================
 
 import crypto from 'node:crypto';
@@ -900,7 +900,7 @@ export class DatabaseStore {
           local_path: r.local_path ?? null,
           default_branch: String(r.default_branch || 'main'),
           role: (r.role || 'fullstack') as RepoRole,
-          docker_base_image: String(r.docker_base_image || 'commando-workspace:latest'),
+          docker_base_image: String(r.docker_base_image || 'warden-workspace:latest'),
           build_cmd: r.build_cmd ?? null,
           test_cmd: r.test_cmd ?? null,
           dev_preview_port: r.dev_preview_port !== null ? Number(r.dev_preview_port) : null,
@@ -961,7 +961,7 @@ export class DatabaseStore {
       docker_base_image:
         input.docker_base_image ||
         existing?.docker_base_image ||
-        'commando-workspace:latest',
+        'warden-workspace:latest',
       build_cmd: input.build_cmd ?? existing?.build_cmd ?? null,
       test_cmd: input.test_cmd ?? existing?.test_cmd ?? null,
       dev_preview_port:

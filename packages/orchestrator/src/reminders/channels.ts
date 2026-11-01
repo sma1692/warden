@@ -108,7 +108,7 @@ async function sendMacNotification(
   return runOsascript(
     [
       '-e', 'on run argv',
-      '-e', 'display notification (item 1 of argv) with title "Commando Reminder" sound name "Glass"',
+      '-e', 'display notification (item 1 of argv) with title "Warden Reminder" sound name "Glass"',
       '-e', 'end run',
       reminder.recurrence ? `${reminder.text} (repeats)` : reminder.text,
     ],

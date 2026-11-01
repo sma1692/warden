@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Commando Unified Repo Access Tool (`scripts/repo-tool.mjs`)
+ * Warden Unified Repo Access Tool (`scripts/repo-tool.mjs`)
  *
  * Why this exists:
  * The agent IDE's native `read_file` / `edit_file` / `write_file` tools prompt
- * the user on EVERY individual file outside the Commando workspace, and shell
+ * the user on EVERY individual file outside the Warden workspace, and shell
  * chains (`&&`, `;`, `|`, `$(...)`) disable the IDE's prefix-based "Always Allow".
  *
  * By routing all external repository reads, writes, edits, directory listings,
  * and commands through:
- *   `node <commando-root>/scripts/repo-tool.mjs <subcommand> ...`
+ *   `node <warden-root>/scripts/repo-tool.mjs <subcommand> ...`
  * the user only has to click "Always Allow" for `node` ONCE, granting blanket
  * read/write/build access to every repository in `projects.yaml` with zero per-file prompts.
  */
@@ -24,8 +24,8 @@ import YAML from 'yaml';
 
 const [, , action, ...args] = process.argv;
 
-const COMMANDO_ROOT = process.env.COMMANDO_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const MIRROR_ROOT = process.env.REPO_SYNC_DIR || path.join(COMMANDO_ROOT, '.state', 'mirror');
+const WARDEN_ROOT = process.env.WARDEN_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const MIRROR_ROOT = process.env.REPO_SYNC_DIR || path.join(WARDEN_ROOT, '.state', 'mirror');
 const MANIFEST_PATH = path.join(MIRROR_ROOT, 'manifest.json');
 
 export function pullLatest(repoPath) {
@@ -54,7 +54,7 @@ export function pushChanges(repoPath, message) {
 const GENERIC_BASENAMES = new Set(['client', 'server', 'ui', 'api', 'app', 'web', 'rest', 'frontend', 'backend']);
 
 function loadProjectRegistry() {
-  const file = process.env.PROJECTS_YAML || path.join(COMMANDO_ROOT, 'projects.yaml');
+  const file = process.env.PROJECTS_YAML || path.join(WARDEN_ROOT, 'projects.yaml');
   const projectRepos = {};
   const repoAliases = {};
   if (!fs.existsSync(file)) return { projectRepos, repoAliases };
@@ -219,9 +219,9 @@ switch (action) {
 
   case 'sync-in': {
     // Mirrors source/config files from external repos into .state/mirror/<alias>/
-    // so that N parallel subagents can read/edit/write 100% inside the Commando
+    // so that N parallel subagents can read/edit/write 100% inside the Warden
     // sandbox (BypassSandbox: false) with ZERO permission prompts!
-    const targets = args.length > 0 ? expandTargets(args) : Object.keys(REPO_ALIASES).filter((a) => a !== 'commando');
+    const targets = args.length > 0 ? expandTargets(args) : Object.keys(REPO_ALIASES).filter((a) => a !== 'warden');
     fs.mkdirSync(MIRROR_ROOT, { recursive: true });
     const manifest = fs.existsSync(MANIFEST_PATH)
       ? JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'))
@@ -327,7 +327,7 @@ switch (action) {
         return null;
       };
       // Optional private list of [role, transcriptId] pairs to recover.
-      const recoverFile = path.join(COMMANDO_ROOT, 'private-data', 'repo-tool', 'recover-agents.json');
+      const recoverFile = path.join(WARDEN_ROOT, 'private-data', 'repo-tool', 'recover-agents.json');
       const killedAgents = fs.existsSync(recoverFile) ? JSON.parse(fs.readFileSync(recoverFile, 'utf8')) : [];
       const reportLines = ['# Recovered Subagent Progress Snapshot\n'];
       for (const [role, id] of killedAgents) {
@@ -483,7 +483,7 @@ switch (action) {
 
             execSync('git add -A', { cwd: info.repoPath, stdio: 'pipe' });
             const fileList = (changed.length > 0 ? changed : dirtyFiles).slice(0, 8).join(', ');
-            const defaultMsg = `${bumpHeader}UPDATE ${alias.toUpperCase()} VIA COMMANDO SYNC-OUT\n\n- Update ${fileList}\n\nAuthor -- S.M:A`;
+            const defaultMsg = `${bumpHeader}UPDATE ${alias.toUpperCase()} VIA WARDEN SYNC-OUT\n\n- Update ${fileList}\n\nAuthor -- S.M:A`;
             let finalMsg = customCommitMsg || defaultMsg;
             if (bumpHeader && customCommitMsg && !customCommitMsg.startsWith('BUMP VERSION')) {
               const lines = customCommitMsg.split('\n');
@@ -516,15 +516,15 @@ switch (action) {
   }
 
   case 'pushit-self': {
-    const msgFile = path.join(COMMANDO_ROOT, '.state', 'commit-msg.txt');
+    const msgFile = path.join(WARDEN_ROOT, '.state', 'commit-msg.txt');
     execSync(
-      'git add package.json AGENTS.md MUSE.md scripts/repo-tool.mjs scripts/commando-muse.mjs .agents/skills/commando-orchestrator/SKILL.md .agents/skills/standup/SKILL.md .claude/agents/ worklist/ packages/orchestrator/ packages/web/',
-      { cwd: COMMANDO_ROOT, stdio: 'inherit' }
+      'git add package.json AGENTS.md MUSE.md scripts/repo-tool.mjs scripts/warden-muse.mjs .agents/skills/warden-orchestrator/SKILL.md .agents/skills/standup/SKILL.md .claude/agents/ worklist/ packages/orchestrator/ packages/web/',
+      { cwd: WARDEN_ROOT, stdio: 'inherit' }
     );
-    execSync(`git commit -F "${msgFile}"`, { cwd: COMMANDO_ROOT, stdio: 'inherit' });
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: COMMANDO_ROOT, encoding: 'utf8' }).trim();
-    execSync(`git push origin ${branch}`, { cwd: COMMANDO_ROOT, stdio: 'inherit' });
-    console.log(`[pushit-self] Committed & pushed commando -> origin/${branch}`);
+    execSync(`git commit -F "${msgFile}"`, { cwd: WARDEN_ROOT, stdio: 'inherit' });
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: WARDEN_ROOT, encoding: 'utf8' }).trim();
+    execSync(`git push origin ${branch}`, { cwd: WARDEN_ROOT, stdio: 'inherit' });
+    console.log(`[pushit-self] Committed & pushed warden -> origin/${branch}`);
     break;
   }
 

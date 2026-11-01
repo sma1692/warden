@@ -9,11 +9,11 @@ import YAML from 'yaml';
  * Everything workspace-specific (project slugs, repo folders, seeded agents, demo backlog)
  * is resolved at runtime instead of being hardcoded:
  *
- * - Commando root: `COMMANDO_ROOT` env, an explicit root, `process.cwd()`, `../..` from cwd,
+ * - Warden root: `WARDEN_ROOT` env, an explicit root, `process.cwd()`, `../..` from cwd,
  *   or the repo root derived from this module's location.
- * - Projects: `COMMANDO_PROJECTS_FILE` env or `<root>/projects.yaml` (see `projects.example.yaml`).
+ * - Projects: `WARDEN_PROJECTS_FILE` env or `<root>/projects.yaml` (see `projects.example.yaml`).
  *   When absent, a small generic demo registry is used.
- * - Private data: JSON files under `COMMANDO_PRIVATE_DATA_DIR` env or
+ * - Private data: JSON files under `WARDEN_PRIVATE_DATA_DIR` env or
  *   `<root>/private-data/orchestrator/`. Every consumer falls back to generic demo data in code.
  */
 
@@ -51,7 +51,7 @@ const DEMO_PROJECTS: ProjectEntry[] = [
   },
 ];
 
-function looksLikeCommandoRoot(dir: string): boolean {
+function looksLikeWardenRoot(dir: string): boolean {
   return (
     fs.existsSync(path.join(dir, 'AGENTS.md')) ||
     fs.existsSync(path.join(dir, 'context')) ||
@@ -61,18 +61,18 @@ function looksLikeCommandoRoot(dir: string): boolean {
 
 let cachedRoot: string | null = null;
 
-export function resolveCommandoRoot(explicitRoot?: string): string {
+export function resolveWardenRoot(explicitRoot?: string): string {
   if (explicitRoot && fs.existsSync(explicitRoot)) return explicitRoot;
   if (cachedRoot) return cachedRoot;
   const candidates = [
-    process.env.COMMANDO_ROOT || '',
+    process.env.WARDEN_ROOT || '',
     process.cwd(),
     path.resolve(process.cwd(), '../..'),
     // packages/orchestrator/src/config -> repo root
     path.resolve(MODULE_DIR, '../../../..'),
   ].filter(Boolean);
   for (const c of candidates) {
-    if (fs.existsSync(c) && looksLikeCommandoRoot(c)) {
+    if (fs.existsSync(c) && looksLikeWardenRoot(c)) {
       cachedRoot = c;
       return c;
     }
@@ -83,8 +83,8 @@ export function resolveCommandoRoot(explicitRoot?: string): string {
 
 export function getPrivateDataDir(): string {
   return (
-    process.env.COMMANDO_PRIVATE_DATA_DIR ||
-    path.join(resolveCommandoRoot(), 'private-data', 'orchestrator')
+    process.env.WARDEN_PRIVATE_DATA_DIR ||
+    path.join(resolveWardenRoot(), 'private-data', 'orchestrator')
   );
 }
 
@@ -115,7 +115,7 @@ let projectsFromFile = false;
 export function getProjects(): ProjectEntry[] {
   if (cachedProjects) return cachedProjects;
   const file =
-    process.env.COMMANDO_PROJECTS_FILE || path.join(resolveCommandoRoot(), 'projects.yaml');
+    process.env.WARDEN_PROJECTS_FILE || path.join(resolveWardenRoot(), 'projects.yaml');
   try {
     if (fs.existsSync(file)) {
       const parsed = YAML.parse(fs.readFileSync(file, 'utf8')) as {
@@ -165,7 +165,7 @@ export function getTechProjects(): ProjectEntry[] {
 
 export function getDefaultProjectSlug(): string {
   return (
-    process.env.COMMANDO_DEFAULT_PROJECT ||
+    process.env.WARDEN_DEFAULT_PROJECT ||
     getTechProjects()[0]?.slug ||
     getProjects()[0]?.slug ||
     'general'

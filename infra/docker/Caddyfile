@@ -1,5 +1,5 @@
 # ==============================================================================
-# DYNAMO COMMANDO — Wildcard Live Preview Reverse Proxy (`infra/docker/Caddyfile`)
+# WARDEN — Wildcard Live Preview Reverse Proxy (`infra/docker/Caddyfile`)
 # ==============================================================================
 # Routes live agent branch previews from:
 #   1. Production cloud wildcard HTTPS: https://preview-{runId}.$PREVIEW_BASE_DOMAIN
@@ -7,7 +7,7 @@
 # directly to the dynamic host preview port (15000–15999) managed by PreviewRouter,
 # or via the Control Plane Preview Proxy upstream map.
 #
-# Set PREVIEW_BASE_DOMAIN in the Caddy environment (e.g. commando.example.com).
+# Set PREVIEW_BASE_DOMAIN in the Caddy environment (e.g. warden.example.com).
 # ==============================================================================
 
 {
@@ -22,9 +22,9 @@
 
 	handle @preview {
 		# Forward preview requests with the extracted runId header to the Control Plane
-		# PreviewRouter gateway (or directly to mapped container port via X-Commando-Run-Id)
+		# PreviewRouter gateway (or directly to mapped container port via X-Warden-Run-Id)
 		reverse_proxy 127.0.0.1:4100 {
-			header_up X-Commando-Preview-Run-Id {re.preview.1}
+			header_up X-Warden-Preview-Run-Id {re.preview.1}
 			header_up X-Forwarded-Host {host}
 			header_up X-Forwarded-Proto {scheme}
 		}
@@ -42,7 +42,7 @@ http://*.localhost {
 
 	handle @local_preview {
 		reverse_proxy 127.0.0.1:4100 {
-			header_up X-Commando-Preview-Run-Id {re.local_preview.1}
+			header_up X-Warden-Preview-Run-Id {re.local_preview.1}
 			header_up X-Forwarded-Host {host}
 			header_up X-Forwarded-Proto {scheme}
 		}
@@ -61,7 +61,7 @@ http://preview-port-*.localhost, https://preview-port-*.{$PREVIEW_BASE_DOMAIN:pr
 
 	handle @direct_port {
 		reverse_proxy 127.0.0.1:{re.direct_port.2} {
-			header_up X-Commando-Preview-Run-Id {re.direct_port.1}
+			header_up X-Warden-Preview-Run-Id {re.direct_port.1}
 			header_up X-Forwarded-Host {host}
 			header_up X-Forwarded-Proto {scheme}
 		}

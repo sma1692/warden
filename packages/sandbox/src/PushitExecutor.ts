@@ -33,7 +33,7 @@ export interface PushitResult {
 }
 
 /**
- * Computes the next semantic version according to the Commando `pushit` rule:
+ * Computes the next semantic version according to the Warden `pushit` rule:
  * - Never auto-modify `MAJOR`.
  * - Every 5th commit (`commitsSinceLastBump + 1 >= 5`), increment `PATCH` by `1`.
  * - If `PATCH` is already `10` when the 5th commit hits, reset `PATCH` to `0` and increment `MINOR` by `1` (e.g. `0.0.10 -> 0.1.0`).
@@ -177,7 +177,7 @@ export class PushitExecutor {
       if (mode === 'cloud-ephemeral' && opts.shortRunId) {
         const { stdout } = await execFileAsync(
           'ssh',
-          ['-S', `/tmp/commando-ssh-${opts.shortRunId}.sock`, 'commando@127.0.0.1', 'bash', '-lc', `cd ${opts.workspacePath} && git ${args.map(a => '"' + a.replace(/"/g, '\\"') + '"').join(' ')}`],
+          ['-S', `/tmp/warden-ssh-${opts.shortRunId}.sock`, 'warden@127.0.0.1', 'bash', '-lc', `cd ${opts.workspacePath} && git ${args.map(a => '"' + a.replace(/"/g, '\\"') + '"').join(' ')}`],
           { maxBuffer: 4 * 1024 * 1024 }
         );
         return stdout.trim();
@@ -202,8 +202,8 @@ export class PushitExecutor {
         if (mode === 'cloud-ephemeral' && opts.shortRunId) {
           const { stdout } = await execFileAsync('ssh', [
             '-S',
-            `/tmp/commando-ssh-${opts.shortRunId}.sock`,
-            'commando@127.0.0.1',
+            `/tmp/warden-ssh-${opts.shortRunId}.sock`,
+            'warden@127.0.0.1',
             'bash',
             '-lc',
             `cat ${opts.workspacePath}/package.json`
@@ -232,8 +232,8 @@ export class PushitExecutor {
         const encoded = Buffer.from(content, 'utf8').toString('base64');
         await execFileAsync('ssh', [
           '-S',
-          `/tmp/commando-ssh-${opts.shortRunId}.sock`,
-          'commando@127.0.0.1',
+          `/tmp/warden-ssh-${opts.shortRunId}.sock`,
+          'warden@127.0.0.1',
           'bash',
           '-lc',
           `echo "${encoded}" | base64 -d > ${opts.workspacePath}/package.json`

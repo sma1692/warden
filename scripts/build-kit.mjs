@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Commando Kit White-Label Builder (`scripts/build-kit.mjs`)
+ * Warden Kit White-Label Builder (`scripts/build-kit.mjs`)
  *
  * Packages a clean, zero-leak, general-purpose Tiered AI Workforce bundle
- * into `dist/commando-kit/` and `dist/commando-kit.zip` for Muse.
+ * into `dist/warden-kit/` and `dist/warden-kit.zip` for Muse.
  */
 
 import fs from 'node:fs';
@@ -13,8 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const DIST_DIR = path.join(ROOT, 'dist', 'commando-kit');
-const ZIP_PATH = path.join(ROOT, 'dist', 'commando-kit.zip');
+const DIST_DIR = path.join(ROOT, 'dist', 'warden-kit');
+const ZIP_PATH = path.join(ROOT, 'dist', 'warden-kit.zip');
 
 // Forbidden proprietary tokens that must NEVER appear in the white-label build.
 // Loaded from `private-data/build-kit/forbidden-tokens.json` (never published) and/or
@@ -41,7 +41,7 @@ fs.mkdirSync(DIST_DIR, { recursive: true });
 // ----------------------------------------------------------------------------
 writeFile(
   'README.md',
-  `# Commando Kit — Tiered Multi-Agent Engineering & Executive OS
+  `# Warden Kit — Tiered Multi-Agent Engineering & Executive OS
 
 > **Compatible IDEs & CLIs**: Muse (\`MUSE.md\` + \`.agents/skills/\` + \`.claude/agents/\`).
 > **Reporting Standard**: ASD-STE100 (Simplified Technical English), Visual-First Diagrams, and Structured Markdown Tables.
@@ -118,11 +118,11 @@ writeFile(
   'package.json',
   JSON.stringify(
     {
-      name: 'commando-kit',
+      name: 'warden-kit',
       version: '1.0.0',
       private: true,
       type: 'module',
-      description: 'Commando Kit — Tiered Multi-Agent Engineering & Executive Hierarchy for Muse',
+      description: 'Warden Kit — Tiered Multi-Agent Engineering & Executive Hierarchy for Muse',
       scripts: {
         init: 'node scripts/init-kit.mjs',
         'sync-in': 'node scripts/repo-tool.mjs sync-in',
@@ -150,7 +150,7 @@ dist/
 // 3. projects.example.yaml & projects.yaml
 // ----------------------------------------------------------------------------
 const PROJECTS_YAML_CONTENT = `# ============================================================================
-# COMMANDO KIT — Multi-Project Repository Registry
+# WARDEN KIT — Multi-Project Repository Registry
 # ============================================================================
 # Map each project slug to its local Git repository paths.
 # Then run: npm run init
@@ -186,9 +186,9 @@ writeFile('projects.yaml', PROJECTS_YAML_CONTENT);
 // ----------------------------------------------------------------------------
 writeFile(
   'AGENTS.md',
-  `# COMMANDO — Enterprise Agent Hierarchy & Orchestration Protocol
+  `# WARDEN — Enterprise Agent Hierarchy & Orchestration Protocol
 
-You operate inside **Commando**, the centralized corporate and technical command center for the Founder/CEO.
+You operate inside **Warden**, the centralized corporate and technical command center for the Founder/CEO.
 This directory does **not** hold application source code directly. Instead, it orchestrates an enterprise hierarchy of specialized agents across company units and multiple project repositories defined in [\`projects.yaml\`](./projects.yaml).
 
 ---
@@ -305,20 +305,20 @@ Delegate work down the hierarchy using the pre-configured subagents in [\`.claud
 );
 
 // ----------------------------------------------------------------------------
-// 6. .agents/skills/* (commando-orchestrator, standup, pushit, onboard-project)
+// 6. .agents/skills/* (warden-orchestrator, standup, pushit, onboard-project)
 // ----------------------------------------------------------------------------
 writeFile(
-  '.agents/skills/commando-orchestrator/SKILL.md',
+  '.agents/skills/warden-orchestrator/SKILL.md',
   `---
-name: commando-orchestrator
+name: warden-orchestrator
 description: >-
-  Orchestrates the Commando corporate & technical hierarchy: warden (Chief of Staff)
+  Orchestrates the Warden corporate & technical hierarchy: warden (Chief of Staff)
   -> cto & cbo (Level 0, Model: pro) -> pm, tech_lead, & infra_head (Level 1)
   -> backend_dev, frontend_dev, & infra_jr (Level 2). Supports Direct-to-Agent
   (@agent) granular mode and Daily Standups.
 ---
 
-# Commando Orchestrator Skill
+# Warden Orchestrator Skill
 
 ## Step 1: Operational Rules
 1. **Single Session Log File**: Create **only ONE** chat log file in \`chats/\` per session (\`chats/<YYYY-MM-DD>-session-<short-id>.md\`). Append every inter-agent handoff to that file.
@@ -470,7 +470,7 @@ writeFile(
   `---
 name: onboard-project
 description: >-
-  Onboards a new or existing local repository into Commando when the CEO says
+  Onboards a new or existing local repository into Warden when the CEO says
   "onboard <project>" or runs npm run init. Scans repository topology, creates
   context/<project>.md, context/<project>/<repo>.md, worklist/<project>/backlog.md,
   and memory/<project>/*.md.
@@ -555,7 +555,7 @@ writeFile(
   'scripts/repo-tool.mjs',
   `#!/usr/bin/env node
 /**
- * Commando Kit Unified Repo Access & Mirror Tool (\`scripts/repo-tool.mjs\`)
+ * Warden Kit Unified Repo Access & Mirror Tool (\`scripts/repo-tool.mjs\`)
  *
  * Dynamically parses \`projects.yaml\` and provides:
  *   - pull-check <project|repo|all>
@@ -572,10 +572,10 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const COMMANDO_ROOT = path.resolve(__dirname, '..');
-const MIRROR_ROOT = path.join(COMMANDO_ROOT, '.state', 'mirror');
+const WARDEN_ROOT = path.resolve(__dirname, '..');
+const MIRROR_ROOT = path.join(WARDEN_ROOT, '.state', 'mirror');
 const MANIFEST_PATH = path.join(MIRROR_ROOT, 'manifest.json');
-const PROJECTS_YAML_PATH = path.join(COMMANDO_ROOT, 'projects.yaml');
+const PROJECTS_YAML_PATH = path.join(WARDEN_ROOT, 'projects.yaml');
 
 export function parseProjectsYaml() {
   if (!fs.existsSync(PROJECTS_YAML_PATH)) return { projects: {}, aliases: {} };
@@ -735,7 +735,7 @@ writeFile(
   'scripts/init-kit.mjs',
   `#!/usr/bin/env node
 /**
- * Commando Kit Interactive Initializer (\`npm run init\`)
+ * Warden Kit Interactive Initializer (\`npm run init\`)
  *
  * Reads \`projects.yaml\` and scaffolds:
  *   - context/<project>.md & context/<project>/<repo>.md
@@ -822,7 +822,7 @@ for (const [proj, folders] of Object.entries(projects)) {
 
 fs.mkdirSync(path.join(ROOT, '.state'), { recursive: true });
 fs.writeFileSync(path.join(ROOT, '.state', 'topology-cache.json'), JSON.stringify(topology, null, 2));
-console.log(\`Initialized Commando Kit for \${projectNames.length} project(s): \${projectNames.join(', ')}\`);
+console.log(\`Initialized Warden Kit for \${projectNames.length} project(s): \${projectNames.join(', ')}\`);
 `
 );
 
@@ -1079,9 +1079,9 @@ if (leaks.length > 0) {
   process.exit(1);
 }
 
-// Package into dist/commando-kit.zip
-execSync(`cd "${ path.join(ROOT, 'dist') }" && zip -rq "${ZIP_PATH}" commando-kit`);
+// Package into dist/warden-kit.zip
+execSync(`cd "${ path.join(ROOT, 'dist') }" && zip -rq "${ZIP_PATH}" warden-kit`);
 
-console.log(`✅ Built white-label Commando Kit (${allDistFiles.length} files, 0 proprietary leaks).`);
+console.log(`✅ Built white-label Warden Kit (${allDistFiles.length} files, 0 proprietary leaks).`);
 console.log(`📁 Folder: ${DIST_DIR}`);
 console.log(`📦 Archive: ${ZIP_PATH}`);

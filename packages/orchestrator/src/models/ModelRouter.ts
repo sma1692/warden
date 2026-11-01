@@ -1,6 +1,6 @@
 /**
- * DYNAMO COMMANDO — Meta Muse Model & Embedding Router
- * (`dynamocommando.md` Sections 2, 3, 4.1, 4.7, 5.2 & `scripts/commando-muse.mjs`)
+ * WARDEN — Meta Muse Model & Embedding Router
+ * (the architecture spec Sections 2, 3, 4.1, 4.7, 5.2 & `scripts/warden-muse.mjs`)
  *
  * Supported Providers (Meta-only):
  * 1. `meta_muse` (Meta Model API):
@@ -271,7 +271,7 @@ export class ProviderHttpError extends Error {
 }
 
 /**
- * Multi-Token / Multi-Key Credit Pool & Automatic Failover Manager (`dynamocommando.md` Section 4.8.2).
+ * Multi-Token / Multi-Key Credit Pool & Automatic Failover Manager (the architecture spec Section 4.8.2).
  * Manages multiple API keys and credit buckets across Meta Muse cloud and local open-weights providers,
  * placing rate-limited (`429`), quota-exhausted (`402`/`403`), or failing (`5xx`) tokens on cooldown
  * and rotating to the next active token by `priorityOrder`.
@@ -859,7 +859,7 @@ export class ModelRouter {
     this.tokenTracker = options?.tokenTracker ?? defaultTokenTracker;
     this.contextCompactor = options?.contextCompactor ?? defaultContextCompactor;
     this.credentialPool = options?.credentialPool ?? new CredentialPoolManager();
-    const envProfile = (process.env.COMMANDO_ROUTING_PROFILE || '').toUpperCase();
+    const envProfile = (process.env.WARDEN_ROUTING_PROFILE || '').toUpperCase();
     this.globalRoutingProfile =
       options?.routingProfile ||
       (envProfile === 'LOCAL_ZERO_COST' || envProfile === 'CUSTOM_HYBRID'
@@ -881,7 +881,7 @@ export class ModelRouter {
   }
 
   /**
-   * 3-Tier Dynamic Model Resolution (`dynamocommando.md` Section 4.8.1):
+   * 3-Tier Dynamic Model Resolution (the architecture spec Section 4.8.1):
    * - Tier A: Global Routing Profile Override (`LOCAL_ZERO_COST` | `META_MUSE_HACKATHON` | `CUSTOM_HYBRID`)
    * - Tier B: Per-Agent Primary + Fallback (`fallback_provider`, `fallback_model_id`)
    * - Tier C: Per-Step Intra-Run Routing (`planning` | `tool_loop` | `compaction` | `creative_image` | `voice_note` | `default`)
@@ -1204,8 +1204,8 @@ export class ModelRouter {
 
   private getConfig() {
     return {
-      proModel: process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0',
-      defaultModel: process.env.COMMANDO_DEFAULT_MODEL || 'muse-spark-1.3',
+      proModel: process.env.WARDEN_PRO_MODEL || 'muse-wonder-1.0',
+      defaultModel: process.env.WARDEN_DEFAULT_MODEL || 'muse-spark-1.3',
       wardenExecutionMode: (process.env.WARDEN_EXECUTION_MODE || 'case_2b').toLowerCase(),
       wardenL2ModelProvider: (process.env.WARDEN_L2_MODEL_PROVIDER || 'muse-spark').toLowerCase(),
       localLlmBaseUrl: (
@@ -1214,7 +1214,7 @@ export class ModelRouter {
         'http://localhost:11434/v1'
       ).replace(/\/+$/, ''),
       localLlmModel: process.env.LOCAL_LLM_MODEL || 'llama-3.3-70b',
-      embeddingModel: process.env.COMMANDO_EMBEDDING_MODEL || 'muse-embed-1.0',
+      embeddingModel: process.env.WARDEN_EMBEDDING_MODEL || 'muse-embed-1.0',
       metaMuseBaseUrl: (process.env.META_MUSE_BASE_URL || 'https://api.meta.ai/v1').replace(
         /\/+$/,
         ''
@@ -1374,7 +1374,7 @@ export class ModelRouter {
       [req.systemInstruction || req.systemPrompt || '', systemMessagesText]
         .filter(Boolean)
         .join('\n\n') ||
-      'You are an autonomous enterprise AI agent operating inside DynamoCommando.';
+      'You are an autonomous enterprise AI agent operating inside Warden.';
 
     // Register / refresh deterministic Meta Muse Context Cache for this agent's system prompt
     const cacheEntry = this.contextCompactor.getOrCreateContextCache({
@@ -2412,7 +2412,7 @@ export class ModelRouter {
   }
 
   /**
-   * Pinned Vector Embedding Pipeline (`dynamocommando.md` Section 4.8.3):
+   * Pinned Vector Embedding Pipeline (the architecture spec Section 4.8.3):
    * Guarantees zero vector drift across chat model swaps (`meta_muse` <-> `ollama` <-> `huggingface`).
    * Regardless of which chat/reasoning provider an agent is currently assigned to, `embedText` ALWAYS pins
    * `pgvector` embeddings to the standardized 768-dimensional pipeline:

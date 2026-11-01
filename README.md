@@ -145,7 +145,7 @@ warden/
 │   └── web/                          # Live web dashboard UI (React + Vite + Tailwind)
 ├── scripts/
 │   ├── repo-tool.mjs                 # Multi-repo synchronization and mirror manager
-│   ├── commando-muse.mjs           # Meta Muse CLI orchestrator and standup daemon
+│   ├── warden-muse.mjs           # Meta Muse CLI orchestrator and standup daemon
 │   ├── token-report.mjs              # Token consumption and cost telemetry reporter
 │   ├── token-firewall.mjs            # Static token audit and file access verifier
 │   ├── export-oss-md.mjs             # Open-source zero-leak markdown & public repo exporter

@@ -37,7 +37,7 @@ export interface RunQAGateOptions {
 }
 
 /**
- * WebGL Chromium launch flags required by Section 2.3 of `dynamocommando.md` for headless
+ * WebGL Chromium launch flags required by Section 2.3 of the architecture spec for headless
  * Three.js / WebXR and PixiJS v8 game client verification.
  */
 export const HEADLESS_WEBGL_CHROMIUM_ARGS: readonly string[] = [
@@ -213,8 +213,8 @@ export class PlaywrightQAGate {
           ? (
               await execFileAsync('ssh', [
                 '-S',
-                `/tmp/commando-ssh-${opts.shortRunId}.sock`,
-                'commando@127.0.0.1',
+                `/tmp/warden-ssh-${opts.shortRunId}.sock`,
+                'warden@127.0.0.1',
                 'bash',
                 '-lc',
                 `cat ${opts.workspacePath}/package.json`
@@ -245,7 +245,7 @@ export class PlaywrightQAGate {
         if (opts.mode === 'cloud-ephemeral' && opts.shortRunId) {
           const { stdout, stderr } = await execFileAsync(
             'ssh',
-            ['-S', `/tmp/commando-ssh-${opts.shortRunId}.sock`, 'commando@127.0.0.1', 'bash', '-lc', `cd ${opts.workspacePath} && ${cmd}`],
+            ['-S', `/tmp/warden-ssh-${opts.shortRunId}.sock`, 'warden@127.0.0.1', 'bash', '-lc', `cd ${opts.workspacePath} && ${cmd}`],
             { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 }
           );
           const combined = `${stdout}\n${stderr}`.trim();
@@ -304,10 +304,10 @@ export class PlaywrightQAGate {
     if (typecheckPassed && buildPassed && hasWebPreview) {
       if (opts.mode === 'cloud-ephemeral' && opts.shortRunId) {
         const containerQaCmd = [
-          `(npx vite preview --host 0.0.0.0 --port ${previewPort} >/tmp/commando-qa/vite.log 2>&1 || npm run preview -- --host 0.0.0.0 --port ${previewPort} >/tmp/commando-qa/vite.log 2>&1) &`,
+          `(npx vite preview --host 0.0.0.0 --port ${previewPort} >/tmp/warden-qa/vite.log 2>&1 || npm run preview -- --host 0.0.0.0 --port ${previewPort} >/tmp/warden-qa/vite.log 2>&1) &`,
           'PREVIEW_PID=$!',
           'sleep 2',
-          `node /usr/local/bin/commando-webgl-qa.mjs --url http://127.0.0.1:${previewPort} --out /tmp/commando-qa/qa-${opts.runId}.png`,
+          `node /usr/local/bin/warden-webgl-qa.mjs --url http://127.0.0.1:${previewPort} --out /tmp/warden-qa/qa-${opts.runId}.png`,
           'QA_EXIT=$?',
           'kill $PREVIEW_PID 2>/dev/null || true',
           'exit $QA_EXIT'
@@ -335,8 +335,8 @@ export class PlaywrightQAGate {
           }
           await execFileAsync('scp', [
             '-o',
-            `ControlPath=/tmp/commando-ssh-${opts.shortRunId}.sock`,
-            `commando@127.0.0.1:/tmp/commando-qa/qa-${opts.runId}.png`,
+            `ControlPath=/tmp/warden-ssh-${opts.shortRunId}.sock`,
+            `warden@127.0.0.1:/tmp/warden-qa/qa-${opts.runId}.png`,
             screenshotPath
           ]);
         } catch (cpErr: unknown) {
@@ -345,10 +345,10 @@ export class PlaywrightQAGate {
       } else if (opts.mode === 'docker' && opts.containerName) {
         // Run preview server + in-container Playwright WebGL QA script
         const containerQaCmd = [
-          `(npx vite preview --host 0.0.0.0 --port ${previewPort} >/tmp/commando-qa/vite.log 2>&1 || npm run preview -- --host 0.0.0.0 --port ${previewPort} >/tmp/commando-qa/vite.log 2>&1) &`,
+          `(npx vite preview --host 0.0.0.0 --port ${previewPort} >/tmp/warden-qa/vite.log 2>&1 || npm run preview -- --host 0.0.0.0 --port ${previewPort} >/tmp/warden-qa/vite.log 2>&1) &`,
           'PREVIEW_PID=$!',
           'sleep 2',
-          `node /usr/local/bin/commando-webgl-qa.mjs --url http://127.0.0.1:${previewPort} --out /tmp/commando-qa/qa-${opts.runId}.png`,
+          `node /usr/local/bin/warden-webgl-qa.mjs --url http://127.0.0.1:${previewPort} --out /tmp/warden-qa/qa-${opts.runId}.png`,
           'QA_EXIT=$?',
           'kill $PREVIEW_PID 2>/dev/null || true',
           'exit $QA_EXIT'
@@ -376,7 +376,7 @@ export class PlaywrightQAGate {
           }
           await execFileAsync('docker', [
             'cp',
-            `${opts.containerName}:/tmp/commando-qa/qa-${opts.runId}.png`,
+            `${opts.containerName}:/tmp/warden-qa/qa-${opts.runId}.png`,
             screenshotPath
           ]);
         } catch (cpErr: unknown) {

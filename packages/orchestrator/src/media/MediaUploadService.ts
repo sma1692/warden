@@ -1,6 +1,6 @@
 /**
- * DYNAMO COMMANDO — Multimodal Chat Attachment & Local Media Upload Service
- * (`dynamocommando.md` Section 4.1 Table 7 & Section 5.2)
+ * WARDEN — Multimodal Chat Attachment & Local Media Upload Service
+ * (the architecture spec Section 4.1 Table 7 & Section 5.2)
  *
  * Responsibilities:
  * 1. Accepts multimodal chat attachments uploaded via base64 JSON or `multipart/form-data`

@@ -2,7 +2,7 @@
 /**
  * scripts/onboard.mjs
  *
- * Programmatic and CLI onboarding utility for Commando / Warden.
+ * Programmatic and CLI onboarding utility for Warden / Warden.
  * - Detects first-run state (.state/onboarded.json).
  * - Updates .claude/settings.local.json with allowed repo paths.
  * - Configures projects.yaml, context/, memory/, worklist/.
@@ -156,7 +156,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     completeOnboarding();
     process.exit(0);
   } else {
-    console.log(`Commando Onboarding Status: ${isOnboarded() ? 'Completed' : 'Pending First-Run'}`);
+    console.log(`Warden Onboarding Status: ${isOnboarded() ? 'Completed' : 'Pending First-Run'}`);
     console.log(`Run with:`);
     console.log(`  node scripts/onboard.mjs check`);
     console.log(`  node scripts/onboard.mjs complete`);

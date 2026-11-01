@@ -39,7 +39,7 @@ export interface SystemHealthTelemetry {
 
 /**
  * HealthAndQuotaGuard — Runaway Agent Guardrails, 24-Hour Hard Kill & Live Health Watchdog
- * (dynamocommando.md Sections 4.6 & 4.7)
+ * (the architecture spec Sections 4.6 & 4.7)
  *
  * Runs every 15 seconds to enforce:
  * 1. Strict Subagent Fan-Out Caps (anti-fork-bomb: max_subagents=4, max_spawns_per_run=12, MAX_DEPTH=4)

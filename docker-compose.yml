@@ -1,25 +1,25 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: dynamocommando-postgres
+    container_name: warden-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: dynamocommando
-      POSTGRES_USER: commando
-      POSTGRES_PASSWORD: commando_secret
+      POSTGRES_DB: warden
+      POSTGRES_USER: warden
+      POSTGRES_PASSWORD: warden_secret
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
-      - commando_pgdata:/var/lib/postgresql/data
+      - warden_pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U commando -d dynamocommando"]
+      test: ["CMD-SHELL", "pg_isready -U warden -d warden"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 5s
 
 volumes:
-  commando_pgdata:
-    name: dynamocommando_pgdata
+  warden_pgdata:
+    name: warden_pgdata

@@ -1,5 +1,5 @@
 ---
-name: commando-orchestrator
+name: warden-orchestrator
 description: >-
   Token-optimized orchestration runbook for Warden: warden (Root, <=1.5K tok/turn)
   -> cto & cbo (Level 0, <=4K tok/turn) -> pm, tech_lead, sec_lead, infra_head, designer

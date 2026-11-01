@@ -7,13 +7,13 @@ import {
   getProjects,
   inferProjectFromText,
   isInfraProject,
-  resolveCommandoRoot,
+  resolveWardenRoot,
 } from '../config/projectRegistry.js';
 import { loadSeedData } from './seedData.js';
 import { hybridMemoryEngine } from '../memory/HybridMemoryEngine.js';
 
 // ============================================================================
-// Core Relational + Vector Schema Types (dynamocommando.md Section 4)
+// Core Relational + Vector Schema Types (the architecture spec Section 4)
 // ============================================================================
 
 export type AgentStatus =
@@ -430,16 +430,16 @@ export interface ContractRecord {
 
 export type EventBroadcastFn = (event: string, payload: unknown) => void;
 
-export type CommandoSource = 'db' | 'md';
+export type WardenSource = 'db' | 'md';
 
-export function resolveCommandoSource(): CommandoSource {
-  return (process.env.COMMANDO_SOURCE || '').trim().toLowerCase() === 'db' ? 'db' : 'md';
+export function resolveWardenSource(): WardenSource {
+  return (process.env.WARDEN_SOURCE || '').trim().toLowerCase() === 'db' ? 'db' : 'md';
 }
 
 /**
  * Unified Orchestrator State & Database Store
  *
- * Synchronizes state with `@commando/db` (PostgreSQL + pgvector) when reachable,
+ * Synchronizes state with `@warden/db` (PostgreSQL + pgvector) when reachable,
  * while maintaining high-speed in-memory mirrors for sub-millisecond watchdog checks,
  * live timesheet ticking, and resilient zero-config startup.
  */
@@ -458,9 +458,9 @@ export class OrchestratorStore {
   public providerCredentials = new Map<string, ProviderCredentialRecord>();
   public subagentSessions = new Map<string, string>();
   public routingProfile: RoutingProfile =
-    (process.env.COMMANDO_ROUTING_PROFILE as RoutingProfile) || 'META_MUSE_HACKATHON';
+    (process.env.WARDEN_ROUTING_PROFILE as RoutingProfile) || 'META_MUSE_HACKATHON';
   public codeChunksCount = 412;
-  public commandoRoot: string;
+  public wardenRoot: string;
   public lastSyncStatus: DiskDbSyncStatus = {
     last_disk_to_db_at: null,
     last_db_to_disk_at: null,
@@ -484,26 +484,27 @@ export class OrchestratorStore {
   /**
    * Source of truth for chats, backlog, and contexts:
    * - `md` (default): Markdown files on disk hydrate the store and receive every write-back.
-   * - `db`: PostgreSQL (via `@commando/db` dbStore) hydrates the store and receives every write.
+   * - `db`: PostgreSQL (via `@warden/db` dbStore) hydrates the store and receives every write.
    *   Markdown is only touched by an explicit `npm run sync`.
    */
-  public readonly source: CommandoSource;
+  public readonly source: WardenSource;
 
   private broadcastFn?: EventBroadcastFn;
   private dbModule: Record<string, any> | null = null;
   private dbConnected = false;
   private dbWriteQueue: Promise<unknown> = Promise.resolve();
   private dbAgentIds = new Set<string>();
+  private dbPersistedAgentIds = new Set<string>();
 
-  constructor(options?: { onBroadcast?: EventBroadcastFn; commandoRoot?: string }) {
+  constructor(options?: { onBroadcast?: EventBroadcastFn; wardenRoot?: string }) {
     this.broadcastFn = options?.onBroadcast;
-    this.commandoRoot = this.resolveCommandoRoot(options?.commandoRoot);
-    this.source = resolveCommandoSource();
+    this.wardenRoot = this.resolveWardenRoot(options?.wardenRoot);
+    this.source = resolveWardenSource();
     this.seedInitialState();
   }
 
-  private resolveCommandoRoot(explicitRoot?: string): string {
-    return resolveCommandoRoot(explicitRoot);
+  private resolveWardenRoot(explicitRoot?: string): string {
+    return resolveWardenRoot(explicitRoot);
   }
 
   // ============================================================================
@@ -537,7 +538,7 @@ export class OrchestratorStore {
     return this.leadForProject(s);
   }
 
-  /** Default project slug (COMMANDO_DEFAULT_PROJECT or first tech project in projects.yaml). */
+  /** Default project slug (WARDEN_DEFAULT_PROJECT or first tech project in projects.yaml). */
   public getDefaultProjectSlug(): string {
     return getDefaultProjectSlug();
   }
@@ -590,14 +591,14 @@ export class OrchestratorStore {
   }
 
   /**
-   * Attempts to attach to `@commando/db` PostgreSQL pool if available.
+   * Attempts to attach to `@warden/db` PostgreSQL pool if available.
    */
   public async tryConnectDatabase(): Promise<boolean> {
     if (this.source === 'db') {
       return this.connectDbSource();
     }
     try {
-      const modName = '@commando/db';
+      const modName = '@warden/db';
       const mod = await import(/* @vite-ignore */ modName).catch(() => null);
       if (mod) {
         this.dbModule = mod;
@@ -623,14 +624,14 @@ export class OrchestratorStore {
   }
 
   /**
-   * `db` source mode: connect `@commando/db` dbStore (Postgres, or JSON snapshot fallback),
+   * `db` source mode: connect `@warden/db` dbStore (Postgres, or JSON snapshot fallback),
    * then hydrate threads, messages, and backlog from it instead of Markdown.
    */
   private async connectDbSource(): Promise<boolean> {
-    const modName = '@commando/db';
+    const modName = '@warden/db';
     const mod: Record<string, any> | null = await import(/* @vite-ignore */ modName).catch(
       (err) => {
-        console.error('[OrchestratorStore] Failed to load @commando/db:', err);
+        console.error('[OrchestratorStore] Failed to load @warden/db:', err);
         return null;
       }
     );
@@ -807,7 +808,7 @@ export class OrchestratorStore {
     const readMdSafe = (relPath: string, fallback: string): string => {
       try {
         const candidatePaths = [
-          path.resolve(this.commandoRoot, relPath),
+          path.resolve(this.wardenRoot, relPath),
           path.resolve(process.cwd(), relPath),
           path.resolve(workspaceRoot, relPath),
         ];
@@ -1344,7 +1345,7 @@ export class OrchestratorStore {
         const cred = this.selectActiveCredentialForProvider('meta_muse');
         return {
           provider: 'meta_muse',
-          modelId: process.env.COMMANDO_PRO_MODEL || 'muse-wonder-1.0',
+          modelId: process.env.WARDEN_PRO_MODEL || 'muse-wonder-1.0',
           fallbackProvider: 'meta_muse',
           fallbackModelId: 'muse-wonder-1.0',
           credentialId: cred?.id || null,
@@ -1387,7 +1388,7 @@ export class OrchestratorStore {
       return {
         provider: 'meta_muse',
         modelId:
-          process.env.COMMANDO_DEFAULT_MODEL ||
+          process.env.WARDEN_DEFAULT_MODEL ||
           'muse-spark-1.3',
         fallbackProvider: 'meta_muse',
         fallbackModelId: 'muse-spark-1.3',
@@ -1596,7 +1597,7 @@ export class OrchestratorStore {
 
   /**
    * Reads `context/`, `memory/`, and `worklist/` (`inbox.md`, `todo/*.md`, `done/*.md`)
-   * from the Commando root on disk and merges them into the in-memory / DB store.
+   * from the Warden root on disk and merges them into the in-memory / DB store.
    * Never deletes or overwrites any native IDE files (`AGENTS.md`, `MUSE.md`, etc.).
    */
   public syncDiskToDb(): DiskDbSyncStatus {
@@ -1607,7 +1608,7 @@ export class OrchestratorStore {
 
     try {
       // 1. Sync `context/` markdown files -> `projectContexts`
-      const contextDir = path.join(this.commandoRoot, 'context');
+      const contextDir = path.join(this.wardenRoot, 'context');
       if (fs.existsSync(contextDir)) {
         for (const ctx of this.projectContexts.values()) {
           const candidates = [
@@ -1630,7 +1631,7 @@ export class OrchestratorStore {
       }
 
       // 2. Sync `memory/` markdown files -> `memories`
-      const memoryDir = path.join(this.commandoRoot, 'memory');
+      const memoryDir = path.join(this.wardenRoot, 'memory');
       if (fs.existsSync(memoryDir)) {
         const memoryMappings: Array<{ relPath: string; agentId: string; scope: string | null }> = [
           { relPath: 'cto.md', agentId: 'cto', scope: null },
@@ -1654,7 +1655,7 @@ export class OrchestratorStore {
       }
 
       // 3. Sync `worklist/todo/*.md` and `worklist/done/*.md` -> `backlogItems`
-      const worklistDir = path.join(this.commandoRoot, 'worklist');
+      const worklistDir = path.join(this.wardenRoot, 'worklist');
       if (fs.existsSync(worklistDir)) {
         const inboxPath = path.join(worklistDir, 'inbox.md');
         if (fs.existsSync(inboxPath)) {
@@ -1695,8 +1696,8 @@ export class OrchestratorStore {
         }
       }
 
-      // 4. Merge structured records from `.state/dynamocommando-db.json` (generated by `npm run db:ingest`)
-      const snapshotPath = path.join(this.commandoRoot, '.state', 'dynamocommando-db.json');
+      // 4. Merge structured records from `.state/warden-db.json` (generated by `npm run db:ingest`)
+      const snapshotPath = path.join(this.wardenRoot, '.state', 'warden-db.json');
       if (fs.existsSync(snapshotPath)) {
         const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
         if (Array.isArray(snapshot.backlogItems)) {
@@ -1783,7 +1784,7 @@ export class OrchestratorStore {
 
     try {
       // 1. Ensure `worklist/todo` and `worklist/done` reflect active DB backlog items
-      const worklistDir = path.join(this.commandoRoot, 'worklist');
+      const worklistDir = path.join(this.wardenRoot, 'worklist');
       const todoDir = path.join(worklistDir, 'todo');
       const doneDir = path.join(worklistDir, 'done');
       if (fs.existsSync(worklistDir)) {
@@ -1834,11 +1835,11 @@ export class OrchestratorStore {
       }
 
       // 2. Count existing `context/` and `memory/` files preserved on disk
-      const contextDir = path.join(this.commandoRoot, 'context');
+      const contextDir = path.join(this.wardenRoot, 'context');
       if (fs.existsSync(contextDir)) {
         syncedContextFiles = this.projectContexts.size;
       }
-      const memoryDir = path.join(this.commandoRoot, 'memory');
+      const memoryDir = path.join(this.wardenRoot, 'memory');
       if (fs.existsSync(memoryDir)) {
         syncedMemoryFiles = Math.max(10, this.memories.length);
       }
@@ -1915,6 +1916,30 @@ export class OrchestratorStore {
     this.runs.set(run.id, run);
     this.stepsByRun.set(run.id, []);
     this.broadcast('run:updated', run);
+    this.enqueueDbWrite('run-start', async (dbStore) => {
+      const agent = this.agents.get(run.agent_id);
+      if (agent && !this.dbPersistedAgentIds.has(agent.id)) {
+        await dbStore.upsertAgent({ ...agent });
+        this.dbPersistedAgentIds.add(agent.id);
+      }
+      if (run.chat_thread_id && !(await dbStore.getChatThread(run.chat_thread_id))) {
+        const thread = this.threads.get(run.chat_thread_id);
+        if (thread) await dbStore.createChatThread({ ...thread });
+      }
+      await dbStore.createAgentRun({
+        id: run.id,
+        agent_id: run.agent_id,
+        parent_run_id: run.parent_run_id,
+        chat_thread_id: run.chat_thread_id,
+        sprint_id: run.sprint_id,
+        backlog_item_id: run.backlog_item_id,
+        // Memory 'IDLE_WATCHDOG' has no pg CHECK twin; closest trigger is idle backlog ping.
+        trigger_type: run.trigger_type === 'IDLE_WATCHDOG' ? 'IDLE_BACKLOG_PING' : run.trigger_type,
+        input_prompt: run.input_prompt,
+        status: run.status,
+        container_id: run.container_id,
+      });
+    });
     return run;
   }
 
@@ -1931,6 +1956,29 @@ export class OrchestratorStore {
     };
     this.runs.set(runId, updated);
     this.broadcast('run:updated', updated);
+    if (
+      patch.status === 'COMPLETED' ||
+      patch.status === 'FAILED' ||
+      patch.status === 'TERMINATED_TIMEOUT'
+    ) {
+      const finished = updated;
+      this.enqueueDbWrite('run-complete', (dbStore) =>
+        dbStore.completeAgentRun(finished.id, {
+          status: finished.status,
+          output_summary: finished.output_summary ?? undefined,
+          git_commit_sha: finished.git_commit_sha ?? undefined,
+          git_branch: finished.git_branch ?? undefined,
+          preview_url: finished.preview_url ?? undefined,
+          qa_passed: finished.qa_passed ?? undefined,
+          qa_screenshot_url: finished.qa_screenshot_url ?? undefined,
+          tokens_in: finished.tokens_in,
+          tokens_cached: finished.tokens_cached,
+          tokens_thinking: finished.tokens_thinking,
+          tokens_out: finished.tokens_out,
+          cost_usd: finished.cost_usd,
+        })
+      );
+    }
     return updated;
   }
 
@@ -1947,6 +1995,26 @@ export class OrchestratorStore {
     list.push(step);
     this.stepsByRun.set(input.run_id, list);
     this.broadcast('step:created', step);
+    this.enqueueDbWrite('step', (dbStore) =>
+      dbStore.appendInferenceStep({
+        id: step.id,
+        run_id: step.run_id,
+        step_index: step.step_index,
+        step_type: step.step_type,
+        model_used: step.model_used,
+        thinking_text: step.thinking_text,
+        message_text: step.message_text,
+        tool_name: step.tool_name,
+        tool_args_json: step.tool_args_json,
+        tool_output_json: step.tool_output_json,
+        duration_ms: step.duration_ms,
+        tokens_in: step.tokens_in,
+        tokens_cached: step.tokens_cached,
+        tokens_thinking: step.tokens_thinking,
+        tokens_out: step.tokens_out,
+        created_at: step.created_at,
+      })
+    );
     return step;
   }
 
