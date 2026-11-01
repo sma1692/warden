@@ -25,8 +25,9 @@ import type {
   InterventionCategory,
   PriorityLevel,
   Sprint,
-} from '../types/commando';
+} from '../types/warden';
 import type { VerticalScope } from './ConsultationKnob';
+import { SpriteTaskPreview } from './SpriteTaskPreview';
 import {
   PRIMARY_PROJECT,
   PROJECT_CATALOG,
@@ -782,6 +783,8 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
                 </p>
               </div>
 
+              {item.id === 'bl_sprite_401' && <SpriteTaskPreview />}
+
               {needsCeo && (
                 <div className="rounded-xl border border-[var(--semantic-alert)]/40 bg-[var(--surface-elevated)] p-2.5 space-y-2">
                   <div className="text-[11px] text-[var(--semantic-alert)] font-medium">
@@ -874,6 +877,11 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
                         <div className="text-[11px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
                           {item.spec_md}
                         </div>
+                        {item.id === 'bl_sprite_401' && (
+                          <div className="mt-2">
+                            <SpriteTaskPreview />
+                          </div>
+                        )}
                         {needsCeo && item.intervention_prompt && (
                           <div className="text-[11px] text-[var(--semantic-alert)] font-medium mt-1">
                             🚨 {item.intervention_prompt}

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dynamocommando-pwa-v1';
+const CACHE_NAME = 'warden-pwa-v1';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -38,7 +38,7 @@ self.addEventListener('fetch', (event) => {
 // Handle Web Push / Telegram Companion Deep-Link Notifications
 self.addEventListener('push', (event) => {
   let payload = {
-    title: 'DynamoCommando Alert',
+    title: 'Warden Alert',
     body: 'An AI agent needs your attention in the Command Center.',
     threadId: '',
     gateId: '',

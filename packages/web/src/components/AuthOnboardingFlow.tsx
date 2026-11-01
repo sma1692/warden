@@ -125,7 +125,7 @@ export const StrictOverseerCrest: React.FC<{
   );
 };
 
-const SAVED_STEP_STORAGE_KEY = 'commando_onboarding_saved_step_v1';
+const SAVED_STEP_STORAGE_KEY = 'warden_onboarding_saved_step_v1';
 
 const INITIAL_SOLO_AGENTS: SuggestedAgentNode[] = [
   {
@@ -379,6 +379,15 @@ const INITIAL_BACKLOG_DRAFTS: OnboardingBacklogDraft[] = [
     project: 'pulse-support',
     enabled: true,
   },
+  {
+    id: 'ob-7',
+    title: 'Generate 8-bit sprite pack via @designer & wire into game-client',
+    vertical: 'TECH',
+    priority: 'P0',
+    assignee: '@designer',
+    project: 'pulse-core',
+    enabled: true,
+  },
 ];
 
 export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
@@ -426,10 +435,15 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     return () => window.clearInterval(id);
   }, [resendAt]);
 
-  // Track 1 (Solo Founder — Year 0 Day-1 Launch of NovaPulse) state
-  const [companyName, setCompanyName] = useState<string>('NovaPulse (novapulse.io)');
+  // Track 1 state — live product starts blank so founders enter their own
+  // company; gallery/demo keeps the NovaPulse preset for the sandbox tour.
+  const [companyName, setCompanyName] = useState<string>(
+    isLive ? '' : 'NovaPulse (novapulse.io)'
+  );
   const [companyBrief, setCompanyBrief] = useState<string>(
-    'AI-Powered Commerce, SEO/AEO Growth, Digital Marketing & Customer Support SaaS company (Year 0 Solo Founder Alex Rivera launching pulse-core, pulse-api, pulse-seo, pulse-social, and pulse-support).'
+    isLive
+      ? ''
+      : 'AI-Powered Commerce, SEO/AEO Growth, Digital Marketing & Customer Support SaaS company (Year 0 Solo Founder Alex Rivera launching pulse-core, pulse-api, pulse-seo, pulse-social, and pulse-support).'
   );
   const [enabledVerticals, setEnabledVerticals] = useState<
     Record<'TECH' | 'SEO_AEO' | 'SOCIAL', boolean>
@@ -449,15 +463,23 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   );
   const [customSupervisor, setCustomSupervisor] = useState<string>('@cto');
 
-  // Track 2 (Existing Team — NovaPulse 3 Years Later, Post-$4.5M Seed/Series A) state
-  const [teamWebsite, setTeamWebsite] = useState<string>('https://novapulse.io');
+  // Track 2 state — live product starts blank; gallery/demo keeps presets.
+  const [teamWebsite, setTeamWebsite] = useState<string>(
+    isLive ? '' : 'https://novapulse.io'
+  );
   const [teamRepos, setTeamRepos] = useState<string>(
-    'pulse-core, pulse-api, pulse-infra, pulse-seo, pulse-social, pulse-support'
+    isLive
+      ? ''
+      : 'pulse-core, pulse-api, pulse-infra, pulse-seo, pulse-social, pulse-support'
   );
   const [teamSocials, setTeamSocials] = useState<string>(
-    'x.com/novapulse_ai, linkedin.com/company/novapulse, youtube.com/@novapulse'
+    isLive
+      ? ''
+      : 'x.com/novapulse_ai, linkedin.com/company/novapulse, youtube.com/@novapulse'
   );
-  const [humanRoster, setHumanRoster] = useState<HumanTeamMember[]>(INITIAL_HUMAN_ROSTER);
+  const [humanRoster, setHumanRoster] = useState<HumanTeamMember[]>(
+    isLive ? [] : INITIAL_HUMAN_ROSTER
+  );
   const [newHumanName, setNewHumanName] = useState<string>('');
   const [newHumanRole, setNewHumanRole] = useState<string>('');
   const [newHumanFocus, setNewHumanFocus] = useState<string>('');
@@ -465,11 +487,127 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     'TECH'
   );
 
+  // Code connection (cloud-safe): GitHub repo edit path + local runner option.
+  const [repoUrl, setRepoUrl] = useState<string>('');
+  const [codePath, setCodePath] = useState<'github' | 'runner'>('github');
+  const [ghStatus, setGhStatus] = useState<{
+    configured: boolean;
+    connected: boolean;
+    login: string | null;
+    repo: string | null;
+  } | null>(null);
+  const [ghRepos, setGhRepos] = useState<
+    { full_name: string; private: boolean; default_branch: string }[]
+  >([]);
+  const [ghBusy, setGhBusy] = useState<boolean>(false);
+
+  // Probe the orchestrator for GitHub OAuth state (null = unreachable, e.g. static hosting).
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/github/status')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data && typeof data.configured === 'boolean') {
+          setGhStatus({
+            configured: data.configured,
+            connected: Boolean(data.connected),
+            login: data.login || null,
+            repo: data.repo || null,
+          });
+          if (data.repo) setRepoUrl(`https://github.com/${data.repo}`);
+        }
+      })
+      .catch(() => {
+        // static hosting without the orchestrator: repo-URL paste still works
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Landing return banner after the OAuth round-trip (?github=connected&login=x).
+  const [ghReturn, setGhReturn] = useState<{ ok: boolean; login: string } | null>(null);
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const state = params.get('github');
+      if (state === 'connected') {
+        setGhReturn({ ok: true, login: params.get('login') || 'github-user' });
+        try {
+          window.localStorage.setItem(
+            'warden_github_login',
+            params.get('login') || 'github-user'
+          );
+        } catch {
+          // ignore storage errors
+        }
+      } else if (state === 'error') {
+        setGhReturn({ ok: false, login: params.get('reason') || 'oauth_failed' });
+      }
+      if (state) {
+        params.delete('github');
+        params.delete('login');
+        params.delete('reason');
+        const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+        window.history.replaceState(null, '', next);
+      }
+    } catch {
+      // non-browser environment
+    }
+  }, []);
+
+  const refreshGhRepos = async () => {
+    setGhBusy(true);
+    try {
+      const res = await fetch('/api/github/repos?per_page=30');
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.repos) setGhRepos(data.repos);
+    } catch {
+      // keep existing list
+    } finally {
+      setGhBusy(false);
+    }
+  };
+
+  const handleGhSelectRepo = async (fullName: string) => {
+    setGhBusy(true);
+    try {
+      const res = await fetch('/api/github/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo_full_name: fullName }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        setGhStatus((prev) => (prev ? { ...prev, repo: fullName } : prev));
+        setRepoUrl(`https://github.com/${fullName}`);
+      }
+    } finally {
+      setGhBusy(false);
+    }
+  };
+
+  const handleGhDisconnect = async () => {
+    setGhBusy(true);
+    try {
+      await fetch('/api/github/disconnect', { method: 'POST' });
+      setGhStatus((prev) =>
+        prev ? { ...prev, connected: false, login: null, repo: null } : prev
+      );
+      setGhRepos([]);
+    } finally {
+      setGhBusy(false);
+    }
+  };
+
   // Shared 1C / 2C Backlog state
   const [backlogDrafts, setBacklogDrafts] =
     useState<OnboardingBacklogDraft[]>(INITIAL_BACKLOG_DRAFTS);
 
-  // Track 3 (.md Bundle Import) state
+  // Track 3 (.md Bundle Import + LLM chat import) state
+  const [importSource, setImportSource] = useState<'warden' | 'chatgpt' | 'claude' | 'paste'>('warden');
+  const [pastedContext, setPastedContext] = useState<string>('');
+  const [contextFileName, setContextFileName] = useState<string | null>(null);
   const [bundleLoading, setBundleLoading] = useState<boolean>(false);
   const [bundleFileCount, setBundleFileCount] = useState<number>(42);
   const [bundlePreviewKeys, setBundlePreviewKeys] = useState<string[]>([
@@ -613,7 +751,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       const data = await res.json().catch(() => ({}));
       return { ok: res.ok && data.ok !== false, data };
     } catch {
-      return { ok: false, data: { error: 'Cannot reach the Commando server. Is the orchestrator running?' } };
+      return { ok: false, data: { error: 'Cannot reach the Warden server. Is the orchestrator running?' } };
     }
   };
 
@@ -982,6 +1120,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               </h1>
               <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto">
                 Data and code reads stay downstairs in isolated Level 2 sandboxes while you steer architecture, search citations, and viral distribution from one executive command center.
+                Prefer a tour first? The demo workspace shows a live company where copilots resolve requests human-to-human without interrupting anyone.
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -1008,7 +1147,46 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   <FileCode2 className="h-4 w-4 text-gold-400" />
                   <span>Import .md Bundle</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      window.localStorage.setItem('warden_demo_workspace', '1');
+                    } catch {
+                      // ignore storage errors
+                    }
+                    onComplete();
+                  }}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-[#C6A664]/50 bg-[#C6A664]/10 hover:bg-[#C6A664]/20 px-5 py-3.5 text-sm font-bold text-[#D4B475] transition cursor-pointer"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>Explore live demo workspace</span>
+                </button>
               </div>
+
+              {ghReturn && (
+                <div
+                  className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-xs font-semibold ${
+                    ghReturn.ok
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+                      : 'border-red-500/40 bg-red-500/10 text-red-200'
+                  }`}
+                >
+                  {ghReturn.ok ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>
+                        GitHub connected as @{ghReturn.login} — agents can branch &amp; PR on your repos.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <X className="h-4 w-4" />
+                      <span>GitHub connect failed ({ghReturn.login}) — try again or paste a repo URL.</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 3 Vertical Pillars Showcase */}
@@ -1464,7 +1642,8 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   type="text"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  className="w-full rounded-xl border border-[#2D3440] bg-[#101216] px-3.5 py-2.5 text-sm text-slate-100"
+                  placeholder="e.g. Acme (acme.com)"
+                  className="w-full rounded-xl border border-[#2D3440] bg-[#101216] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500"
                 />
               </div>
 
@@ -1476,7 +1655,8 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   rows={3}
                   value={companyBrief}
                   onChange={(e) => setCompanyBrief(e.target.value)}
-                  className="w-full rounded-xl border border-[#2D3440] bg-[#101216] p-3.5 text-xs text-slate-200 leading-relaxed"
+                  placeholder="What does your company build? Which products, repos, and growth channels matter most?"
+                  className="w-full rounded-xl border border-[#2D3440] bg-[#101216] p-3.5 text-xs text-slate-200 leading-relaxed placeholder:text-slate-500"
                 />
               </div>
 
@@ -1535,6 +1715,139 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   })}
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#22262E] bg-[#101216] p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <FolderGit2 className="h-4 w-4 text-gold-400" />
+                <h3 className="text-xs font-bold text-white">
+                  Connect code — how should agents edit your repos?
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setCodePath('github')}
+                  className={`rounded-xl border p-3 text-left transition cursor-pointer ${
+                    codePath === 'github'
+                      ? 'border-[#C6A664]/60 bg-[#C6A664]/10'
+                      : 'border-[#22262E] bg-[#14161A] opacity-70'
+                  }`}
+                >
+                  <span className="text-xs font-bold text-white">GitHub repo (recommended)</span>
+                  <span className="block text-[11px] text-slate-400 mt-1">
+                    Connect a repo — agents branch, edit, and open PRs directly on git. No local filesystem access needed.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCodePath('runner')}
+                  className={`rounded-xl border p-3 text-left transition cursor-pointer ${
+                    codePath === 'runner'
+                      ? 'border-[#C6A664]/60 bg-[#C6A664]/10'
+                      : 'border-[#22262E] bg-[#14161A] opacity-70'
+                  }`}
+                >
+                  <span className="text-xs font-bold text-white">Local runner</span>
+                  <span className="block text-[11px] text-slate-400 mt-1">
+                    Run a small client agent on your machine for private folders the cloud cannot reach.
+                  </span>
+                </button>
+              </div>
+              {codePath === 'github' ? (
+                <div className="space-y-2">
+                  {ghStatus?.connected ? (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-200">
+                          <CheckCircle2 className="h-4 w-4" />
+                          Connected as @{ghStatus.login}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleGhDisconnect()}
+                          disabled={ghBusy}
+                          className="text-[11px] text-slate-400 hover:text-white underline underline-offset-2 cursor-pointer disabled:opacity-50"
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                      {ghStatus.repo ? (
+                        <p className="text-xs font-mono text-emerald-200">
+                          Edit target: {ghStatus.repo} — agents branch &amp; PR here.
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-emerald-200/80">
+                          Pick the repo agents may edit — they branch &amp; open PRs on git.
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <select
+                          aria-label="GitHub repository to edit"
+                          value={ghStatus.repo || ''}
+                          disabled={ghBusy}
+                          onChange={(e) => {
+                            if (e.target.value) void handleGhSelectRepo(e.target.value);
+                          }}
+                          onFocus={() => {
+                            if (ghRepos.length === 0) void refreshGhRepos();
+                          }}
+                          className="flex-1 rounded-xl border border-[#2D3440] bg-[#14161A] px-3 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-[#C6A664]/60 cursor-pointer disabled:opacity-50"
+                        >
+                          <option value="">
+                            {ghRepos.length === 0 ? 'Load repos…' : 'Select a repo…'}
+                          </option>
+                          {ghRepos.map((r) => (
+                            <option key={r.full_name} value={r.full_name}>
+                              {r.full_name}
+                              {r.private ? ' (private)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => void refreshGhRepos()}
+                          disabled={ghBusy}
+                          aria-label="Refresh repositories"
+                          className="rounded-xl border border-[#22262E] bg-[#1D2128] hover:bg-[#22262E] p-2 text-slate-300 transition cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : ghStatus?.configured ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.location.href = '/api/github/authorize';
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#F5F0E6] hover:bg-white text-[#0B121C] font-bold px-4 py-2.5 text-xs transition cursor-pointer"
+                    >
+                      <FolderGit2 className="h-4 w-4" />
+                      <span>Connect GitHub — branch &amp; PR on your repos</span>
+                    </button>
+                  ) : (
+                    <>
+                      <input
+                        type="url"
+                        value={repoUrl}
+                        onChange={(e) => setRepoUrl(e.target.value)}
+                        placeholder="https://github.com/you/your-repo (optional — add later)"
+                        className="w-full rounded-xl border border-[#2D3440] bg-[#14161A] px-3.5 py-2.5 text-xs font-mono text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-[#C6A664]/60"
+                      />
+                      <p className="text-[11px] text-slate-500">
+                        {ghStatus === null
+                          ? 'One-click GitHub connect appears when the Warden orchestrator is running — paste a repo URL for now.'
+                          : 'Set GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET on the orchestrator for one-click connect — paste a repo URL for now.'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <code className="block rounded-xl border border-[#22262E] bg-[#14161A] px-3.5 py-2.5 text-[11px] font-mono text-gold-300">
+                  npx @warden/runner link --workspace ~/your-project
+                </code>
+              )}
             </div>
 
             <div className="flex justify-end pt-2">
@@ -2044,11 +2357,11 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                 </div>
               </div>
 
-              {/* Right 5 Cols: Visual Hybrid Human + AI Twin Org Chart */}
+              {/* Right 5 Cols: Visual Team + AI Twin Org Chart */}
               <div className="lg:col-span-5 rounded-2xl border border-[#22262E] bg-[#101216]/90 p-4 space-y-3">
                 <div className="flex items-center justify-between border-b border-[#22262E] pb-2">
                   <span className="text-xs font-bold text-slate-100">
-                    Hybrid Human ↔ AI Twin Org Chart
+                    Team + AI Twin Org Chart
                   </span>
                   <span className="text-[10px] font-mono text-[#D4B475]">
                     1:1 Paired
@@ -2087,13 +2400,16 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-mono uppercase text-[#D4B475]">
-                  TRACK 3 • OPEN-SOURCE .MD WORKSPACE BUNDLE IMPORTER
+                  IMPORT • WORKSPACE BUNDLE OR CHAT HISTORY
                 </span>
                 <h2 className="text-xl font-bold text-white">
                   Import <code className="font-mono text-gold-300">AGENTS.md</code>,{' '}
                   <code className="font-mono text-gold-300">projects.yaml</code> &amp;{' '}
                   <code className="font-mono text-gold-300">worklist/*</code>
                 </h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Bring a Warden bundle, or export chats from ChatGPT / Claude and paste them below — Warden seeds company context and backlog drafts from it.
+                </p>
               </div>
               <button
                 type="button"
@@ -2130,13 +2446,103 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               ))}
             </div>
 
+            <div className="rounded-2xl border border-[#22262E] bg-[#101216] p-4 space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 rounded-xl bg-[#14161A] border border-[#22262E] p-1">
+                {(
+                  [
+                    { id: 'warden', label: 'Warden bundle' },
+                    { id: 'chatgpt', label: 'ChatGPT export' },
+                    { id: 'claude', label: 'Claude export' },
+                    { id: 'paste', label: 'Paste text' },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setImportSource(tab.id)}
+                    className={`rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
+                      importSource === tab.id
+                        ? 'bg-[#C6A664]/20 text-[#D4B475] border border-[#C6A664]/40'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {importSource === 'warden' && (
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Using the loaded <code className="font-mono text-gold-300">/warden-demo-bundle.json</code> preview above. Point Warden at your own bundle file to seed agents, projects, and backlog in one step.
+                </p>
+              )}
+              {importSource === 'chatgpt' && (
+                <ol className="text-xs text-slate-300 leading-relaxed space-y-1 list-decimal list-inside">
+                  <li>Open ChatGPT → Settings → Data controls → Export data, and download the ZIP.</li>
+                  <li>Unzip it and open <code className="font-mono text-gold-300">conversations.json</code>.</li>
+                  <li>Copy the threads that describe your product and paste them below — Warden extracts company context and starter tasks.</li>
+                </ol>
+              )}
+              {importSource === 'claude' && (
+                <ol className="text-xs text-slate-300 leading-relaxed space-y-1 list-decimal list-inside">
+                  <li>Open the Claude chat with your product context → Share / Export, or copy the full thread.</li>
+                  <li>For bulk history, use Settings → Export data and unzip the archive.</li>
+                  <li>Paste the most relevant conversations below — Warden seeds your workspace brief and backlog drafts.</li>
+                </ol>
+              )}
+              {importSource === 'paste' && (
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Paste anything: PRDs, meeting notes, support threads. Warden turns it into company context and backlog drafts.
+                </p>
+              )}
+
+              {importSource !== 'warden' && (
+                <div className="space-y-2">
+                  <textarea
+                    value={pastedContext}
+                    onChange={(e) => setPastedContext(e.target.value)}
+                    placeholder="Paste exported chat or notes here…"
+                    rows={5}
+                    className="w-full rounded-xl border border-[#2D3440] bg-[#14161A] px-3.5 py-2.5 text-xs font-mono text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-[#C6A664]/60"
+                  />
+                  <div className="flex items-center gap-2">
+                    <label className="inline-flex items-center gap-1.5 rounded-xl border border-[#22262E] bg-[#1D2128] hover:bg-[#22262E] px-3 py-2 text-xs font-semibold text-slate-200 transition cursor-pointer">
+                      <Upload className="h-3.5 w-3.5 text-gold-400" />
+                      <span>{contextFileName ?? 'Attach export file (.json / .md / .txt)'}</span>
+                      <input
+                        type="file"
+                        accept=".json,.md,.txt,.zip"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setContextFileName(file.name);
+                          if (file.size > 2_000_000) return;
+                          void file.text().then((text) => {
+                            setPastedContext((prev) =>
+                              prev ? `${prev}\n\n--- ${file.name} ---\n${text.slice(0, 20000)}` : text.slice(0, 20000)
+                            );
+                          });
+                        }}
+                      />
+                    </label>
+                    {pastedContext.trim() && (
+                      <span className="text-[11px] font-mono text-emerald-300">
+                        {pastedContext.trim().length.toLocaleString()} chars ready
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={finishOnboarding}
                 className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 px-6 py-3.5 text-xs transition cursor-pointer"
               >
-                <span>Import Bundle &amp; Open Dashboard</span>
+                <span>Import &amp; Open Dashboard</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>

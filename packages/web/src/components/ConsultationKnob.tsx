@@ -21,7 +21,7 @@ export interface ConsultationKnobConfig {
   updatedAt: string;
 }
 
-const STORAGE_KEY = 'commando_consultation_knob_v1';
+const STORAGE_KEY = 'warden_consultation_knob_v1';
 
 export const DEFAULT_CONSULTATION_CONFIG: ConsultationKnobConfig = {
   globalLevel: 2,
@@ -68,7 +68,7 @@ export function saveConsultationKnobConfig(config: ConsultationKnobConfig): void
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
     window.dispatchEvent(
-      new CustomEvent('commando:consultation-knob-change', { detail: config })
+      new CustomEvent('warden:consultation-knob-change', { detail: config })
     );
   } catch {
     // ignore storage errors in restricted environments
@@ -157,9 +157,9 @@ export const ConsultationKnob: React.FC<ConsultationKnobProps> = ({
         setInternalConfig(custom.detail);
       }
     };
-    window.addEventListener('commando:consultation-knob-change', onExternalUpdate);
+    window.addEventListener('warden:consultation-knob-change', onExternalUpdate);
     return () =>
-      window.removeEventListener('commando:consultation-knob-change', onExternalUpdate);
+      window.removeEventListener('warden:consultation-knob-change', onExternalUpdate);
   }, []);
 
   const updateConfig = (next: ConsultationKnobConfig) => {

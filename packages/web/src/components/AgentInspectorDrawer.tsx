@@ -28,7 +28,7 @@ import {
   type MemoryType,
   type ModelProvider,
   type PermissionTier,
-} from '../types/commando';
+} from '../types/warden';
 import {
   formatCompactTokens,
   formatRelativeTime,
@@ -263,7 +263,7 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
             }`}
           >
             <Brain className="h-3.5 w-3.5" />
-            <span>C. Brain Config, Quotas &amp; Hybrid Memory (pgvector)</span>
+            <span>C. Brain Config, Quotas &amp; Agent Memory (pgvector)</span>
           </button>
         </div>
 
@@ -591,7 +591,7 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
             </div>
           )}
 
-          {/* SUB-TAB C: BRAIN CONFIG, QUOTAS & HYBRID MEMORY (pgvector) */}
+          {/* SUB-TAB C: BRAIN CONFIG, QUOTAS & AGENT MEMORY (pgvector) */}
           {activeSubTab === 'config' && (
             <div className="space-y-6">
               {/* Brain Config Form */}
@@ -827,12 +827,12 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                 </div>
               </form>
 
-              {/* Hybrid Memory (`agent_memories` + `pgvector`) */}
+              {/* Agent Memory (`agent_memories` + `pgvector`) */}
               <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 space-y-4">
                 <div>
                   <h3 className="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
                     <Database className="h-4 w-4 text-[var(--surface-accent-gold)]" />
-                    <span>Hybrid Agent Memory (`PostgreSQL + pgvector HNSW`)</span>
+                    <span>Agent Memory (`PostgreSQL + pgvector HNSW`)</span>
                   </h3>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
                     Pinned memories load deterministically into every prompt; unpinned episodic memories are recalled semantically via <code className="text-[var(--surface-accent-gold)]">muse-embed-1.0</code> cosine similarity.

@@ -33,6 +33,7 @@ import {
 } from '../bridge/whatsapp/index.js';
 import { WhatsAppCommandCenter } from '../bridge/whatsapp/WhatsAppCommandCenter.js';
 import { authenticateRequest, handleAuthRoutes, isPublicPath } from '../auth/routes.js';
+import { handleGithubRoutes } from '../auth/github.js';
 import { onTokensRevoked } from '../auth/UserStore.js';
 import { handleInboundLoginText } from '../auth/WhatsAppLinkLogin.js';
 import {
@@ -47,7 +48,7 @@ import {
 export interface ControlPlaneServerOptions {
   port?: number;
   host?: string;
-  commandoRoot?: string;
+  wardenRoot?: string;
   store?: OrchestratorStore;
   telegramPager?: TelegramPushPager;
   healthGuard?: HealthAndQuotaGuard;
@@ -78,7 +79,7 @@ const EVENT_TO_WEB_TYPE: Record<string, string> = {
 
 /**
  * ControlPlaneServer — Node HTTP REST API + WebSocket (`/ws`) + Static `/media/*` Server
- * (dynamocommando.md Sections 2, 4, 5, 7)
+ * (the architecture spec Sections 2, 4, 5, 7)
  */
 export class ControlPlaneServer {
   public readonly port: number;
@@ -99,10 +100,10 @@ export class ControlPlaneServer {
   private isIngesting: boolean = false;
   private autoIngestInterval: NodeJS.Timeout | null = null;
   private reminderScheduler: ReminderSchedulerHandle | null = null;
-  private readonly commandoRoot: string;
+  private readonly wardenRoot: string;
 
   constructor(options?: ControlPlaneServerOptions) {
-    this.commandoRoot = options?.commandoRoot || process.cwd();
+    this.wardenRoot = options?.wardenRoot || process.cwd();
     this.port = Number(options?.port ?? process.env.PORT ?? 4000);
     this.store =
       options?.store ||
@@ -260,7 +261,7 @@ export class ControlPlaneServer {
         void this.checkAndRunIngestion();
       }, 15 * 60 * 1000); // 15 minutes
     }
-    console.log(`[COMMANDO API] Source of truth: ${this.store.source.toUpperCase()}`);
+    console.log(`[WARDEN API] Source of truth: ${this.store.source.toUpperCase()}`);
 
     this.reminderScheduler = startReminderScheduler({
       telegramPager: this.telegramPager,
@@ -270,7 +271,7 @@ export class ControlPlaneServer {
     return new Promise((resolve) => {
       this.server!.listen(this.port, () => {
         console.log(
-          `[🟢 COMMANDO API] ControlPlaneServer listening on http://localhost:${this.port} (WS: ws://localhost:${this.port}/ws)`
+          `[🟢 WARDEN API] ControlPlaneServer listening on http://localhost:${this.port} (WS: ws://localhost:${this.port}/ws)`
         );
         resolve(this.server!);
       });
@@ -310,11 +311,11 @@ export class ControlPlaneServer {
       let maxSourceMtime = 0;
 
       for (const target of targets) {
-        const targetPath = path.join(this.commandoRoot, target);
+        const targetPath = path.join(this.wardenRoot, target);
         maxSourceMtime = Math.max(maxSourceMtime, this.getMaxMtime(targetPath));
       }
 
-      const dbFile = path.join(this.commandoRoot, '.state', 'dynamocommando-db.json');
+      const dbFile = path.join(this.wardenRoot, '.state', 'warden-db.json');
       let dbMtime = 0;
       if (fs.existsSync(dbFile)) {
         dbMtime = fs.statSync(dbFile).mtimeMs;
@@ -323,7 +324,7 @@ export class ControlPlaneServer {
       if (maxSourceMtime > dbMtime) {
         console.log(`[🚀 INGEST] Changes detected (source: ${maxSourceMtime} > db: ${dbMtime}). Running db:ingest...`);
         await new Promise<void>((resolve, reject) => {
-          exec('npm run db:ingest', { cwd: this.commandoRoot }, (error, stdout, stderr) => {
+          exec('npm run db:ingest', { cwd: this.wardenRoot }, (error, stdout, stderr) => {
             if (error) {
               console.error(`[❌ INGEST] Failed:`, error);
               resolve(); // Don't reject, just swallow error so we try again next time
@@ -537,7 +538,7 @@ export class ControlPlaneServer {
         ? 'CONNECTED'
         : 'SIMULATED',
       db_pgvector_status: this.store.isDatabaseConnected() ? 'ONLINE' : 'OFFLINE',
-      commando_source: this.store.source,
+      warden_source: this.store.source,
       muse_cache_hit_rate_pct: cacheHitPct,
       routing_profile: this.store.getRoutingProfile(),
       sync_status: this.store.getSyncStatus(),
@@ -639,6 +640,17 @@ export class ControlPlaneServer {
 
       if (
         await handleAuthRoutes(req, res, {
+          pathname,
+          method,
+          readJsonBody: () => this.readJsonBody(req),
+          sendJson: (r, status, body) => this.sendJson(r, status, body),
+        })
+      ) {
+        return;
+      }
+
+      if (
+        await handleGithubRoutes(req, res, {
           pathname,
           method,
           readJsonBody: () => this.readJsonBody(req),
@@ -912,7 +924,7 @@ export class ControlPlaneServer {
             body.fallback_model_id || body.fallbackModelId || 'muse-spark-1.3',
           step_routing_json:
             (body.step_routing_json ?? body.stepRouting) as StepRoutingMap | undefined,
-          init_prompt: body.init_prompt || 'You are a specialized DynamoCommando agent.',
+          init_prompt: body.init_prompt || 'You are a specialized Warden agent.',
           allowed_repos: Array.isArray(body.allowed_repos)
             ? body.allowed_repos
             : [],

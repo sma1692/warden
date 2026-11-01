@@ -33,7 +33,7 @@ import {
   type PermissionTier,
   type ProjectContext,
   type ProviderCredential,
-} from '../types/commando';
+} from '../types/warden';
 import {
   formatCompactTokens,
   formatModelBadge,
@@ -516,7 +516,7 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
               project_scope: c.project_scope,
               model_provider: c.model_provider,
               model_id: c.model_id,
-              init_prompt: `You are ${c.slug} (${c.role_title}). Strictly enforce the Commando token firewall.`,
+              init_prompt: `You are ${c.slug} (${c.role_title}). Strictly enforce the Warden token firewall.`,
               allowed_repos: c.project_scope.split(','),
               permission_tier: 'full_overdrive',
               status: c.status,

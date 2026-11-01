@@ -1,8 +1,8 @@
 {
-  "name": "@commando/web",
+  "name": "@warden/web",
   "version": "1.0.0",
   "type": "module",
-  "description": "DynamoCommando — Installable Mobile-Ready Dashboard PWA for the 1-Man Unicorn AI Workforce OS",
+  "description": "Warden — Installable Mobile-Ready Dashboard PWA for the 1-Man Unicorn AI Workforce OS",
   "scripts": {
     "dev": "vite --port 5173 --host",
     "build": "tsc -b && vite build",

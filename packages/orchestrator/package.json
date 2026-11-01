@@ -1,17 +1,17 @@
 {
-  "name": "@commando/orchestrator",
+  "name": "@warden/orchestrator",
   "version": "1.0.0",
   "type": "module",
   "main": "./src/index.ts",
-  "description": "DynamoCommando Control Plane, Multi-Model Orchestrator, Watchdogs, Telegram Push Pager & WebSocket Server",
+  "description": "Warden Control Plane, Multi-Model Orchestrator, Watchdogs, Telegram Push Pager & WebSocket Server",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@commando/db": "*",
-    "@commando/sandbox": "*",
+    "@warden/db": "*",
+    "@warden/sandbox": "*",
     "chrono-node": "^2.10.3",
     "cron-parser": "^5.10.2",
     "dotenv": "^16.4.7",

@@ -9,15 +9,46 @@
     <meta name="theme-color" content="#060911" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="DynamoCommando" />
+    <meta name="apple-mobile-web-app-title" content="Warden" />
     <meta
       name="description"
-      content="DynamoCommando — The 1-Man Unicorn Operating System & 24/7 Autonomous AI Workforce Command Center"
+      content="Warden — the AI workforce OS. Give every human a copilot, every team an agent hierarchy. Copilots resolve requests human-to-human without interrupting anyone."
     />
+    <meta
+      name="keywords"
+      content="AI workforce, AI agents, copilot, multi-agent orchestration, AI chief of staff, autonomous team, AI startup"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Warden" />
+    <meta property="og:title" content="Warden — the AI workforce OS: copilots for humans, agents for teams" />
+    <meta
+      property="og:description"
+      content="One human asks their copilot. Copilots find the right owner and resolve it — the other human is never pinged. Try the live demo workspace."
+    />
+    <meta property="og:image" content="/warden-logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Warden — the AI workforce OS" />
+    <meta
+      name="twitter:description"
+      content="Copilots for every human, agent hierarchies for every team. See the live copilot-to-copilot handoff demo."
+    />
+    <meta name="twitter:image" content="/warden-logo.png" />
+    <link rel="canonical" href="https://warden.example.com/" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
-    <title>DynamoCommando — 1-Man Unicorn AI Workforce OS</title>
+    <title>Warden — AI workforce OS: copilots for humans, agents for teams</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Warden",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "description": "AI workforce OS: every human gets a copilot, every team gets an agent hierarchy. Copilots resolve requests without interrupting anyone.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
   </head>
   <body class="bg-[#060911] text-slate-100 antialiased selection:bg-cyan-500/30 selection:text-cyan-200 overflow-x-hidden">
     <div id="root"></div>
@@ -27,7 +58,7 @@
         window.addEventListener('load', () => {
           navigator.serviceWorker
             .register('/sw.js')
-            .catch((err) => console.debug('DynamoCommando SW registration skipped:', err));
+            .catch((err) => console.debug('Warden SW registration skipped:', err));
         });
       }
     </script>

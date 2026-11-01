@@ -22,7 +22,7 @@ import {
   Sparkles,
   Terminal,
 } from 'lucide-react';
-import type { Agent } from '../types/commando';
+import type { Agent } from '../types/warden';
 import {
   formatCompactTokens,
   formatModelBadge,

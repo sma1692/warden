@@ -1,0 +1,21 @@
+# Warden — AI workforce OS
+
+> Every human gets a copilot. Every team gets an agent hierarchy.
+> One human asks their copilot; copilots find the right owner and resolve it —
+> the other human is never interrupted.
+
+## Product
+
+- **Onboarding**: describe your company, pick capacities (Tech, SEO/AEO, Social),
+  connect code via GitHub repo or local runner, import context from Warden
+  bundles or ChatGPT/Claude chat exports.
+- **Demo workspace**: sandboxed company with agents plus copilots for humans.
+  A live alert replays a copilot-to-copilot handoff end to end.
+- **Dashboard**: Home priority window, agent studio, reports, backlogs.
+- **Code edits**: agents branch and open PRs directly on git (GitHub path),
+  or execute on private folders through the local runner client.
+
+## Key pages
+
+- `/` — landing, signup, and demo workspace entry
+- App tabs: Home (priority + copilot handoff alert), Agents, Reports, Backlogs

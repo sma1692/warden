@@ -1,4 +1,4 @@
-import type { StandupReport } from '../types/commando';
+import type { StandupReport } from '../types/warden';
 
 // Public demo data: generic standup reports for the example workspace
 // (demo-game, example-api, infra-ops). Replace with your own reports.

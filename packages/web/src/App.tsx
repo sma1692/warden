@@ -26,6 +26,7 @@ import { AgentInspectorDrawer } from './components/AgentInspectorDrawer';
 import { AgentStudioView } from './components/AgentStudioView';
 import { BacklogAndSprintView } from './components/BacklogAndSprintView';
 import { ChatCenterView } from './components/ChatCenterView';
+import { CopilotHandoffCard } from './components/CopilotHandoffCard';
 import {
   loadConsultationKnobConfig,
   saveConsultationKnobConfig,
@@ -52,7 +53,7 @@ import type {
   ProviderCredential,
   Sprint,
   SystemHealthTelemetry,
-} from './types/commando';
+} from './types/warden';
 import {
   INITIAL_AGENTS,
   INITIAL_APPROVAL_GATES,
@@ -87,6 +88,15 @@ interface AppNotificationItem {
 }
 
 const INITIAL_NOTIFICATIONS: AppNotificationItem[] = [
+  {
+    id: 'notif-copilot-handoff',
+    title: 'Copilot handoff resolved — zero human pings',
+    body: 'Maya asked her copilot for checkout latency; copilots resolved it with Arjun\u2019s copilot in ~5s.',
+    vertical: 'TECH',
+    timeAgo: 'just now',
+    unread: true,
+    targetTab: 'home',
+  },
   {
     id: 'notif-1',
     title: 'NovaPulse Checkout Sync & Edge Bundle Gate',
@@ -848,6 +858,8 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
         <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
           <div className="max-w-7xl mx-auto h-full min-h-0">
             {activeTab === 'home' && (
+              <div className="space-y-5 h-full min-h-0">
+              <CopilotHandoffCard />
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 h-full min-h-0">
                 <HomePriorityWindow
                   activeVertical={activeVertical}
@@ -861,6 +873,7 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
                   activeVertical={activeVertical}
                   onOpenTokenReport={() => setActiveTab('reports')}
                 />
+              </div>
               </div>
             )}
             {activeTab === 'agents' && (

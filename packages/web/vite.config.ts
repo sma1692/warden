@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 // Orchestrator the dev proxy talks to; override to point a dev server at another instance.
-const apiTarget = process.env.COMMANDO_API_URL || 'http://localhost:4000';
+const apiTarget = process.env.WARDEN_API_URL || 'http://localhost:4000';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

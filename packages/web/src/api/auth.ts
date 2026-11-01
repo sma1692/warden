@@ -68,7 +68,7 @@ export async function authRequest<T = any>(
     return {
       ok: false,
       status: 0,
-      data: { error: 'Cannot reach the Commando server. Is the orchestrator running?' } as T & { error?: string },
+      data: { error: 'Cannot reach the Warden server. Is the orchestrator running?' } as T & { error?: string },
     };
   }
 }

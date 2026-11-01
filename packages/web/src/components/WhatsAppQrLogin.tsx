@@ -56,7 +56,7 @@ export const WhatsAppQrLogin: React.FC<WhatsAppQrLoginProps> = ({ onVerified, on
         await QRCode.toDataURL(data.wa_link, { margin: 1, width: 440, errorCorrectionLevel: 'M' })
       );
     } catch {
-      setError('Cannot reach the Commando server. Is the orchestrator running?');
+      setError('Cannot reach the Warden server. Is the orchestrator running?');
     }
   }, []);
 

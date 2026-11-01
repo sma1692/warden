@@ -22,7 +22,7 @@ import type {
   SprintTaskMovementEntry,
   SyncResult,
   SystemHealthTelemetry,
-} from '../types/commando';
+} from '../types/warden';
 import {
   INITIAL_AGENT_MEMORIES,
   INITIAL_AGENT_RUNS,
@@ -64,7 +64,7 @@ export type WsEventPayload = {
 
 type Listener = (event: WsEventPayload) => void;
 
-class CommandoApiClient {
+class WardenApiClient {
   private agents: Agent[] = [...INITIAL_AGENTS];
   private projectContexts: ProjectContext[] = [...INITIAL_PROJECT_CONTEXTS];
   private runs: AgentRun[] = [...INITIAL_AGENT_RUNS];
@@ -806,7 +806,7 @@ class CommandoApiClient {
         step_index: 1,
         step_type: 'LLM_INFERENCE',
         model_used: `${targetAgent.model_provider}/${targetAgent.model_id}`,
-        thinking_text: `Parsing CEO prompt for ${targetAgent.slug}.${attachmentNote} Querying pgvector hybrid memory (top-5 cosine similarity) and deterministic repo architecture map.`,
+        thinking_text: `Parsing CEO prompt for ${targetAgent.slug}.${attachmentNote} Querying pgvector agent memory (top-5 cosine similarity) and deterministic repo architecture map.`,
         message_text: `Synthesizing execution plan for: "${payload.content.slice(0, 100)}"`,
         tool_name: null,
         tool_args_json: null,
@@ -857,7 +857,7 @@ class CommandoApiClient {
       sender_type: 'AGENT',
       sender_agent_id: payload.target_agent_id,
       recipient_agent_id: 'CEO',
-      content: `${prefix} Processed your directive.${attachmentNote}\n\n- **Sandbox Container:** \`${createdRun.container_id}\` (\`${createdRun.git_branch}\`)\n- **Model & Memory:** \`${targetAgent.model_provider}:${targetAgent.model_id}\` + \`pgvector\` hybrid recall\n- **Live Preview:** \`${createdRun.preview_url}\``,
+      content: `${prefix} Processed your directive.${attachmentNote}\n\n- **Sandbox Container:** \`${createdRun.container_id}\` (\`${createdRun.git_branch}\`)\n- **Model & Memory:** \`${targetAgent.model_provider}:${targetAgent.model_id}\` + \`pgvector\` memory recall\n- **Live Preview:** \`${createdRun.preview_url}\``,
       run_id: runId,
       attachments_json: [],
       created_at: new Date().toISOString(),
@@ -1465,7 +1465,7 @@ class CommandoApiClient {
   }
 }
 
-export const apiClient = new CommandoApiClient();
+export const apiClient = new WardenApiClient();
 
 
 if ((import.meta as any).hot) {

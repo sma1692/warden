@@ -28,7 +28,7 @@ import type {
   ChatThread,
   InferenceStep,
   MediaAttachment,
-} from '../types/commando';
+} from '../types/warden';
 import { formatRelativeTime } from '../utils/formatters';
 import {
   EXAMPLE_THREAD_ID,

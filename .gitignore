@@ -1,11 +1,12 @@
 # Local project registry & auto-discovered topology (contains local filesystem paths)
 projects.yaml
 .state/topology-cache.json
-.state/dynamocommando-db.json
+.state/warden-db.json
 .state/mirror/
 .state/tokens/
 .state/users.json
 .state/auth-secret
+.state/github.json
 .claude/settings.json
 .claude/settings.local.json
 

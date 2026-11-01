@@ -2,7 +2,7 @@
 // environment defaults used by the dashboard. Components derive their project
 // lists, PM routing, and placeholder text from this file instead of hardcoding.
 // Edit this file to describe your own projects; the values below are demo placeholders.
-import type { DepartmentUnit, GateOption, ModelProvider } from '../types/commando';
+import type { DepartmentUnit, GateOption, ModelProvider } from '../types/warden';
 
 export type ProjectKind = 'product' | 'infra' | 'marketing';
 

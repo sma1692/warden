@@ -86,7 +86,7 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
       },
       {
         id: 'opt_hybrid_queue',
-        label: 'C. Hybrid Queue + Snapshot Rollback',
+        label: 'C. Queue + Snapshot Rollback',
         summary:
           'Ephemeral Redis Streams edge state with asynchronous Postgres ledger settlement.',
       },
@@ -249,9 +249,9 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
         setKnobConfig(custom.detail);
       }
     };
-    window.addEventListener('commando:consultation-knob-change', onKnobChange);
+    window.addEventListener('warden:consultation-knob-change', onKnobChange);
     return () =>
-      window.removeEventListener('commando:consultation-knob-change', onKnobChange);
+      window.removeEventListener('warden:consultation-knob-change', onKnobChange);
   }, []);
 
   const visibleItems = useMemo(() => {

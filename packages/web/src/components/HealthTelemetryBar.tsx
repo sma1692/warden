@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   Zap,
 } from 'lucide-react';
-import type { SystemHealthTelemetry } from '../types/commando';
+import type { SystemHealthTelemetry } from '../types/warden';
 import { formatCompactTokens, formatRelativeTime, formatUsd } from '../utils/formatters';
 
 export interface HealthTelemetryBarProps {
@@ -58,7 +58,7 @@ export const HealthTelemetryBar: React.FC<HealthTelemetryBarProps> = ({
             </div>
             <div>
               <div className="font-bold tracking-tight text-[var(--surface-text)] flex items-center gap-1.5">
-                DYNAMO<span className="text-[var(--surface-accent-gold)]">COMMANDO</span>
+                DYNAMO<span className="text-[var(--surface-accent-gold)]">WARDEN</span>
                 <span className="hidden md:inline-block rounded bg-[var(--surface-accent-gold)]/15 px-1.5 py-0.5 text-[10px] font-mono text-[var(--surface-accent-gold)] border border-[var(--surface-accent-gold)]/30 font-semibold">
                   Cloud + pgvector
                 </span>
