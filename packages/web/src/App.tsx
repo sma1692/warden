@@ -36,6 +36,7 @@ import {
 import { HomePriorityWindow } from './components/HomePriorityWindow';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { ReportsView, type UnifiedReportItem } from './components/ReportsView';
+import { SeoAuditView } from './components/SeoAuditView';
 import { TokenUsageBox } from './components/TokenUsageBox';
 import type {
   Agent,
@@ -66,7 +67,7 @@ import {
 } from './api/seedData';
 import { PRODUCT_PROJECTS } from './data/workspaceProfile';
 
-export type PrimaryTabId = 'home' | 'agents' | 'reports' | 'backlogs';
+export type PrimaryTabId = 'home' | 'agents' | 'reports' | 'backlogs' | 'seo';
 
 export interface DynamicWindowTab {
   id: string;
@@ -550,6 +551,7 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
     { id: 'agents', label: 'Agents', icon: Users, badge: '13' },
     { id: 'reports', label: 'Reports', icon: FileText, badge: '7' },
     { id: 'backlogs', label: 'Backlogs', icon: Kanban, badge: `${backlogItems.length + 6}` },
+    { id: 'seo', label: 'SEO', icon: Globe },
   ];
 
   const activeDynamicTab = useMemo(
@@ -913,6 +915,12 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
                 onUpdateBacklogItem={handleUpdateBacklogItem}
                 onResolveIntervention={handleResolveIntervention}
                 onRunPmTriage={handleRunPmTriage}
+              />
+            )}
+            {activeTab === 'seo' && (
+              <SeoAuditView
+                onCreateBacklogItem={handleCreateBacklogItem}
+                onNotify={(summary) => showToast(summary)}
               />
             )}
 

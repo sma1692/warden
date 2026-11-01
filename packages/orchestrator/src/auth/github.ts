@@ -61,6 +61,18 @@ function clearPersisted(): void {
   }
 }
 
+/** Stored OAuth token for server-side GitHub API calls (PR shipping). */
+export function getStoredGithubToken(): { accessToken: string; login: string } | null {
+  const saved = loadPersisted();
+  if (!saved?.accessToken) return null;
+  return { accessToken: saved.accessToken, login: saved.login };
+}
+
+/** Persisted edit-target repo selected during onboarding. */
+export function getStoredGithubRepo(): string | null {
+  return loadPersisted()?.repoFullName || null;
+}
+
 function clientId(): string {
   return process.env.GITHUB_CLIENT_ID || '';
 }

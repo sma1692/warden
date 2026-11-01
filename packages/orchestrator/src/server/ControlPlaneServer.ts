@@ -34,6 +34,7 @@ import {
 import { WhatsAppCommandCenter } from '../bridge/whatsapp/WhatsAppCommandCenter.js';
 import { authenticateRequest, handleAuthRoutes, isPublicPath } from '../auth/routes.js';
 import { handleGithubRoutes } from '../auth/github.js';
+import { handleSeoRoutes } from '../seo/seo.js';
 import { onTokensRevoked } from '../auth/UserStore.js';
 import { handleInboundLoginText } from '../auth/WhatsAppLinkLogin.js';
 import {
@@ -651,6 +652,17 @@ export class ControlPlaneServer {
 
       if (
         await handleGithubRoutes(req, res, {
+          pathname,
+          method,
+          readJsonBody: () => this.readJsonBody(req),
+          sendJson: (r, status, body) => this.sendJson(r, status, body),
+        })
+      ) {
+        return;
+      }
+
+      if (
+        await handleSeoRoutes(req, res, {
           pathname,
           method,
           readJsonBody: () => this.readJsonBody(req),
