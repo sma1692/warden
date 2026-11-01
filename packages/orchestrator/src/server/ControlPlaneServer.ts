@@ -203,7 +203,15 @@ export class ControlPlaneServer {
       server: this.server!,
       path: '/ws',
       // Browsers cannot set headers on a WebSocket: accept ?token= or the session cookie.
-      verifyClient: ({ req }: { req: IncomingMessage }) => Boolean(authenticateRequest(req, true)),
+      verifyClient: (
+        { req }: { req: IncomingMessage },
+        done: (result: boolean, code?: number, message?: string) => void
+      ) => {
+        authenticateRequest(req, true).then(
+          (user) => done(Boolean(user), user ? undefined : 401, user ? undefined : 'Not signed in'),
+          () => done(false, 503, 'Database unreachable')
+        );
+      },
     });
     // Close a user's live sockets when their tokens are revoked (logout).
     const socketUsers = new WeakMap<WebSocket, string>();
@@ -214,8 +222,9 @@ export class ControlPlaneServer {
     });
 
     this.wss.on('connection', (socket, req) => {
-      const user = authenticateRequest(req, true);
-      if (user) socketUsers.set(socket, user.id);
+      void authenticateRequest(req, true).then((user) => {
+        if (user) socketUsers.set(socket, user.id);
+      });
       this.clients.add(socket);
       console.log(`[🔌 WS CONNECT] Dashboard client connected (active clients: ${this.clients.size})`);
 
@@ -678,11 +687,19 @@ export class ControlPlaneServer {
       // ======================================================================
       if (
         !isPublicPath(pathname, method) &&
-        (pathname.startsWith('/api/') || pathname.startsWith('/media/')) &&
-        !authenticateRequest(req, pathname.startsWith('/media/'))
+        (pathname.startsWith('/api/') || pathname.startsWith('/media/'))
       ) {
-        this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
-        return;
+        let authed: unknown = null;
+        try {
+          authed = await authenticateRequest(req, pathname.startsWith('/media/'));
+        } catch {
+          this.sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
+          return;
+        }
+        if (!authed) {
+          this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
+          return;
+        }
       }
 
       if (
@@ -733,7 +750,7 @@ export class ControlPlaneServer {
         (method === 'GET' || method === 'HEAD')
       ) {
         // /api/health is public: signed-out callers only learn that the server is up.
-        if (pathname === '/api/health' && !authenticateRequest(req)) {
+        if (pathname === '/api/health' && !(await authenticateRequest(req).catch(() => null))) {
           this.sendJson(res, 200, { ok: true, timestamp: new Date().toISOString() });
           return;
         }

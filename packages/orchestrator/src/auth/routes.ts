@@ -58,7 +58,10 @@ export function extractToken(req: IncomingMessage, allowAmbient = false): string
   return q || readCookie(req, SESSION_COOKIE);
 }
 
-export function authenticateRequest(req: IncomingMessage, allowAmbient = false): UserRecord | null {
+export async function authenticateRequest(
+  req: IncomingMessage,
+  allowAmbient = false
+): Promise<UserRecord | null> {
   return authenticateToken(extractToken(req, allowAmbient));
 }
 
@@ -114,7 +117,7 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
 
   if (pathname === '/api/auth/otp/verify' && method === 'POST') {
     const body = await ctx.readJsonBody();
-    const r = verifyOtp(String(body.phone ?? ''), String(body.code ?? ''));
+    const r = await verifyOtp(String(body.phone ?? ''), String(body.code ?? ''));
     if (r.ok) {
       setSessionCookie(res, r.token, r.expiresAt);
       sendJson(res, 200, { ok: true, token: r.token, expires_at: r.expiresAt, is_new_user: r.isNewUser, user: r.user });
@@ -165,7 +168,13 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
   }
 
   // Everything below needs a valid Bearer token.
-  const user = authenticateRequest(req);
+  let user: UserRecord | null;
+  try {
+    user = await authenticateRequest(req);
+  } catch {
+    sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
+    return true;
+  }
   if (!user) {
     sendJson(res, 401, { ok: false, error: 'Not signed in' });
     return true;
@@ -178,7 +187,11 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
 
   if (pathname === '/api/auth/me/onboarding' && (method === 'PATCH' || method === 'POST')) {
     const body = await ctx.readJsonBody();
-    const patch: { status?: OnboardingStatus; step?: OnboardingStep | null } = {};
+    const patch: {
+      status?: OnboardingStatus;
+      step?: OnboardingStep | null;
+      form?: Record<string, unknown>;
+    } = {};
     if (body.step !== undefined) {
       if (body.step !== null && !ONBOARDING_STEPS.includes(body.step)) {
         sendJson(res, 400, { ok: false, error: `step must be one of ${ONBOARDING_STEPS.join(', ')}` });
@@ -193,8 +206,19 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
       }
       patch.status = body.status;
     }
-    const updated = updateOnboarding(user.id, patch);
-    sendJson(res, 200, { ok: true, user: updated ? publicUser(updated) : publicUser(user) });
+    if (body.form !== undefined) {
+      if (body.form === null || typeof body.form !== 'object' || Array.isArray(body.form)) {
+        sendJson(res, 400, { ok: false, error: 'form must be a JSON object' });
+        return true;
+      }
+      patch.form = body.form as Record<string, unknown>;
+    }
+    try {
+      const updated = await updateOnboarding(user.id, patch);
+      sendJson(res, 200, { ok: true, user: updated ? publicUser(updated) : publicUser(user) });
+    } catch {
+      sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
+    }
     return true;
   }
 
@@ -206,7 +230,7 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
   }
 
   if (pathname === '/api/auth/logout' && method === 'POST') {
-    bumpTokenVersion(user.id);
+    await bumpTokenVersion(user.id);
     setSessionCookie(res, null);
     sendJson(res, 200, { ok: true });
     return true;

@@ -67,6 +67,8 @@ export interface AuthOnboardingFlowProps {
   onSignedIn?: (user: AuthUser) => void;
   initialDemoMode?: boolean;
   initialStep?: OnboardingStepId;
+  /** Live mode: form snapshot restored from the DB so refresh resumes field values. */
+  initialForm?: Record<string, any> | null;
 }
 
 const PERSISTED_STEPS: OnboardingStepId[] = ['f1', '1a', '1b', '1c', '2a', '2b', '2c', '3_import'];
@@ -396,8 +398,11 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   onSignedIn,
   initialDemoMode = true,
   initialStep = 'loading',
+  initialForm = null,
 }) => {
   const isLive = mode === 'live';
+  // DB-restored snapshot (live resume only); gallery/demo keeps local presets.
+  const savedForm: Record<string, any> = isLive ? initialForm ?? {} : {};
   const [demoMode, setDemoMode] = useState<boolean>(isLive ? false : initialDemoMode);
   // Live: the landing ".md Import" CTA signs in first, then a new user lands on this track.
   const [pendingTrack, setPendingTrack] = useState<OnboardingStepId | null>(null);
@@ -438,21 +443,25 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   // Track 1 state — live product starts blank so founders enter their own
   // company; gallery/demo keeps the NovaPulse preset for the sandbox tour.
   const [companyName, setCompanyName] = useState<string>(
-    isLive ? '' : 'NovaPulse (novapulse.io)'
+    isLive ? String(savedForm.companyName ?? '') : 'NovaPulse (novapulse.io)'
   );
   const [companyBrief, setCompanyBrief] = useState<string>(
     isLive
-      ? ''
+      ? String(savedForm.companyBrief ?? '')
       : 'AI-Powered Commerce, SEO/AEO Growth, Digital Marketing & Customer Support SaaS company (Year 0 Solo Founder Alex Rivera launching pulse-core, pulse-api, pulse-seo, pulse-social, and pulse-support).'
   );
   const [enabledVerticals, setEnabledVerticals] = useState<
     Record<'TECH' | 'SEO_AEO' | 'SOCIAL', boolean>
   >({
-    TECH: true,
-    SEO_AEO: true,
-    SOCIAL: true,
+    TECH: isLive ? Boolean(savedForm.enabledVerticals?.TECH ?? true) : true,
+    SEO_AEO: isLive ? Boolean(savedForm.enabledVerticals?.SEO_AEO ?? true) : true,
+    SOCIAL: isLive ? Boolean(savedForm.enabledVerticals?.SOCIAL ?? true) : true,
   });
-  const [soloAgents, setSoloAgents] = useState<SuggestedAgentNode[]>(INITIAL_SOLO_AGENTS);
+  const [soloAgents, setSoloAgents] = useState<SuggestedAgentNode[]>(
+    isLive && Array.isArray(savedForm.soloAgents) && savedForm.soloAgents.length > 0
+      ? (savedForm.soloAgents as SuggestedAgentNode[])
+      : INITIAL_SOLO_AGENTS
+  );
   const [showCustomCreatorForSlug, setShowCustomCreatorForSlug] = useState<string | null>(
     null
   );
@@ -465,20 +474,24 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
 
   // Track 2 state — live product starts blank; gallery/demo keeps presets.
   const [teamWebsite, setTeamWebsite] = useState<string>(
-    isLive ? '' : 'https://novapulse.io'
+    isLive ? String(savedForm.teamWebsite ?? '') : 'https://novapulse.io'
   );
   const [teamRepos, setTeamRepos] = useState<string>(
     isLive
-      ? ''
+      ? String(savedForm.teamRepos ?? '')
       : 'pulse-core, pulse-api, pulse-infra, pulse-seo, pulse-social, pulse-support'
   );
   const [teamSocials, setTeamSocials] = useState<string>(
     isLive
-      ? ''
+      ? String(savedForm.teamSocials ?? '')
       : 'x.com/novapulse_ai, linkedin.com/company/novapulse, youtube.com/@novapulse'
   );
   const [humanRoster, setHumanRoster] = useState<HumanTeamMember[]>(
-    isLive ? [] : INITIAL_HUMAN_ROSTER
+    isLive
+      ? Array.isArray(savedForm.humanRoster)
+        ? (savedForm.humanRoster as HumanTeamMember[])
+        : []
+      : INITIAL_HUMAN_ROSTER
   );
   const [newHumanName, setNewHumanName] = useState<string>('');
   const [newHumanRole, setNewHumanRole] = useState<string>('');
@@ -488,8 +501,12 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   );
 
   // Code connection (cloud-safe): GitHub repo edit path + local runner option.
-  const [repoUrl, setRepoUrl] = useState<string>('');
-  const [codePath, setCodePath] = useState<'github' | 'runner'>('github');
+  const [repoUrl, setRepoUrl] = useState<string>(
+    isLive ? String(savedForm.repoUrl ?? '') : ''
+  );
+  const [codePath, setCodePath] = useState<'github' | 'runner'>(
+    isLive && savedForm.codePath === 'runner' ? 'runner' : 'github'
+  );
   const [ghStatus, setGhStatus] = useState<{
     configured: boolean;
     connected: boolean;
@@ -601,12 +618,22 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   };
 
   // Shared 1C / 2C Backlog state
-  const [backlogDrafts, setBacklogDrafts] =
-    useState<OnboardingBacklogDraft[]>(INITIAL_BACKLOG_DRAFTS);
+  const [backlogDrafts, setBacklogDrafts] = useState<OnboardingBacklogDraft[]>(
+    isLive && Array.isArray(savedForm.backlogDrafts) && savedForm.backlogDrafts.length > 0
+      ? (savedForm.backlogDrafts as OnboardingBacklogDraft[])
+      : INITIAL_BACKLOG_DRAFTS
+  );
 
   // Track 3 (.md Bundle Import + LLM chat import) state
-  const [importSource, setImportSource] = useState<'warden' | 'chatgpt' | 'claude' | 'paste'>('warden');
-  const [pastedContext, setPastedContext] = useState<string>('');
+  const [importSource, setImportSource] = useState<'warden' | 'chatgpt' | 'claude' | 'paste'>(
+    isLive && typeof savedForm.importSource === 'string' &&
+    ['warden', 'chatgpt', 'claude', 'paste'].includes(savedForm.importSource)
+      ? (savedForm.importSource as 'warden' | 'chatgpt' | 'claude' | 'paste')
+      : 'warden'
+  );
+  const [pastedContext, setPastedContext] = useState<string>(
+    isLive ? String(savedForm.pastedContext ?? '') : ''
+  );
   const [contextFileName, setContextFileName] = useState<string | null>(null);
   const [bundleLoading, setBundleLoading] = useState<boolean>(false);
   const [bundleFileCount, setBundleFileCount] = useState<number>(42);
@@ -622,10 +649,49 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     'worklist/COLLATED_BACKLOG.md',
   ]);
 
-  // Live: save the current onboarding step server-side so a return visit resumes here.
+  // Live: snapshot the whole form so every step lands in Postgres, debounced.
+  const formSnapshot = useMemo(
+    () => ({
+      companyName,
+      companyBrief,
+      enabledVerticals,
+      soloAgents,
+      teamWebsite,
+      teamRepos,
+      teamSocials,
+      humanRoster,
+      backlogDrafts,
+      importSource,
+      pastedContext: pastedContext.slice(0, 20000),
+      codePath,
+      repoUrl,
+    }),
+    [
+      companyName,
+      companyBrief,
+      enabledVerticals,
+      soloAgents,
+      teamWebsite,
+      teamRepos,
+      teamSocials,
+      humanRoster,
+      backlogDrafts,
+      importSource,
+      pastedContext,
+      codePath,
+      repoUrl,
+    ]
+  );
+
+  // Live: save step + form snapshot server-side so a return visit resumes
+  // on the same step with every field intact.
   useEffect(() => {
-    if (isLive && signedIn && PERSISTED_STEPS.includes(step)) void saveOnboarding({ step });
-  }, [isLive, signedIn, step]);
+    if (!isLive || !signedIn || !PERSISTED_STEPS.includes(step)) return;
+    const id = window.setTimeout(() => {
+      void saveOnboarding({ step, form: formSnapshot });
+    }, 800);
+    return () => window.clearTimeout(id);
+  }, [isLive, signedIn, step, formSnapshot]);
 
   // Gallery: persist mid-onboarding steps to localStorage for Return User simulation
   useEffect(() => {
@@ -847,7 +913,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   };
 
   const finishOnboarding = async () => {
-    if (isLive) await saveOnboarding({ status: 'COMPLETE' });
+    if (isLive) await saveOnboarding({ status: 'COMPLETE', form: formSnapshot });
     onComplete();
   };
 

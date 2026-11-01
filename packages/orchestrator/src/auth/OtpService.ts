@@ -152,7 +152,7 @@ export function issueToken(user: UserRecord): { token: string; expiresAt: string
   return { token, expiresAt: new Date(Date.now() + ttl * 1000).toISOString() };
 }
 
-export function verifyOtp(rawPhone: string, rawCode: string): OtpVerifyResult {
+export async function verifyOtp(rawPhone: string, rawCode: string): Promise<OtpVerifyResult> {
   const phone = normalizeWhatsAppNumber(rawPhone || '');
   const code = String(rawCode ?? '').replace(/\D/g, '');
   const entry = pending.get(phone);
@@ -175,18 +175,20 @@ export function verifyOtp(rawPhone: string, rawCode: string): OtpVerifyResult {
   }
 
   pending.delete(phone);
-  const { user, isNew } = upsertUserOnLogin(phone);
+  const { user, isNew } = await upsertUserOnLogin(phone);
   const { token, expiresAt } = issueToken(user);
   console.log(`[AUTH] OTP verified for ${maskNumber(phone)} (${isNew ? 'new user' : 'returning user'})`);
   return { ok: true, token, expiresAt, isNewUser: isNew, user: publicUser(user) };
 }
 
 /** Resolves a bearer JWT to its user; null when invalid, expired, or revoked. */
-export function authenticateToken(token: string | undefined | null): UserRecord | null {
+export async function authenticateToken(
+  token: string | undefined | null
+): Promise<UserRecord | null> {
   if (!token) return null;
   const claims = verifyJwt(token, getJwtSecret());
   if (!claims) return null;
-  const user = getUserById(claims.sub);
+  const user = await getUserById(claims.sub);
   if (!user || user.token_version !== claims.ver) return null;
   return user;
 }

@@ -1,5 +1,5 @@
 -- ============================================================================
--- DYNAMO COMMANDO — PostgreSQL 16 + pgvector Production Schema Initialization
+-- WARDEN — PostgreSQL 16 + pgvector Production Schema Initialization
 -- ============================================================================
 
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS project_contexts (
   local_path TEXT,
   default_branch TEXT NOT NULL DEFAULT 'main',
   role TEXT NOT NULL CHECK (role IN ('frontend', 'backend', 'fullstack', 'infra', 'shared-lib', 'meta-docs')),
-  docker_base_image TEXT NOT NULL DEFAULT 'commando-workspace:latest',
+  docker_base_image TEXT NOT NULL DEFAULT 'warden-workspace:latest',
   build_cmd TEXT,
   test_cmd TEXT,
   dev_preview_port INTEGER,
@@ -411,3 +411,26 @@ CREATE TABLE IF NOT EXISTS reminders (
 
 CREATE INDEX IF NOT EXISTS idx_reminders_status_due ON reminders(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_reminders_created_at ON reminders(created_at DESC);
+
+-- ----------------------------------------------------------------------------
+-- 17. users (signed-in operators; auth source of truth, replaces .state/users.json)
+-- 18. onboarding_profiles (per-step onboarding state + full form snapshot)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY,
+  phone TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  token_version INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS onboarding_profiles (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'NOT_STARTED'
+    CHECK (status IN ('NOT_STARTED', 'IN_PROGRESS', 'COMPLETE')),
+  step TEXT CHECK (step IN ('f1', '1a', '1b', '1c', '2a', '2b', '2c', '3_import')),
+  form JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);

@@ -7,13 +7,17 @@ import { fetchMe, onUnauthorized, signOut, type AuthUser } from './api/auth';
 type Session =
   | { state: 'checking' }
   | { state: 'signed_out' }
-  | { state: 'onboarding'; step: OnboardingStepId }
+  | { state: 'onboarding'; step: OnboardingStepId; form: Record<string, any> | null }
   | { state: 'ready' };
 
 /** Picks the screen for a signed-in user from their server-side onboarding state. */
 function sessionFor(user: AuthUser): Session {
   if (user.onboarding.status === 'COMPLETE') return { state: 'ready' };
-  return { state: 'onboarding', step: (user.onboarding.step as OnboardingStepId) || 'f1' };
+  return {
+    state: 'onboarding',
+    step: (user.onboarding.step as OnboardingStepId) || 'f1',
+    form: user.onboarding.form || null,
+  };
 }
 
 /**
@@ -63,6 +67,7 @@ export const Root: React.FC = () => {
       key={session.state}
       mode="live"
       initialStep={session.state === 'onboarding' ? session.step : 'loading'}
+      initialForm={session.state === 'onboarding' ? session.form : null}
       onComplete={() => setSession({ state: 'ready' })}
     />
   );

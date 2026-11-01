@@ -147,7 +147,10 @@ function signedInReply(user: UserRecord, isNew: boolean): string {
  * Webhook hook for text from ANY sender, before the CEO allowlist.
  * Returns the reply to send, or null to pass the message on (CEO chat with the agents).
  */
-export function handleInboundLoginText(from: string, text: string): string | null {
+export async function handleInboundLoginText(
+  from: string,
+  text: string
+): Promise<string | null> {
   const phone = normalizeWhatsAppNumber(from);
   const match = CODE_PATTERN.exec(text);
 
@@ -162,7 +165,7 @@ export function handleInboundLoginText(from: string, text: string): string | nul
       return 'This number is not allowed to sign in to this workspace.';
     }
     byCode.delete(req.code);
-    const { user, isNew } = upsertUserOnLogin(phone);
+    const { user, isNew } = await upsertUserOnLogin(phone);
     const { token, expiresAt } = issueToken(user);
     req.result = { token, tokenExpiresAt: expiresAt, isNewUser: isNew, user: publicUser(user) };
     console.log(`[AUTH] WhatsApp sign-in for ${maskNumber(phone)} (${isNew ? 'new user' : 'returning user'})`);
@@ -172,7 +175,7 @@ export function handleInboundLoginText(from: string, text: string): string | nul
   // The CEO's ordinary messages go to the agents as before.
   if (getCeoNumbers().includes(phone)) return null;
 
-  const user = getUserByPhone(phone);
+  const user = await getUserByPhone(phone);
   if (user) {
     return `Hi! ${stageLine(user)}\n\nTo sign in on a computer, open the Warden login page${appLink()} and scan the QR code.`;
   }

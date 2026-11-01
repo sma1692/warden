@@ -7,7 +7,12 @@ export interface AuthUser {
   id: string;
   phone: string;
   created_at: string;
-  onboarding: { status: OnboardingStatus; step: string | null; updated_at: string };
+  onboarding: {
+    status: OnboardingStatus;
+    step: string | null;
+    form: Record<string, any> | null;
+    updated_at: string;
+  };
 }
 
 const TOKEN_KEY = 'warden.auth.token';
@@ -80,7 +85,11 @@ export async function fetchMe(): Promise<AuthUser | null> {
   return r.ok ? r.data.user : null;
 }
 
-export async function saveOnboarding(patch: { step?: string | null; status?: OnboardingStatus }): Promise<AuthUser | null> {
+export async function saveOnboarding(patch: {
+  step?: string | null;
+  status?: OnboardingStatus;
+  form?: Record<string, any>;
+}): Promise<AuthUser | null> {
   const r = await authRequest<{ user: AuthUser }>('me/onboarding', { method: 'PATCH', body: patch });
   return r.ok ? r.data.user : null;
 }

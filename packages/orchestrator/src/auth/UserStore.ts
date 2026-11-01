@@ -1,11 +1,13 @@
 /**
- * Signed-in users and their onboarding progress, persisted to .state/users.json
- * (gitignored). Small and single-process, so a JSON file is enough.
+ * Signed-in users and their onboarding progress, stored in PostgreSQL
+ * (`users` + `onboarding_profiles`). Every onboarding step and its full form
+ * snapshot is written to the database — no JSON files.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Pool } from 'pg';
 
 export type OnboardingStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE';
 
@@ -21,8 +23,52 @@ export interface UserRecord {
   onboarding: {
     status: OnboardingStatus;
     step: OnboardingStep | null;
+    form: Record<string, unknown>;
     updated_at: string;
   };
+}
+
+const DATABASE_URL =
+  process.env.DATABASE_URL || 'postgresql://warden:warden_secret@localhost:5432/warden';
+
+const pool = new Pool({ connectionString: DATABASE_URL, max: 10 });
+
+/** Covers fresh containers and pre-existing volumes that never ran init.sql 17-18. */
+const AUTH_DDL = `
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY,
+  phone TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  token_version INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS onboarding_profiles (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'NOT_STARTED'
+    CHECK (status IN ('NOT_STARTED', 'IN_PROGRESS', 'COMPLETE')),
+  step TEXT CHECK (step IN ('f1', '1a', '1b', '1c', '2a', '2b', '2c', '3_import')),
+  form JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
+`;
+
+let ready: Promise<void> | null = null;
+function ensureReady(): Promise<void> {
+  if (!ready) {
+    ready = (async () => {
+      await pool.query(AUTH_DDL);
+    })().catch((err) => {
+      ready = null;
+      throw err;
+    });
+  }
+  return ready;
+}
+
+/** Test/CLI hook to drain the pool so the process can exit. */
+export async function closeAuthPool(): Promise<void> {
+  await pool.end().catch(() => undefined);
 }
 
 /** Repo-root .state dir (src/auth -> repo root is four levels up). */
@@ -30,27 +76,7 @@ export const STATE_DIR =
   process.env.AUTH_STATE_DIR?.trim() ||
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../.state');
 
-const USERS_FILE = path.join(STATE_DIR, 'users.json');
 const SECRET_FILE = path.join(STATE_DIR, 'auth-secret');
-
-let cache: Record<string, UserRecord> | null = null;
-
-function load(): Record<string, UserRecord> {
-  if (cache) return cache;
-  try {
-    cache = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')).users ?? {};
-  } catch {
-    cache = {};
-  }
-  return cache!;
-}
-
-function save(): void {
-  fs.mkdirSync(STATE_DIR, { recursive: true });
-  const tmp = `${USERS_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ users: load() }, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, USERS_FILE);
-}
 
 /** AUTH_JWT_SECRET, else a random secret generated once into .state/auth-secret. */
 export function getJwtSecret(): string {
@@ -68,54 +94,99 @@ export function getJwtSecret(): string {
   return secret;
 }
 
-export function getUserByPhone(phone: string): UserRecord | null {
-  return load()[phone] ?? null;
+interface UserRow {
+  id: string;
+  phone: string;
+  created_at: Date | string;
+  last_login_at: Date | string;
+  token_version: number;
+  ob_status: OnboardingStatus | null;
+  ob_step: OnboardingStep | null;
+  ob_form: Record<string, unknown> | null;
+  ob_updated_at: Date | string | null;
 }
 
-export function getUserById(id: string): UserRecord | null {
-  return Object.values(load()).find((u) => u.id === id) ?? null;
+function toRecord(row: UserRow): UserRecord {
+  const stamp = (v: Date | string | null, fallback: Date | string): string =>
+    v instanceof Date ? v.toISOString() : String(v ?? (fallback instanceof Date ? fallback.toISOString() : fallback));
+  return {
+    id: row.id,
+    phone: row.phone,
+    created_at: stamp(row.created_at, row.created_at),
+    last_login_at: stamp(row.last_login_at, row.last_login_at),
+    token_version: row.token_version,
+    onboarding: {
+      status: row.ob_status ?? 'NOT_STARTED',
+      step: row.ob_step ?? null,
+      form: row.ob_form ?? {},
+      updated_at: stamp(row.ob_updated_at, row.created_at),
+    },
+  };
+}
+
+const SELECT_USER = `
+SELECT u.id, u.phone, u.created_at, u.last_login_at, u.token_version,
+       o.status AS ob_status, o.step AS ob_step, o.form AS ob_form, o.updated_at AS ob_updated_at
+FROM users u LEFT JOIN onboarding_profiles o ON o.user_id = u.id
+`;
+
+export async function getUserByPhone(phone: string): Promise<UserRecord | null> {
+  await ensureReady();
+  const res = await pool.query<UserRow>(`${SELECT_USER} WHERE u.phone = $1`, [phone]);
+  return res.rows[0] ? toRecord(res.rows[0]) : null;
+}
+
+export async function getUserById(id: string): Promise<UserRecord | null> {
+  await ensureReady();
+  const res = await pool.query<UserRow>(`${SELECT_USER} WHERE u.id = $1`, [id]);
+  return res.rows[0] ? toRecord(res.rows[0]) : null;
 }
 
 /** Creates the user on first sign-in; returns it plus whether it was new. */
-export function upsertUserOnLogin(phone: string): { user: UserRecord; isNew: boolean } {
-  const users = load();
-  const now = new Date().toISOString();
-  const existing = users[phone];
-  if (existing) {
-    existing.last_login_at = now;
-    save();
-    return { user: existing, isNew: false };
-  }
-  const user: UserRecord = {
-    id: crypto.randomUUID(),
-    phone,
-    created_at: now,
-    last_login_at: now,
-    token_version: 1,
-    onboarding: { status: 'NOT_STARTED', step: null, updated_at: now },
-  };
-  users[phone] = user;
-  save();
-  return { user, isNew: true };
+export async function upsertUserOnLogin(phone: string): Promise<{ user: UserRecord; isNew: boolean }> {
+  await ensureReady();
+  const id = crypto.randomUUID();
+  const res = await pool.query<{ id: string; created: boolean }>(
+    `INSERT INTO users (id, phone, last_login_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (phone) DO UPDATE SET last_login_at = NOW()
+     RETURNING id, (xmax = 0) AS created`,
+    [id, phone]
+  );
+  const row = res.rows[0];
+  await pool.query(
+    `INSERT INTO onboarding_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
+    [row.id]
+  );
+  const user = await getUserById(row.id);
+  if (!user) throw new Error('User row missing after upsert');
+  return { user, isNew: row.created };
 }
 
-export function updateOnboarding(
+export async function updateOnboarding(
   id: string,
-  patch: { status?: OnboardingStatus; step?: OnboardingStep | null }
-): UserRecord | null {
-  const user = getUserById(id);
+  patch: { status?: OnboardingStatus; step?: OnboardingStep | null; form?: Record<string, unknown> }
+): Promise<UserRecord | null> {
+  await ensureReady();
+  const user = await getUserById(id);
   if (!user) return null;
   // A finished onboarding never drops back to IN_PROGRESS from a stray step save.
   if (user.onboarding.status === 'COMPLETE' && patch.status !== 'COMPLETE' && patch.status !== 'NOT_STARTED') {
     return user;
   }
-  user.onboarding = {
-    status: patch.status ?? (patch.step ? 'IN_PROGRESS' : user.onboarding.status),
-    step: patch.step !== undefined ? patch.step : user.onboarding.step,
-    updated_at: new Date().toISOString(),
-  };
-  save();
-  return user;
+  const status = patch.status ?? (patch.step ? 'IN_PROGRESS' : user.onboarding.status);
+  const step = patch.step !== undefined ? patch.step : user.onboarding.step;
+  await pool.query(
+    `INSERT INTO onboarding_profiles (user_id, status, step, form, updated_at)
+     VALUES ($1, $2, $3, COALESCE($4::jsonb, '{}'::jsonb), NOW())
+     ON CONFLICT (user_id) DO UPDATE SET
+       status = EXCLUDED.status,
+       step = EXCLUDED.step,
+       form = CASE WHEN $4 IS NULL THEN onboarding_profiles.form ELSE EXCLUDED.form END,
+       updated_at = NOW()`,
+    [id, status, step, patch.form !== undefined ? JSON.stringify(patch.form) : null]
+  );
+  return (await getUserById(id)) ?? user;
 }
 
 const revokeListeners = new Set<(userId: string) => void>();
@@ -127,14 +198,17 @@ export function onTokensRevoked(listener: (userId: string) => void): () => void 
 }
 
 /** Revokes every token issued to this user so far. */
-export function bumpTokenVersion(id: string): void {
-  const user = getUserById(id);
-  if (!user) return;
-  user.token_version += 1;
-  save();
+export async function bumpTokenVersion(id: string): Promise<void> {
+  await ensureReady();
+  await pool.query('UPDATE users SET token_version = token_version + 1 WHERE id = $1', [id]);
   for (const listener of revokeListeners) listener(id);
 }
 
 export function publicUser(user: UserRecord) {
-  return { id: user.id, phone: user.phone, created_at: user.created_at, onboarding: user.onboarding };
+  return {
+    id: user.id,
+    phone: user.phone,
+    created_at: user.created_at,
+    onboarding: user.onboarding,
+  };
 }
