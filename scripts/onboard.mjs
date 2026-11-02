@@ -2,12 +2,18 @@
 /**
  * scripts/onboard.mjs
  *
- * Programmatic and CLI onboarding utility for Warden / Warden.
- * - Detects first-run state (.state/onboarded.json).
+ * DEPRECATED: legacy CLI onboarding utility. Do not use for product onboarding.
+ *
+ * Canonical onboarding runs on the Warden dashboard
+ * (packages/web/src/components/AuthOnboardingFlow.tsx backed by
+ * packages/orchestrator/src/auth/). This script only manages local
+ * Markdown-mode dev files and never touches Postgres.
+ *
+ * - Detects legacy first-run state (.state/onboarded.json).
  * - Updates .claude/settings.local.json with allowed repo paths.
  * - Configures projects.yaml, context/, memory/, worklist/.
- * - Triggers repo-tool.mjs sync-in to establish zero-popup .state/mirror/<repo>.
- * - Marks completion in .state/onboarded.json.
+ * - Triggers repo-tool.mjs sync-in to establish .state/mirror/<repo>.
+ * - Marks completion in .state/onboarded.json (requires --allow-legacy).
  */
 
 import fs from 'node:fs';
@@ -145,20 +151,31 @@ export function completeOnboarding(metadata = {}) {
   return payload;
 }
 
-// CLI check or interactive entrypoint
+// CLI check or interactive entrypoint (deprecated: dashboard owns onboarding)
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  console.warn(
+    '[DEPRECATED] scripts/onboard.mjs is legacy local Markdown-mode tooling. ' +
+      'Canonical onboarding runs on the Warden dashboard. This script never touches Postgres.'
+  );
   const cmd = process.argv[2];
   if (cmd === 'check') {
     const status = isOnboarded();
     console.log(status ? 'ONBOARDED' : 'FIRST_RUN_REQUIRED');
     process.exit(status ? 0 : 1);
   } else if (cmd === 'complete') {
+    if (!process.argv.includes('--allow-legacy')) {
+      console.error(
+        'Refusing to write .state/onboarded.json. Onboard through the dashboard instead. ' +
+          'If you really need the legacy local flag, re-run with --allow-legacy.'
+      );
+      process.exit(2);
+    }
     completeOnboarding();
     process.exit(0);
   } else {
     console.log(`Warden Onboarding Status: ${isOnboarded() ? 'Completed' : 'Pending First-Run'}`);
     console.log(`Run with:`);
     console.log(`  node scripts/onboard.mjs check`);
-    console.log(`  node scripts/onboard.mjs complete`);
+    console.log(`  node scripts/onboard.mjs complete --allow-legacy`);
   }
 }

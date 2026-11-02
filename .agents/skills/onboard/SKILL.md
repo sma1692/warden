@@ -7,7 +7,12 @@ description: >-
   inside .state/mirror/<repo>.
 ---
 
-# Onboarding Skill (`onboard` / `/onboard`)
+# Onboarding Skill (`onboard` / `/onboard`) — DEPRECATED
+
+> DEPRECATED. Canonical onboarding runs on the Warden dashboard
+> (`packages/web/src/components/AuthOnboardingFlow.tsx` backed by
+> `packages/orchestrator/src/auth/`). Do not invoke this skill from CLI or
+> IDE chat sessions. It exists only as a legacy local Markdown-mode reference.
 
 Guides the CEO or operator through the initial workspace configuration or on-demand onboarding.
 Interviews the user, registers projects, configures permissions, creates initial context and memory files, seeds the backlog, and marks the workspace ready for multi-agent execution.

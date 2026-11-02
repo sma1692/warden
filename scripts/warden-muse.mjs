@@ -2,6 +2,10 @@
 /**
  * WARDEN — Programmatic Meta Muse Orchestrator & 12:00 PM IST Standup Runner
  *
+ * DEPRECATED as a product surface: the dashboard plus control plane own
+ * standup and chat flows now. This file remains as legacy local
+ * Markdown-mode tooling only. It never touches Postgres.
+ *
  * Bypasses IDE UI permission prompts by running the Warden agent hierarchy
  * (`warden`, `cto`, `pm`, `tech_lead`, `infra_head`, `backend_dev`, `frontend_dev`, `infra_jr`)
  * directly against the Meta Model API with native Node.js tool execution.

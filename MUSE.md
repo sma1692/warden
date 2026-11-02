@@ -1,57 +1,29 @@
-# MUSE.md - Muse Instructions (`warden`)
+# MUSE.md - Coding Agent Instructions
 
-@AGENTS.md
+@AGENTS.md is canonical. This file adds Muse-specific notes.
 
-## First-Run Detection & Automatic Onboarding
+## No First-Run Detection
 
-When starting a session in Muse, verify if the workspace has completed onboarding:
-- **Check State**: Check if `.state/onboarded.json` exists in the workspace root.
-- **First-Run State (`.state/onboarded.json` does NOT exist)**:
-  - Immediately invoke the **Onboarding Skill** ([`.agents/skills/onboard/SKILL.md`](./.agents/skills/onboard/SKILL.md)).
-  - Interview the operator to populate `projects.yaml`, initialize `context/`, `memory/`, and `worklist/`.
-  - Automatically add onboarded repository paths into `.claude/settings.local.json` (`additionalDirectories` + `permissions.allow`).
-  - Enforce `.state/mirror/<repo>` usage via `node scripts/repo-tool.mjs sync-in <project>` so all agent actions happen inside the workspace with zero popups.
-  - Write `.state/onboarded.json` upon completion.
-  - Halt regular task flow until onboarding completes.
-- **Initialized State (`.state/onboarded.json` exists)**:
-  - Proceed with standard `warden` executive orchestration below.
+- There is no onboarding from the CLI or IDE chat. Never check for `.state/onboarded.json`.
+- Never invoke the legacy onboarding skill. Never interview the operator.
+- Onboarding runs on the Warden dashboard: `packages/web/src/components/AuthOnboardingFlow.tsx` backed by `packages/orchestrator/src/auth/`.
+- In chat you are a coding agent improving this repo, not an in-product persona.
 
 ## Model Policy (Meta-Only)
 
 - All inference runs on Meta models. Tier 1 architects use `muse-wonder-1.0`. Tier 2 appliers use `muse-spark-1.3`, `muse-light`, or `muse-flash`.
 - Local execution uses Meta open weights (`llama-3.3-70b`, `muse-glimmer-30b`) via Ollama or vLLM.
-- Configure one key: `META_MUSE_API_KEY` in `.env`. See [`.env.example`](./.env.example).
+- Configure one key: `META_MUSE_API_KEY` in `.env`. See `.env.example`.
 
-## Muse Native Subagent Binding
+## Dev Workflows
 
-When running inside **Muse**, you are **`warden` (Chief of Staff)** in the main chat.
-Follow the hierarchy in [`AGENTS.md`](./AGENTS.md). Delegate specialized work down the hierarchy using the subagents in [`.claude/agents/`](./.claude/agents/):
+- Canonical local run: `npm run db:up`, then `npm run dev:db`.
+- Legacy Markdown run: `npm run dev:md`. Local files only, no Postgres writes.
+- Verify with `npm run typecheck` and `npm run build` before finishing.
+- Dashboard at `http://localhost:5173`. API at `http://localhost:4000`.
+- Do not use `.claude/agents/` persona prompts or `@<agent>` routing in chat. Those files are legacy IDE artifacts.
 
-1. **`cto`** (Level 0, `@cto`): **Head of Tech.** Oversees all tech and infra projects, maintains `context/cto.md` and `.state/topology-cache.json` via delegates, chairs the daily standup, makes final technical calls, and directs `pm`, project `tech_lead`s, `sec_lead`, `infra_head`, and `designer`.
-2. **`cbo`** (Level 0, `@cbo`): **Head of Business.** Ranks work by revenue, opportunity cost, and strategic value. Queries `pm` for backlog state.
-3. **`pm`** (Level 1, one per project, `@pm <project>` or `@pm:<project>`): **Product Manager.** Reports to `cto` and `cbo`. Maintains prioritized (`P0`/`P1`/`P2`) backlogs in `worklist/<project>/backlog.md`, syncs `worklist/COLLATED_BACKLOG.md`, adds `[NEEDS_CEO]` items (questions, API keys, manual actions, decisions), and drives weekly sprints.
-4. **`tech_lead`** (Level 1, one per project, `@tech_lead <project>`): **Project Tech Lead.** Reports to `cto`. Owns technical sections of `context/<project>.md` and `contracts/<project>-*.md`. Directs Level 2 devs.
-5. **`sec_lead`** (Level 1, `@sec_lead`): **Security Lead.** Runs out-of-flow audits through `sec_auditor` instances.
-6. **`infra_head`** (Level 1, `@infra_head`): **Head of Infrastructure.** Owns the infra project marked `department: "infra"` in `projects.yaml`, plus `memory/infra_head.md`. Directs `infra_jr`.
-7. **`designer`** (Level 1/2, `@designer`): visual direction, UI assets, logos, loaders, store art.
-8. **`pa`** (Level 1, `@pa`): personal assistant for notes, reminders, and calendar.
-9. **`backend_dev`, `frontend_dev`, `systems_cpp_dev`, `rust_lowlat_dev`, `xr_3d_dev`** (Level 2): developers. Report to `tech_lead`. Read `memory/<project>/<role>.md` and `context/<project>/<repo>.md` first, then work in `.state/mirror/<repo>/`.
-10. **`sec_auditor`** (Level 2): security auditor. Reports to `sec_lead`.
-11. **`infra_jr`** (Level 2, `@infra_jr`): infra and DevOps engineer. Reports to `infra_head`.
-12. **`domain-worker`**: scoped atomic worker used when a Level 2 agent fans out up to 4 parallel subtasks.
-
-### Workflow Reminders
-1. **Executive Mode vs. Direct `@agent` Mode**:
-   - By default, flow top-down (`CEO -> warden -> cto -> pm / tech_lead / infra_head -> devs`) and compress bottom-up.
-   - When the operator prefixes a message with `@<agent>`, route directly to that agent and return its response **uncompressed**.
-2. **Daily Standups (`standup` / `/standup`)**:
-   - Follow [`.agents/skills/standup/SKILL.md`](./.agents/skills/standup/SKILL.md). Poll all teams, triage `worklist/inbox.md`, write `standups/<YYYY-MM-DD>-standup.md`, and pause for operator approval before executing and deploying.
-3. **Single-File Chat Logging**:
-   - Create **only ONE** chat log in `chats/` per session (`chats/<YYYY-MM-DD>-session-<short-id>.md`). Append all handoffs and replies to that file.
-
----
-
-## `pushit` Skill ([`.agents/skills/pushit/SKILL.md`](./.agents/skills/pushit/SKILL.md))
+## `pushit` Commit Format
 
 When the operator says **"pushit"** or `/pushit`, stage, version-check, commit, and push to the current branch on `origin`:
 
@@ -70,4 +42,3 @@ When the operator says **"pushit"** or `/pushit`, stage, version-check, commit, 
    - Blank line, then the author footer configured in the pushit skill (default `Author -- <your-initials>`).
    - No em dashes.
 4. **Push**: `git push origin <current-branch>`.
-5. **Hierarchy Propagation**: if project repos changed, run `pushit` through the active `tech_lead` / `infra_head` / dev subagents in parallel so every dirty repo is committed and pushed.
