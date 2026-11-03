@@ -274,6 +274,10 @@ export class DatabaseStore {
       this.saveSnapshot();
     }
     const pgOk = await this.pg.connect();
+    const cloud = (process.env.WARDEN_CLOUD || '').trim().toLowerCase() === 'true';
+    if (!pgOk && cloud) {
+      throw new Error('[@warden/db] WARDEN_CLOUD=true requires Postgres; connection failed.');
+    }
     if (pgOk) {
       await this.syncSeedAgentsToPostgres();
     }
@@ -371,6 +375,51 @@ export class DatabaseStore {
         content_md TEXT NOT NULL DEFAULT '',
         turn_count INTEGER NOT NULL DEFAULT 0,
         embedding vector(768),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      ALTER TABLE project_contexts ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE sprints ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE backlog_items ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE inference_steps ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE approval_gates ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE contracts ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE chat_session_logs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE reminders ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+      CREATE INDEX IF NOT EXISTS idx_project_contexts_user ON project_contexts(user_id);
+      CREATE INDEX IF NOT EXISTS idx_chat_threads_user ON chat_threads(user_id);
+      CREATE INDEX IF NOT EXISTS idx_sprints_user ON sprints(user_id);
+      CREATE INDEX IF NOT EXISTS idx_backlog_items_user ON backlog_items(user_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_memories_user ON agent_memories(user_id);
+      CREATE INDEX IF NOT EXISTS idx_inference_steps_user ON inference_steps(user_id);
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);
+      CREATE INDEX IF NOT EXISTS idx_approval_gates_user ON approval_gates(user_id);
+      CREATE INDEX IF NOT EXISTS idx_contracts_user ON contracts(user_id);
+      CREATE INDEX IF NOT EXISTS idx_chat_session_logs_user ON chat_session_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);
+      CREATE TABLE IF NOT EXISTS demo_workspaces (
+        user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        mode TEXT NOT NULL DEFAULT 'demo' CHECK (mode IN ('demo', 'full')),
+        repo_full_name TEXT,
+        base_ref TEXT,
+        base_sha TEXT,
+        branch TEXT,
+        pr_number INTEGER,
+        pr_url TEXT,
+        status TEXT NOT NULL DEFAULT 'ACTIVE'
+          CHECK (status IN ('ACTIVE', 'NO_GIT_CONFIG', 'GIT_FAILED')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS user_budgets (
+        user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        mode TEXT NOT NULL DEFAULT 'demo' CHECK (mode IN ('demo', 'full')),
+        token_cap BIGINT NOT NULL DEFAULT 1000000,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
@@ -883,17 +932,30 @@ export class DatabaseStore {
   // 2. PROJECT CONTEXTS REPOSITORY
   // ==========================================================================
 
-  public async listProjectContexts(projectSlug?: string): Promise<ProjectContextRow[]> {
+  public async listProjectContexts(
+    projectSlug?: string,
+    userId?: string | null
+  ): Promise<ProjectContextRow[]> {
     if (this.pg.isConnected()) {
-      const res = projectSlug
-        ? await this.pg.query(
-            'SELECT * FROM project_contexts WHERE project_slug = $1 ORDER BY id ASC',
-            [projectSlug]
-          )
-        : await this.pg.query('SELECT * FROM project_contexts ORDER BY id ASC');
+      const clauses: string[] = [];
+      const sqlParams: unknown[] = [];
+      if (projectSlug) {
+        sqlParams.push(projectSlug);
+        clauses.push(`project_slug = $${sqlParams.length}`);
+      }
+      if (userId !== undefined) {
+        sqlParams.push(userId);
+        clauses.push(`user_id IS NOT DISTINCT FROM $${sqlParams.length}`);
+      }
+      const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+      const res = await this.pg.query(
+        `SELECT * FROM project_contexts ${where} ORDER BY id ASC`,
+        sqlParams
+      );
       if (res && res.rows.length > 0) {
         return res.rows.map((r) => ({
           id: String(r.id),
+          user_id: r.user_id ?? null,
           project_slug: String(r.project_slug),
           repo_slug: String(r.repo_slug),
           git_repo_url: r.git_repo_url ?? null,
@@ -918,21 +980,29 @@ export class DatabaseStore {
     if (projectSlug) {
       items = items.filter((p) => p.project_slug === projectSlug);
     }
+    if (userId !== undefined) {
+      items = items.filter((p) => (p.user_id ?? null) === (userId ?? null));
+    }
     return items.sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  public async getProjectContexts(projectSlug?: string): Promise<ProjectContextRow[]> {
-    return this.listProjectContexts(projectSlug);
+  public async getProjectContexts(
+    projectSlug?: string,
+    userId?: string | null
+  ): Promise<ProjectContextRow[]> {
+    return this.listProjectContexts(projectSlug, userId);
   }
 
   public async getProjectContext(
     projectSlug: string,
-    repoSlug = 'GLOBAL'
+    repoSlug = 'GLOBAL',
+    userId?: string | null
   ): Promise<ProjectContextRow | null> {
     const id = `${projectSlug}:${repoSlug}`;
     const found = this.state.project_contexts.find(
       (c) =>
-        c.id === id || (c.project_slug === projectSlug && c.repo_slug === repoSlug)
+        (c.id === id || (c.project_slug === projectSlug && c.repo_slug === repoSlug)) &&
+        (userId === undefined || (c.user_id ?? null) === (userId ?? null))
     );
     return found ? structuredClone(found) : null;
   }
@@ -941,17 +1011,21 @@ export class DatabaseStore {
     input: Partial<ProjectContextRow> & { project_slug: string; repo_slug: string }
   ): Promise<ProjectContextRow> {
     const now = new Date().toISOString();
-    const id = input.id || `${input.project_slug}:${input.repo_slug}`;
+    const userKey = input.user_id ?? null;
+    const userPrefix = userKey ? `u${String(userKey).replace(/-/g, '').slice(0, 8)}:` : '';
+    const id = input.id || `${userPrefix}${input.project_slug}:${input.repo_slug}`;
     const existingIdx = this.state.project_contexts.findIndex(
       (c) =>
-        c.id === id ||
-        (c.project_slug === input.project_slug && c.repo_slug === input.repo_slug)
+        (c.id === id ||
+          (c.project_slug === input.project_slug && c.repo_slug === input.repo_slug)) &&
+        (c.user_id ?? null) === userKey
     );
     const existing =
       existingIdx >= 0 ? this.state.project_contexts[existingIdx] : undefined;
 
     const merged: ProjectContextRow = {
       id,
+      user_id: input.user_id ?? existing?.user_id ?? null,
       project_slug: input.project_slug,
       repo_slug: input.repo_slug,
       git_repo_url: input.git_repo_url ?? existing?.git_repo_url ?? null,
@@ -984,15 +1058,16 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO project_contexts (
-          id, project_slug, repo_slug, git_repo_url, local_path, default_branch,
+          id, user_id, project_slug, repo_slug, git_repo_url, local_path, default_branch,
           role, docker_base_image, build_cmd, test_cmd, dev_preview_port,
           architecture_doc_md, topology_json, updated_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6,
-          $7, $8, $9, $10, $11,
-          $12, $13::jsonb, $14
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, $11, $12,
+          $13, $14::jsonb, $15
         )
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           project_slug = EXCLUDED.project_slug,
           repo_slug = EXCLUDED.repo_slug,
           git_repo_url = EXCLUDED.git_repo_url,
@@ -1008,6 +1083,7 @@ export class DatabaseStore {
           updated_at = EXCLUDED.updated_at`,
         [
           merged.id,
+          merged.user_id,
           merged.project_slug,
           merged.repo_slug,
           merged.git_repo_url,
@@ -1037,6 +1113,7 @@ export class DatabaseStore {
     project_scope?: string;
     is_pinned?: boolean;
     memory_type?: MemoryType;
+    userId?: string | null;
     limit?: number;
   }): Promise<AgentMemoryRow[]> {
     let items = [...this.state.agent_memories];
@@ -1058,6 +1135,9 @@ export class DatabaseStore {
     if (filter?.memory_type) {
       items = items.filter((m) => m.memory_type === filter.memory_type);
     }
+    if (filter?.userId !== undefined) {
+      items = items.filter((m) => (m.user_id ?? null) === (filter.userId ?? null));
+    }
     items.sort((a, b) => b.created_at.localeCompare(a.created_at));
     if (filter?.limit && filter.limit > 0) {
       items = items.slice(0, filter.limit);
@@ -1070,6 +1150,7 @@ export class DatabaseStore {
     project_scope?: string;
     is_pinned?: boolean;
     memory_type?: MemoryType;
+    userId?: string | null;
     limit?: number;
   }): Promise<AgentMemoryRow[]> {
     return this.listAgentMemories(filter);
@@ -1077,12 +1158,14 @@ export class DatabaseStore {
 
   public async getPinnedMemories(
     agentId: string,
-    projectScope?: string | null
+    projectScope?: string | null,
+    userId?: string | null
   ): Promise<AgentMemoryRow[]> {
     return this.listAgentMemories({
       agent_id: agentId,
       project_scope: projectScope ?? undefined,
       is_pinned: true,
+      userId,
     });
   }
 
@@ -1096,9 +1179,13 @@ export class DatabaseStore {
     const agentId = normalizeAgentKey(input.agent_id);
     const trimmedContent = input.content.trim();
 
-    // Deduplicate identical (agent_id, content)
+    // Deduplicate identical (user_id, agent_id, content)
+    const userKey = input.user_id ?? null;
     const existingIdx = this.state.agent_memories.findIndex(
-      (m) => m.agent_id === agentId && m.content.trim() === trimmedContent
+      (m) =>
+        m.agent_id === agentId &&
+        m.content.trim() === trimmedContent &&
+        (m.user_id ?? null) === userKey
     );
 
     const memoryType: MemoryType = input.memory_type || 'EPISODIC_LESSON';
@@ -1118,6 +1205,7 @@ export class DatabaseStore {
         (existingIdx >= 0
           ? this.state.agent_memories[existingIdx].id
           : crypto.randomUUID()),
+      user_id: input.user_id ?? null,
       agent_id: agentId,
       project_scope: input.project_scope ?? null,
       memory_type: memoryType,
@@ -1141,16 +1229,18 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO agent_memories (
-          id, agent_id, project_scope, memory_type, content,
+          id, user_id, agent_id, project_scope, memory_type, content,
           source_run_id, is_pinned, embedding, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::vector, $9)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10)
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           memory_type = EXCLUDED.memory_type,
           content = EXCLUDED.content,
           is_pinned = EXCLUDED.is_pinned,
           embedding = EXCLUDED.embedding`,
         [
           row.id,
+          row.user_id,
           row.agent_id,
           row.project_scope,
           row.memory_type,
@@ -1193,6 +1283,7 @@ export class DatabaseStore {
     agent_id?: string;
     project_scope?: string;
     memory_type?: MemoryType;
+    userId?: string | null;
     topK?: number;
     includePinned?: boolean;
   }): Promise<Array<AgentMemoryRow & { similarity: number }>> {
@@ -1217,6 +1308,10 @@ export class DatabaseStore {
         sqlParams.push(params.memory_type);
         clauses.push(`memory_type = $${sqlParams.length}`);
       }
+      if (params.userId !== undefined) {
+        sqlParams.push(params.userId);
+        clauses.push(`user_id IS NOT DISTINCT FROM $${sqlParams.length}`);
+      }
       if (params.includePinned === false) {
         clauses.push('is_pinned = FALSE');
       }
@@ -1232,6 +1327,7 @@ export class DatabaseStore {
       if (res && res.rows.length > 0) {
         return res.rows.map((r) => ({
           id: String(r.id),
+          user_id: r.user_id ?? null,
           agent_id: String(r.agent_id),
           project_scope: r.project_scope ?? null,
           memory_type: r.memory_type as MemoryType,
@@ -1260,6 +1356,9 @@ export class DatabaseStore {
     }
     if (params.memory_type) {
       candidates = candidates.filter((m) => m.memory_type === params.memory_type);
+    }
+    if (params.userId !== undefined) {
+      candidates = candidates.filter((m) => (m.user_id ?? null) === (params.userId ?? null));
     }
     if (params.includePinned === false) {
       candidates = candidates.filter((m) => !m.is_pinned);
@@ -1298,6 +1397,7 @@ export class DatabaseStore {
     chat_thread_id?: string;
     sprint_id?: string;
     backlog_item_id?: string;
+    userId?: string | null;
     limit?: number;
   }): Promise<AgentRunRow[]> {
     let items = [...this.state.agent_runs];
@@ -1317,6 +1417,9 @@ export class DatabaseStore {
     if (filter?.backlog_item_id) {
       items = items.filter((r) => r.backlog_item_id === filter.backlog_item_id);
     }
+    if (filter?.userId !== undefined) {
+      items = items.filter((r) => (r.user_id ?? null) === (filter.userId ?? null));
+    }
     items.sort((a, b) => b.started_at.localeCompare(a.started_at));
     if (filter?.limit && filter.limit > 0) {
       items = items.slice(0, filter.limit);
@@ -1330,6 +1433,7 @@ export class DatabaseStore {
     chat_thread_id?: string;
     sprint_id?: string;
     backlog_item_id?: string;
+    userId?: string | null;
     limit?: number;
   }): Promise<AgentRunRow[]> {
     return this.listAgentRuns(filter);
@@ -1351,6 +1455,7 @@ export class DatabaseStore {
     const agentId = normalizeAgentKey(input.agent_id);
     const run: AgentRunRow = {
       id: input.id || crypto.randomUUID(),
+      user_id: input.user_id ?? null,
       agent_id: agentId,
       parent_run_id: input.parent_run_id ?? null,
       chat_thread_id: input.chat_thread_id ?? null,
@@ -1399,19 +1504,20 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO agent_runs (
-          id, agent_id, parent_run_id, chat_thread_id, sprint_id, backlog_item_id,
+          id, user_id, agent_id, parent_run_id, chat_thread_id, sprint_id, backlog_item_id,
           trigger_type, input_prompt, output_summary, status, container_id,
           git_branch, git_commit_sha, preview_url, qa_passed, qa_screenshot_url,
           started_at, ended_at, active_duration_ms, pause_duration_ms,
           tokens_in, tokens_cached, tokens_thinking, tokens_out, cost_usd
         ) VALUES (
-          $1, $2, $3, $4, $5, $6,
-          $7, $8, $9, $10, $11,
-          $12, $13, $14, $15, $16,
-          $17, $18, $19, $20,
-          $21, $22, $23, $24, $25
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, $11, $12,
+          $13, $14, $15, $16, $17,
+          $18, $19, $20, $21,
+          $22, $23, $24, $25, $26
         )
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           output_summary = EXCLUDED.output_summary,
           status = EXCLUDED.status,
           container_id = EXCLUDED.container_id,
@@ -1430,6 +1536,7 @@ export class DatabaseStore {
           cost_usd = EXCLUDED.cost_usd`,
         [
           run.id,
+          run.user_id,
           run.agent_id,
           run.parent_run_id,
           run.chat_thread_id,
@@ -1567,14 +1674,24 @@ export class DatabaseStore {
   // 5. INFERENCE STEPS REPOSITORY
   // ==========================================================================
 
-  public async listInferenceSteps(runId: string): Promise<InferenceStepRow[]> {
+  public async listInferenceSteps(
+    runId: string,
+    userId?: string | null
+  ): Promise<InferenceStepRow[]> {
     return this.state.inference_steps
-      .filter((s) => s.run_id === runId)
+      .filter(
+        (s) =>
+          s.run_id === runId &&
+          (userId === undefined || (s.user_id ?? null) === (userId ?? null))
+      )
       .sort((a, b) => a.step_index - b.step_index);
   }
 
-  public async getInferenceSteps(runId: string): Promise<InferenceStepRow[]> {
-    return this.listInferenceSteps(runId);
+  public async getInferenceSteps(
+    runId: string,
+    userId?: string | null
+  ): Promise<InferenceStepRow[]> {
+    return this.listInferenceSteps(runId, userId);
   }
 
   public async appendInferenceStep(
@@ -1591,6 +1708,7 @@ export class DatabaseStore {
 
     const step: InferenceStepRow = {
       id: input.id || crypto.randomUUID(),
+      user_id: input.user_id ?? null,
       run_id: input.run_id,
       step_index: nextIdx,
       step_type: input.step_type,
@@ -1614,17 +1732,18 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO inference_steps (
-          id, run_id, step_index, step_type, model_used, thinking_text,
+          id, user_id, run_id, step_index, step_type, model_used, thinking_text,
           message_text, tool_name, tool_args_json, tool_output_json,
           duration_ms, tokens_in, tokens_cached, tokens_thinking, tokens_out, created_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6,
-          $7, $8, $9::jsonb, $10::jsonb,
-          $11, $12, $13, $14, $15, $16
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10::jsonb, $11::jsonb,
+          $12, $13, $14, $15, $16, $17
         )
         ON CONFLICT (id) DO NOTHING`,
         [
           step.id,
+          step.user_id,
           step.run_id,
           step.step_index,
           step.step_type,
@@ -1665,6 +1784,7 @@ export class DatabaseStore {
     status?: ChatThreadStatus;
     target_agent_id?: string;
     project_scope?: string;
+    userId?: string | null;
     limit?: number;
   }): Promise<ChatThreadRow[]> {
     let items = [...this.state.chat_threads];
@@ -1683,6 +1803,9 @@ export class DatabaseStore {
     if (filter?.project_scope) {
       items = items.filter((t) => t.project_scope === filter.project_scope);
     }
+    if (filter?.userId !== undefined) {
+      items = items.filter((t) => (t.user_id ?? null) === (filter.userId ?? null));
+    }
     items.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     if (filter?.limit && filter.limit > 0) {
       items = items.slice(0, filter.limit);
@@ -1695,6 +1818,7 @@ export class DatabaseStore {
     status?: ChatThreadStatus;
     target_agent_id?: string;
     project_scope?: string;
+    userId?: string | null;
     limit?: number;
   }): Promise<ChatThreadRow[]> {
     return this.listChatThreads(filter);
@@ -1715,6 +1839,7 @@ export class DatabaseStore {
 
     const thread: ChatThreadRow = {
       id,
+      user_id: input.user_id ?? existing?.user_id ?? null,
       title: input.title || existing?.title || 'Executive Session',
       mode: input.mode || existing?.mode || 'WARDEN_EXECUTIVE',
       target_agent_id: input.target_agent_id
@@ -1736,9 +1861,10 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO chat_threads (
-          id, title, mode, target_agent_id, project_scope, status, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          id, user_id, title, mode, target_agent_id, project_scope, status, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           title = EXCLUDED.title,
           mode = EXCLUDED.mode,
           target_agent_id = EXCLUDED.target_agent_id,
@@ -1747,6 +1873,7 @@ export class DatabaseStore {
           updated_at = EXCLUDED.updated_at`,
         [
           thread.id,
+          thread.user_id,
           thread.title,
           thread.mode,
           thread.target_agent_id,
@@ -1783,10 +1910,15 @@ export class DatabaseStore {
 
   public async listChatMessages(
     threadId: string,
-    limit?: number
+    limit?: number,
+    userId?: string | null
   ): Promise<ChatMessageRow[]> {
     let msgs = this.state.chat_messages
-      .filter((m) => m.thread_id === threadId)
+      .filter(
+        (m) =>
+          m.thread_id === threadId &&
+          (userId === undefined || (m.user_id ?? null) === (userId ?? null))
+      )
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
     if (limit && limit > 0 && msgs.length > limit) {
       msgs = msgs.slice(msgs.length - limit);
@@ -1796,9 +1928,10 @@ export class DatabaseStore {
 
   public async getChatMessages(
     threadId: string,
-    limit?: number
+    limit?: number,
+    userId?: string | null
   ): Promise<ChatMessageRow[]> {
-    return this.listChatMessages(threadId, limit);
+    return this.listChatMessages(threadId, limit, userId);
   }
 
   public async appendChatMessage(
@@ -1817,6 +1950,7 @@ export class DatabaseStore {
 
     const msg: ChatMessageRow = {
       id,
+      user_id: input.user_id ?? null,
       thread_id: input.thread_id,
       sender_type: input.sender_type,
       sender_agent_id: input.sender_agent_id
@@ -1850,15 +1984,17 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO chat_messages (
-          id, thread_id, sender_type, sender_agent_id, recipient_agent_id,
+          id, user_id, thread_id, sender_type, sender_agent_id, recipient_agent_id,
           content, run_id, attachments_json, embedding, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::vector, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::vector, $11)
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           content = EXCLUDED.content,
           attachments_json = EXCLUDED.attachments_json,
           embedding = EXCLUDED.embedding`,
         [
           msg.id,
+          msg.user_id,
           msg.thread_id,
           msg.sender_type,
           msg.sender_agent_id,
@@ -1890,6 +2026,7 @@ export class DatabaseStore {
     queryEmbedding?: number[];
     thread_id?: string;
     sender_agent_id?: string;
+    userId?: string | null;
     topK?: number;
   }): Promise<Array<ChatMessageRow & { similarity: number }>> {
     const topK = params.topK ?? 5;
@@ -1906,6 +2043,9 @@ export class DatabaseStore {
       const norm = normalizeAgentKey(params.sender_agent_id);
       candidates = candidates.filter((m) => m.sender_agent_id === norm);
     }
+    if (params.userId !== undefined) {
+      candidates = candidates.filter((m) => (m.user_id ?? null) === (params.userId ?? null));
+    }
 
     const scored = candidates.map((m) => ({
       ...m,
@@ -1919,26 +2059,33 @@ export class DatabaseStore {
   // 8. SPRINTS REPOSITORY (Replaces standups/*.md)
   // ==========================================================================
 
-  public async listSprints(limit?: number): Promise<SprintRow[]> {
-    const sorted = [...this.state.sprints].sort((a, b) =>
-      b.date_ist.localeCompare(a.date_ist)
-    );
+  public async listSprints(limit?: number, userId?: string | null): Promise<SprintRow[]> {
+    let items = [...this.state.sprints];
+    if (userId !== undefined) {
+      items = items.filter((s) => (s.user_id ?? null) === (userId ?? null));
+    }
+    const sorted = items.sort((a, b) => b.date_ist.localeCompare(a.date_ist));
     return limit && limit > 0 ? sorted.slice(0, limit) : sorted;
   }
 
-  public async getSprints(limit?: number): Promise<SprintRow[]> {
-    return this.listSprints(limit);
+  public async getSprints(limit?: number, userId?: string | null): Promise<SprintRow[]> {
+    return this.listSprints(limit, userId);
   }
 
-  public async getSprint(idOrDate: string): Promise<SprintRow | null> {
+  public async getSprint(
+    idOrDate: string,
+    userId?: string | null
+  ): Promise<SprintRow | null> {
     const found = this.state.sprints.find(
-      (s) => s.id === idOrDate || s.date_ist === idOrDate
+      (s) =>
+        (s.id === idOrDate || s.date_ist === idOrDate) &&
+        (userId === undefined || (s.user_id ?? null) === (userId ?? null))
     );
     return found ? structuredClone(found) : null;
   }
 
-  public async getLatestSprint(): Promise<SprintRow | null> {
-    const list = await this.listSprints(1);
+  public async getLatestSprint(userId?: string | null): Promise<SprintRow | null> {
+    const list = await this.listSprints(1, userId);
     return list[0] ?? null;
   }
 
@@ -1946,14 +2093,19 @@ export class DatabaseStore {
     input: Partial<SprintRow> & { id?: string; date_ist: string }
   ): Promise<SprintRow> {
     const now = new Date().toISOString();
-    const id = input.id || `spr_${input.date_ist.replace(/-/g, '_')}`;
+    const userKey = input.user_id ?? null;
+    const userPrefix = userKey ? `u${String(userKey).replace(/-/g, '').slice(0, 8)}_` : '';
+    const id = input.id || `spr_${userPrefix}${input.date_ist.replace(/-/g, '_')}`;
     const existingIdx = this.state.sprints.findIndex(
-      (s) => s.id === id || s.date_ist === input.date_ist
+      (s) =>
+        (s.id === id || s.date_ist === input.date_ist) &&
+        (s.user_id ?? null) === userKey
     );
     const existing = existingIdx >= 0 ? this.state.sprints[existingIdx] : undefined;
 
     const sprint: SprintRow = {
       id,
+      user_id: input.user_id ?? existing?.user_id ?? null,
       date_ist: input.date_ist,
       week_label: input.week_label ?? existing?.week_label ?? undefined,
       status: input.status || existing?.status || 'AWAITING_CEO_APPROVAL',
@@ -1975,10 +2127,11 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO sprints (
-          id, date_ist, week_label, status, mom_summary_md,
+          id, user_id, date_ist, week_label, status, mom_summary_md,
           weekly_plan_json, task_movements_json, approved_at, ceo_notes, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11)
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           week_label = EXCLUDED.week_label,
           status = EXCLUDED.status,
           mom_summary_md = EXCLUDED.mom_summary_md,
@@ -1988,6 +2141,7 @@ export class DatabaseStore {
           ceo_notes = EXCLUDED.ceo_notes`,
         [
           sprint.id,
+          sprint.user_id,
           sprint.date_ist,
           sprint.week_label ?? null,
           sprint.status,
@@ -2026,6 +2180,7 @@ export class DatabaseStore {
     project_slug?: string;
     assigned_agent_id?: string;
     sprint_id?: string;
+    userId?: string | null;
   }): Promise<BacklogItemRow[]> {
     let items = [...this.state.backlog_items];
     if (filter?.stage) {
@@ -2052,6 +2207,9 @@ export class DatabaseStore {
     if (filter?.sprint_id) {
       items = items.filter((b) => b.sprint_id === filter.sprint_id);
     }
+    if (filter?.userId !== undefined) {
+      items = items.filter((b) => (b.user_id ?? null) === (filter.userId ?? null));
+    }
 
     const priorityRank: Record<BacklogPriority, number> = { P0: 0, P1: 1, P2: 2 };
     items.sort(
@@ -2069,6 +2227,7 @@ export class DatabaseStore {
     project_slug?: string;
     assigned_agent_id?: string;
     sprint_id?: string;
+    userId?: string | null;
   }): Promise<BacklogItemRow[]> {
     return this.listBacklogItems(filter);
   }
@@ -2082,10 +2241,12 @@ export class DatabaseStore {
     input: Partial<BacklogItemRow> & { title: string }
   ): Promise<BacklogItemRow> {
     const now = new Date().toISOString();
+    const userKey = input.user_id ?? null;
     const existingIdx = this.state.backlog_items.findIndex(
       (b) =>
         (input.id && b.id === input.id) ||
-        b.title.trim().toLowerCase() === input.title.trim().toLowerCase()
+        (b.title.trim().toLowerCase() === input.title.trim().toLowerCase() &&
+          (b.user_id ?? null) === userKey)
     );
     const existing =
       existingIdx >= 0 ? this.state.backlog_items[existingIdx] : undefined;
@@ -2093,6 +2254,7 @@ export class DatabaseStore {
     const stage: BacklogStage = input.stage || existing?.stage || 'INBOX';
     const item: BacklogItemRow = {
       id: input.id || existing?.id || crypto.randomUUID(),
+      user_id: input.user_id ?? existing?.user_id ?? null,
       title: input.title.trim(),
       spec_md: input.spec_md ?? existing?.spec_md ?? '',
       stage,
@@ -2143,19 +2305,20 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO backlog_items (
-          id, title, spec_md, stage, priority, department, project_slug,
+          id, user_id, title, spec_md, stage, priority, department, project_slug,
           assigned_agent_id, pm_owner_id, sprint_id, target_week,
           requires_human_intervention, intervention_type, intervention_prompt,
           required_env_keys, human_response, requested_by_agent_id,
           last_moved_at, last_movement_note, created_at, completed_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7,
-          $8, $9, $10, $11,
-          $12, $13, $14,
-          $15::jsonb, $16, $17,
-          $18, $19, $20, $21
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $10, $11, $12,
+          $13, $14, $15,
+          $16::jsonb, $17, $18,
+          $19, $20, $21, $22
         )
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           title = EXCLUDED.title,
           spec_md = EXCLUDED.spec_md,
           stage = EXCLUDED.stage,
@@ -2177,6 +2340,7 @@ export class DatabaseStore {
           completed_at = EXCLUDED.completed_at`,
         [
           item.id,
+          item.user_id,
           item.title,
           item.spec_md,
           item.stage,
@@ -2241,6 +2405,7 @@ export class DatabaseStore {
     gate_type?: ApprovalGateType;
     agent_id?: string;
     thread_id?: string;
+    userId?: string | null;
   }): Promise<ApprovalGateRow[]> {
     let items = [...this.state.approval_gates];
     if (filter?.status) {
@@ -2262,6 +2427,9 @@ export class DatabaseStore {
     if (filter?.thread_id) {
       items = items.filter((g) => g.thread_id === filter.thread_id);
     }
+    if (filter?.userId !== undefined) {
+      items = items.filter((g) => (g.user_id ?? null) === (filter.userId ?? null));
+    }
     return items.sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
@@ -2272,6 +2440,7 @@ export class DatabaseStore {
     gate_type?: ApprovalGateType;
     agent_id?: string;
     thread_id?: string;
+    userId?: string | null;
   }): Promise<ApprovalGateRow[]> {
     return this.listApprovalGates(filter);
   }
@@ -2292,6 +2461,7 @@ export class DatabaseStore {
     const agentId = normalizeAgentKey(input.agent_id);
     const gate: ApprovalGateRow = {
       id: input.id || crypto.randomUUID(),
+      user_id: input.user_id ?? null,
       run_id: input.run_id ?? null,
       thread_id: input.thread_id ?? null,
       agent_id: agentId,
@@ -2318,17 +2488,19 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO approval_gates (
-          id, run_id, thread_id, agent_id, department, project_scope,
+          id, user_id, run_id, thread_id, agent_id, department, project_scope,
           gate_type, prompt_text, options_json, status, ceo_decision,
           telegram_notified_at, resolved_at, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15)
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           status = EXCLUDED.status,
           ceo_decision = EXCLUDED.ceo_decision,
           telegram_notified_at = EXCLUDED.telegram_notified_at,
           resolved_at = EXCLUDED.resolved_at`,
         [
           gate.id,
+          gate.user_id,
           gate.run_id,
           gate.thread_id,
           gate.agent_id,
@@ -3054,6 +3226,7 @@ export class DatabaseStore {
   public async listContracts(filter?: {
     project_slug?: string;
     status?: ContractStatus;
+    userId?: string | null;
   }): Promise<ContractRow[]> {
     if (this.pg.isConnected()) {
       const res = await this.pg.query(
@@ -3062,6 +3235,7 @@ export class DatabaseStore {
       if (res && res.rows.length > 0) {
         this.state.contracts = res.rows.map((r) => ({
           id: String(r.id),
+          user_id: r.user_id ?? null,
           project_slug: String(r.project_slug),
           feature_slug: String(r.feature_slug),
           title: String(r.title),
@@ -3082,6 +3256,9 @@ export class DatabaseStore {
     }
     if (filter?.status) {
       items = items.filter((c) => c.status === filter.status);
+    }
+    if (filter?.userId !== undefined) {
+      items = items.filter((c) => (c.user_id ?? null) === (filter.userId ?? null));
     }
     return items.sort((a, b) => a.id.localeCompare(b.id));
   }
@@ -3106,13 +3283,17 @@ export class DatabaseStore {
     }
   ): Promise<ContractRow> {
     const now = new Date().toISOString();
+    const userKey = input.user_id ?? null;
+    const userPrefix = userKey ? `u${String(userKey).replace(/-/g, '').slice(0, 8)}_` : '';
     const id =
       input.id ||
-      `ctr_${input.project_slug.replace(/[^a-zA-Z0-9_]/g, '_')}_${input.feature_slug.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+      `ctr_${userPrefix}${input.project_slug.replace(/[^a-zA-Z0-9_]/g, '_')}_${input.feature_slug.replace(/[^a-zA-Z0-9_]/g, '_')}`;
     const existingIdx = this.state.contracts.findIndex(
       (c) =>
-        c.id === id ||
-        (c.project_slug === input.project_slug && c.feature_slug === input.feature_slug)
+        (c.id === id ||
+          (c.project_slug === input.project_slug &&
+            c.feature_slug === input.feature_slug)) &&
+        (c.user_id ?? null) === userKey
     );
     const existing = existingIdx >= 0 ? this.state.contracts[existingIdx] : undefined;
 
@@ -3125,6 +3306,7 @@ export class DatabaseStore {
 
     const row: ContractRow = {
       id,
+      user_id: input.user_id ?? existing?.user_id ?? null,
       project_slug: input.project_slug,
       feature_slug: input.feature_slug,
       title: input.title,
@@ -3145,10 +3327,11 @@ export class DatabaseStore {
     if (this.pg.isConnected()) {
       await this.pg.query(
         `INSERT INTO contracts (
-          id, project_slug, feature_slug, title, status,
+          id, user_id, project_slug, feature_slug, title, status,
           file_path, content_md, embedding, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::vector, $9)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10)
         ON CONFLICT (id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
           project_slug = EXCLUDED.project_slug,
           feature_slug = EXCLUDED.feature_slug,
           title = EXCLUDED.title,
@@ -3159,6 +3342,7 @@ export class DatabaseStore {
           updated_at = EXCLUDED.updated_at`,
         [
           row.id,
+          row.user_id,
           row.project_slug,
           row.feature_slug,
           row.title,
@@ -3176,6 +3360,7 @@ export class DatabaseStore {
 
   public async upsertChatSessionLog(input: {
     id: string;
+    user_id?: string | null;
     thread_id: string;
     file_path: string;
     title: string;
@@ -3186,9 +3371,10 @@ export class DatabaseStore {
     const embedding = generateDeterministicEmbedding(`${input.title} ${input.content_md}`);
     await this.pg.query(
       `INSERT INTO chat_session_logs (
-        id, thread_id, file_path, title, content_md, turn_count, embedding, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8)
+        id, user_id, thread_id, file_path, title, content_md, turn_count, embedding, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::vector, $9)
       ON CONFLICT (id) DO UPDATE SET
+        user_id = EXCLUDED.user_id,
         thread_id = EXCLUDED.thread_id,
         file_path = EXCLUDED.file_path,
         title = EXCLUDED.title,
@@ -3198,6 +3384,7 @@ export class DatabaseStore {
         updated_at = EXCLUDED.updated_at`,
       [
         input.id,
+        input.user_id ?? null,
         input.thread_id,
         input.file_path,
         input.title,

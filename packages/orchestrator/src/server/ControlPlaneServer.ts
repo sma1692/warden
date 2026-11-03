@@ -97,6 +97,7 @@ export class ControlPlaneServer {
   private server: http.Server | null = null;
   private wss: WebSocketServer | null = null;
   private clients = new Set<WebSocket>();
+  private hydratedUsers = new Set<string>();
 
   private isIngesting: boolean = false;
   private autoIngestInterval: NodeJS.Timeout | null = null;
@@ -685,11 +686,14 @@ export class ControlPlaneServer {
       // Auth gate: every other /api route and /media file needs a valid JWT.
       // /media also accepts the session cookie (img tags cannot send headers).
       // ======================================================================
+      // Authenticated operator for this request; null on public paths.
+      // Threaded into every user-scoped store call below for cloud isolation.
+      let requestUserId: string | null = null;
       if (
         !isPublicPath(pathname, method) &&
         (pathname.startsWith('/api/') || pathname.startsWith('/media/'))
       ) {
-        let authed: unknown = null;
+        let authed: { id?: string } | null = null;
         try {
           authed = await authenticateRequest(req, pathname.startsWith('/media/'));
         } catch {
@@ -699,6 +703,11 @@ export class ControlPlaneServer {
         if (!authed) {
           this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
           return;
+        }
+        requestUserId = typeof authed.id === 'string' ? authed.id : null;
+        if (requestUserId && !this.hydratedUsers.has(requestUserId)) {
+          await this.store.hydrateUser(requestUserId).catch(() => undefined);
+          this.hydratedUsers.add(requestUserId);
         }
       }
 
@@ -755,6 +764,21 @@ export class ControlPlaneServer {
           return;
         }
         this.sendJson(res, 200, this.buildHealthResponse());
+        return;
+      }
+
+      if (pathname === '/api/budgets/me' && method === 'GET') {
+        if (!requestUserId) {
+          this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
+          return;
+        }
+        try {
+          const { getUserUsage } = await import('../budgets/UserBudgets.js');
+          const usage = await getUserUsage(requestUserId);
+          this.sendJson(res, 200, { ok: true, budget: usage });
+        } catch {
+          this.sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
+        }
         return;
       }
 
@@ -979,13 +1003,18 @@ export class ControlPlaneServer {
           this.sendJson(
             res,
             200,
-            this.store.getMemoriesForAgent(resolvedId, agent?.project_scope)
+            this.store.getMemoriesForAgent(
+              resolvedId,
+              agent?.project_scope,
+              requestUserId ?? undefined
+            )
           );
           return;
         }
         if (method === 'POST') {
           const body = await this.readJsonBody(req);
           const created = this.store.addMemory({
+            user_id: requestUserId,
             agent_id: resolvedId,
             project_scope: body.project_scope ?? agent?.project_scope ?? null,
             memory_type: (body.memory_type as MemoryType) || 'PINNED_PREFERENCE',
@@ -1003,7 +1032,7 @@ export class ControlPlaneServer {
         const memId = decodeURIComponent(memoryPinMatch[1]);
         const body = await this.readJsonBody(req);
         const target = this.store.memories.find((m) => m.id === memId);
-        if (!target) {
+        if (!target || (requestUserId && (target.user_id ?? null) !== requestUserId)) {
           this.sendJson(res, 404, { error: 'Memory not found' });
           return;
         }
@@ -1077,10 +1106,11 @@ export class ControlPlaneServer {
         }
 
         if (method === 'GET') {
-          const runs = this.store.getRunsForAgent(agent.id);
+          const runs = this.store.getRunsForAgent(agent.id, 30, requestUserId ?? undefined);
           const memories = this.store.getMemoriesForAgent(
             agent.id,
-            agent.project_scope
+            agent.project_scope,
+            requestUserId ?? undefined
           );
           this.sendJson(res, 200, {
             ...this.serializeAgentForApi(agent),
@@ -1156,12 +1186,16 @@ export class ControlPlaneServer {
       if (pathname === '/api/runs' && method === 'GET') {
         const agentId = parsedUrl.searchParams.get('agent_id');
         if (agentId) {
-          this.sendJson(res, 200, this.store.getRunsForAgent(agentId));
+          this.sendJson(
+            res,
+            200,
+            this.store.getRunsForAgent(agentId, 30, requestUserId ?? undefined)
+          );
           return;
         }
-        const allRuns = Array.from(this.store.runs.values()).sort((a, b) =>
-          b.started_at.localeCompare(a.started_at)
-        );
+        const allRuns = Array.from(this.store.runs.values())
+          .filter((r) => !requestUserId || (r.user_id ?? null) === requestUserId)
+          .sort((a, b) => b.started_at.localeCompare(a.started_at));
         this.sendJson(res, 200, allRuns);
         return;
       }
@@ -1169,7 +1203,11 @@ export class ControlPlaneServer {
       const runStepsMatch = pathname.match(/^\/api\/runs\/([^/]+)\/steps$/);
       if (runStepsMatch && method === 'GET') {
         const runId = decodeURIComponent(runStepsMatch[1]);
-        this.sendJson(res, 200, this.store.getStepsForRun(runId));
+        this.sendJson(
+          res,
+          200,
+          this.store.getStepsForRun(runId, requestUserId ?? undefined)
+        );
         return;
       }
 
@@ -1177,13 +1215,13 @@ export class ControlPlaneServer {
       if (singleRunMatch && method === 'GET') {
         const runId = decodeURIComponent(singleRunMatch[1]);
         const run = this.store.runs.get(runId);
-        if (!run) {
+        if (!run || (requestUserId && (run.user_id ?? null) !== requestUserId)) {
           this.sendJson(res, 404, { error: `Run ${runId} not found` });
           return;
         }
         this.sendJson(res, 200, {
           ...run,
-          steps: this.store.getStepsForRun(runId),
+          steps: this.store.getStepsForRun(runId, requestUserId ?? undefined),
         });
         return;
       }
@@ -1192,9 +1230,9 @@ export class ControlPlaneServer {
       // 4. Resumable Multimodal Chat Threads & Messages
       // ======================================================================
       if (pathname === '/api/threads' && method === 'GET') {
-        const threads = Array.from(this.store.threads.values()).sort((a, b) =>
-          b.updated_at.localeCompare(a.updated_at)
-        );
+        const threads = Array.from(this.store.threads.values())
+          .filter((t) => !requestUserId || (t.user_id ?? null) === requestUserId)
+          .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
         this.sendJson(res, 200, threads);
         return;
       }
@@ -1210,6 +1248,7 @@ export class ControlPlaneServer {
             : 'DIRECT_AGENT');
         const created = this.store.createThread({
           id: body.id,
+          user_id: requestUserId,
           title: body.title || `Session with ${targetAgentId}`,
           mode,
           target_agent_id: targetAgentId,
@@ -1225,16 +1264,29 @@ export class ControlPlaneServer {
       if (threadMessagesMatch) {
         const threadId = decodeURIComponent(threadMessagesMatch[1]);
         if (method === 'GET') {
-          this.sendJson(
-            res,
-            200,
-            this.store.messagesByThread.get(threadId) || []
+          const thread = this.store.threads.get(threadId);
+          if (!thread || (requestUserId && (thread.user_id ?? null) !== requestUserId)) {
+            this.sendJson(res, 404, { error: `Thread ${threadId} not found` });
+            return;
+          }
+          const msgs = (this.store.messagesByThread.get(threadId) || []).filter(
+            (m) => !requestUserId || (m.user_id ?? null) === requestUserId
           );
+          this.sendJson(res, 200, msgs);
           return;
         }
 
         if (method === 'POST') {
           const body = await this.readJsonBody(req);
+          const existingThread = this.store.threads.get(threadId);
+          if (
+            existingThread &&
+            requestUserId &&
+            (existingThread.user_id ?? null) !== requestUserId
+          ) {
+            this.sendJson(res, 404, { error: `Thread ${threadId} not found` });
+            return;
+          }
           const rawAttachments: any[] =
             body.attachments || body.attachments_json || [];
           const processedAttachments: MediaAttachment[] = [];
@@ -1279,6 +1331,7 @@ export class ControlPlaneServer {
             if (!this.store.threads.has(threadId)) {
               this.store.createThread({
                 id: threadId,
+                user_id: requestUserId,
                 title: 'Reminders',
                 mode: 'WARDEN_EXECUTIVE',
                 target_agent_id: 'warden',
@@ -1303,6 +1356,7 @@ export class ControlPlaneServer {
 
           const routeResult = await this.hierarchyRouter.routeMessage({
             threadId,
+            userId: requestUserId ?? undefined,
             content: String(body.content || ''),
             targetAgentId:
               body.targetAgentId ?? body.target_agent_id ?? undefined,
@@ -1310,7 +1364,10 @@ export class ControlPlaneServer {
             attachments: processedAttachments,
           });
 
-          const traceSteps = this.store.getStepsForRun(routeResult.primaryRun.id);
+          const traceSteps = this.store.getStepsForRun(
+            routeResult.primaryRun.id,
+            requestUserId ?? undefined
+          );
 
           this.sendJson(res, 201, {
             ceoMessage: routeResult.userMessage,
@@ -1328,7 +1385,7 @@ export class ControlPlaneServer {
       // 5. Backlog Kanban Board, Collated CTO Backlog & Human Intervention
       // ======================================================================
       if (pathname === '/api/backlog/collated' && method === 'GET') {
-        this.sendJson(res, 200, this.store.getCollatedBacklog());
+        this.sendJson(res, 200, this.store.getCollatedBacklog(requestUserId ?? undefined));
         return;
       }
 
@@ -1336,6 +1393,9 @@ export class ControlPlaneServer {
         const projectFilter = parsedUrl.searchParams.get('project_slug');
         const pmFilter = parsedUrl.searchParams.get('pm_owner_id');
         let list = Array.from(this.store.backlogItems.values());
+        if (requestUserId) {
+          list = list.filter((i) => (i.user_id ?? null) === requestUserId);
+        }
         if (projectFilter) {
           list = list.filter((i) => i.project_slug === projectFilter);
         }
@@ -1350,6 +1410,7 @@ export class ControlPlaneServer {
       if (pathname === '/api/backlog' && method === 'POST') {
         const body = await this.readJsonBody(req);
         const created = this.store.createBacklogItem({
+          user_id: requestUserId,
           title: String(body.title || 'Untitled Backlog Task'),
           spec_md: String(body.spec_md || ''),
           stage: (body.stage as BacklogStage) || 'INBOX',
@@ -1376,6 +1437,7 @@ export class ControlPlaneServer {
       if (pathname === '/api/backlog/triage' && method === 'POST') {
         const triaged = [];
         for (const item of this.store.backlogItems.values()) {
+          if (requestUserId && (item.user_id ?? null) !== requestUserId) continue;
           if (item.stage === 'INBOX') {
             const pmOwner = this.store.pmForProject(item.project_slug, 'pm');
             const updated = this.store.updateBacklogItem(item.id, {
@@ -1398,7 +1460,9 @@ export class ControlPlaneServer {
         }
         this.sendJson(res, 200, {
           triagedCount: triaged.length,
-          items: Array.from(this.store.backlogItems.values()),
+          items: Array.from(this.store.backlogItems.values()).filter(
+            (i) => !requestUserId || (i.user_id ?? null) === requestUserId
+          ),
         });
         return;
       }
@@ -1409,6 +1473,11 @@ export class ControlPlaneServer {
       if (resolveInterventionMatch && method === 'POST') {
         const itemId = decodeURIComponent(resolveInterventionMatch[1]);
         const body = await this.readJsonBody(req);
+        const target = this.store.backlogItems.get(itemId);
+        if (!target || (requestUserId && (target.user_id ?? null) !== requestUserId)) {
+          this.sendJson(res, 404, { error: `Backlog item ${itemId} not found` });
+          return;
+        }
         const updated = this.store.resolveHumanIntervention(itemId, {
           human_response: String(body.human_response || body.response || 'Resolved by CEO'),
           env_values:
@@ -1430,6 +1499,11 @@ export class ControlPlaneServer {
       if (backlogItemMatch && method === 'PATCH') {
         const itemId = decodeURIComponent(backlogItemMatch[1]);
         const body = await this.readJsonBody(req);
+        const target = this.store.backlogItems.get(itemId);
+        if (!target || (requestUserId && (target.user_id ?? null) !== requestUserId)) {
+          this.sendJson(res, 404, { error: `Backlog item ${itemId} not found` });
+          return;
+        }
         const updated = this.store.updateBacklogItem(itemId, {
           title: body.title,
           spec_md: body.spec_md,
@@ -1494,12 +1568,66 @@ export class ControlPlaneServer {
         return;
       }
 
+      // Demo workspace + per-user game deploy (Tic-Tac-Toe Arena scaffold).
+      if (pathname === '/api/demo/workspace' && method === 'GET') {
+        if (!requestUserId) {
+          this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
+          return;
+        }
+        const { getDemoWorkspace } = await import('../demo/DemoProvisioning.js');
+        const { cloudflareConfigured, demoProjectName } = await import('../demo/CloudflareDeployer.js');
+        const workspace = await getDemoWorkspace(requestUserId);
+        if (!workspace) {
+          this.sendJson(res, 404, { ok: false, error: 'No demo workspace yet. Complete onboarding in demo mode first.' });
+          return;
+        }
+        this.sendJson(res, 200, {
+          ok: true,
+          workspace,
+          deploy: {
+            project_name: demoProjectName(requestUserId),
+            cloudflare_configured: cloudflareConfigured(),
+          },
+        });
+        return;
+      }
+
+      if (pathname === '/api/demo/deploy' && method === 'POST') {
+        if (!requestUserId) {
+          this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
+          return;
+        }
+        const { getDemoWorkspace, recordDemoDeploy } = await import('../demo/DemoProvisioning.js');
+        const { ensureDemoFolder } = await import('../demo/DemoFolders.js');
+        const { deployDemoProject } = await import('../demo/CloudflareDeployer.js');
+        const workspace = await getDemoWorkspace(requestUserId);
+        if (!workspace || workspace.mode !== 'demo') {
+          this.sendJson(res, 404, { ok: false, error: 'No demo workspace yet. Complete onboarding in demo mode first.' });
+          return;
+        }
+        const { dir } = ensureDemoFolder(requestUserId);
+        await recordDemoDeploy(requestUserId, { deploy_url: null, deploy_status: 'DEPLOYING' }).catch(() => null);
+        const result = await deployDemoProject(requestUserId, workspace.local_dir || dir);
+        const updated = await recordDemoDeploy(requestUserId, {
+          deploy_url: result.primaryUrl,
+          deploy_status: result.status,
+        }).catch(() => null);
+        this.broadcastEvent('backlog:updated', { user_id: requestUserId, kind: 'demo-deploy', status: result.status });
+        this.sendJson(res, result.ok ? 201 : 200, { ok: result.ok, result, workspace: updated || workspace });
+        return;
+      }
+
       const sprintApproveMatch = pathname.match(
         /^\/api\/sprints\/([^/]+)\/approve$/
       );
       if (sprintApproveMatch && method === 'POST') {
         const sprintId = decodeURIComponent(sprintApproveMatch[1]);
         const body = await this.readJsonBody(req);
+        const targetSprint = this.store.sprints.get(sprintId);
+        if (!targetSprint || (requestUserId && (targetSprint.user_id ?? null) !== requestUserId)) {
+          this.sendJson(res, 404, { error: `Sprint ${sprintId} not found` });
+          return;
+        }
         const result = await this.standupCoordinator.approveAndExecuteSprint(
           sprintId,
           body.ceo_notes ?? body.ceoNotes ?? null
@@ -1514,6 +1642,7 @@ export class ControlPlaneServer {
       // ======================================================================
       if (pathname === '/api/gates' && method === 'GET') {
         const gates = Array.from(this.store.approvalGates.values())
+          .filter((g) => !requestUserId || (g.user_id ?? null) === requestUserId)
           .sort((a, b) => b.created_at.localeCompare(a.created_at))
           .map((g) => this.serializeGateForApi(g));
         this.sendJson(res, 200, gates);
@@ -1531,6 +1660,11 @@ export class ControlPlaneServer {
         );
         const optionId = body.option_id ? String(body.option_id) : undefined;
 
+        const pendingGate = this.store.approvalGates.get(gateId);
+        if (!pendingGate || (requestUserId && (pendingGate.user_id ?? null) !== requestUserId)) {
+          this.sendJson(res, 404, { error: `ApprovalGate ${gateId} not found` });
+          return;
+        }
         const gate = this.store.resolveApprovalGate(gateId, decision);
         if (!gate) {
           this.sendJson(res, 404, { error: `ApprovalGate ${gateId} not found` });
@@ -1552,6 +1686,7 @@ export class ControlPlaneServer {
 
           for (const spec of selected.length > 0 ? selected : allSuggested) {
             const created = this.store.createBacklogItem({
+              user_id: gate.user_id ?? requestUserId,
               title: spec.title,
               spec_md: spec.spec_md,
               stage: 'TODO',

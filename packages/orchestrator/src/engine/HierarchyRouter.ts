@@ -20,6 +20,7 @@ export interface RouteChatMessageParams {
   targetAgentId?: string | null;
   mode?: ChatThreadMode;
   attachments?: MediaAttachment[];
+  userId?: string | null;
 }
 
 export interface RouteChatMessageResult {
@@ -142,6 +143,7 @@ export class HierarchyRouter {
     if (!thread) {
       thread = this.store.createThread({
         id: params.threadId,
+        user_id: params.userId ?? null,
         title: params.content.slice(0, 64) || 'Executive Session',
         mode: params.mode || 'WARDEN_EXECUTIVE',
         target_agent_id: params.targetAgentId || 'warden',
@@ -191,6 +193,7 @@ export class HierarchyRouter {
       );
 
       const directResult = await this.agentRunner.runTask({
+        userId: params.userId ?? undefined,
         agentIdOrSlug: parsed.targetAgent.id,
         inputPrompt: parsed.cleanPrompt,
         triggerType: 'DIRECT_MENTION',
@@ -254,6 +257,7 @@ export class HierarchyRouter {
         chatThreadId: thread.id,
         attachments: params.attachments,
         maxSteps: 2,
+        userId: params.userId ?? undefined,
       });
 
       const replyContent = wardenRunRes.outputSummary;
@@ -302,6 +306,7 @@ export class HierarchyRouter {
       chatThreadId: thread.id,
       attachments: params.attachments,
       maxSteps: 3,
+      userId: params.userId ?? undefined,
     });
 
     const delegatedRuns: AgentRunRecord[] = [];
@@ -353,6 +358,7 @@ export class HierarchyRouter {
     });
 
     const cSuiteRes = await this.agentRunner.runTask({
+      userId: params.userId ?? undefined,
       agentIdOrSlug: chain.cSuiteAgentId,
       inputPrompt: `[Executive Dispatch from @warden]: ${parsed.cleanPrompt}\n\n[@warden Triage & Directive]:\n${wardenRunRes.outputSummary}`,
       triggerType: 'DELEGATION',
@@ -378,6 +384,7 @@ export class HierarchyRouter {
     });
 
     const leadRes = await this.agentRunner.runTask({
+      userId: params.userId ?? undefined,
       agentIdOrSlug: chain.level1LeadId,
       inputPrompt: `[Directive from @${chain.cSuiteAgentId}]: ${parsed.cleanPrompt}\n\n[@${chain.cSuiteAgentId} Architectural Plan]:\n${cSuiteRes.outputSummary}`,
       triggerType: 'DELEGATION',
@@ -402,6 +409,7 @@ export class HierarchyRouter {
     });
 
     const executorRes = await this.agentRunner.runTask({
+      userId: params.userId ?? undefined,
       agentIdOrSlug: chain.level2ExecutorId,
       inputPrompt: `[Assigned by @${chain.level1LeadId}]: ${parsed.cleanPrompt}\n\n[@${chain.level1LeadId} Contract & Shard Spec]:\n${leadRes.outputSummary}`,
       triggerType: 'DELEGATION',

@@ -27,6 +27,7 @@ import { AgentStudioView } from './components/AgentStudioView';
 import { BacklogAndSprintView } from './components/BacklogAndSprintView';
 import { ChatCenterView } from './components/ChatCenterView';
 import { CopilotHandoffCard } from './components/CopilotHandoffCard';
+import { DemoDeployCard } from './components/DemoDeployCard';
 import {
   loadConsultationKnobConfig,
   saveConsultationKnobConfig,
@@ -862,6 +863,7 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
             {activeTab === 'home' && (
               <div className="space-y-5 h-full min-h-0">
               <CopilotHandoffCard />
+              <DemoDeployCard />
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 h-full min-h-0">
                 <HomePriorityWindow
                   activeVertical={activeVertical}

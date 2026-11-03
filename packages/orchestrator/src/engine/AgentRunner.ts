@@ -37,6 +37,7 @@ export interface RunAgentTaskParams {
   attachments?: MediaAttachment[];
   maxSteps?: number;
   existingRunId?: string | null;
+  userId?: string | null;
 }
 
 export interface RunAgentTaskResult {
@@ -239,6 +240,17 @@ export class AgentRunner {
       : `task-${randomUUID().slice(0, 6)}`;
     const gitBranch =
       existingRun?.git_branch || `agent/${agent.id.replace(/:/g, '-')}/${branchSlug}`;
+    // Demo workspaces: agent work lands on the user's own branch, never main.
+    let effectiveBranch = gitBranch;
+    if (!existingRun?.git_branch && params.userId) {
+      try {
+        const { getDemoWorkspace } = await import('../demo/DemoProvisioning.js');
+        const ws = await getDemoWorkspace(params.userId);
+        if (ws?.branch) effectiveBranch = ws.branch;
+      } catch {
+        // fall through to the default agent branch
+      }
+    }
 
     // 1. Create or resume agent_runs row & Clock In Agent
     const run = existingRun
@@ -249,6 +261,13 @@ export class AgentRunner {
           pending_tool_name: null,
         })!
       : this.store.createRun({
+          user_id:
+            params.userId ??
+            existingRun?.user_id ??
+            (params.chatThreadId
+              ? this.store.threads.get(params.chatThreadId)?.user_id
+              : undefined) ??
+            null,
           agent_id: agent.id,
           agent_slug: agent.slug,
           parent_run_id: params.parentRunId ?? null,
@@ -260,7 +279,7 @@ export class AgentRunner {
           output_summary: null,
           status: 'RUNNING',
           container_id: null,
-          git_branch: gitBranch,
+          git_branch: effectiveBranch,
           git_commit_sha: null,
           preview_url: null,
           qa_passed: null,
@@ -269,6 +288,44 @@ export class AgentRunner {
           child_run_ids: [],
           inbox_messages: [],
         });
+
+    // Fail fast when the operator exhausted their token budget: pause with a
+    // gate instead of spending on a new run. The watchdog re-checks mid-run.
+    if (params.userId) {
+      try {
+        const { getUserUsage } = await import('../budgets/UserBudgets.js');
+        const usage = await getUserUsage(params.userId);
+        if (usage.status === 'EXCEEDED') {
+          const promptText = `Token budget exhausted (${usage.used.toLocaleString()} / ${usage.cap.toLocaleString()} tokens). New runs are paused until the budget is raised.`;
+          const paused =
+            this.store.updateRun(run.id, {
+              status: 'PAUSED_TOKEN_CAP',
+              output_summary: promptText,
+            }) ?? run;
+          const gate = this.store.createApprovalGate({
+            user_id: params.userId,
+            run_id: run.id,
+            thread_id: run.chat_thread_id,
+            agent_id: agent.id,
+            department: agent.department,
+            project_scope: agent.project_scope,
+            gate_type: 'TOKEN_CAP_EXCEEDED',
+            prompt_text: promptText,
+            options_json: { choices: ['EXTEND_BUDGET', 'TERMINATE_RUN'] },
+            telegram_notified_at: new Date().toISOString(),
+          });
+          return {
+            run: paused,
+            agent,
+            outputSummary: promptText,
+            pausedForCeo: true,
+            gateId: gate.id,
+          };
+        }
+      } catch (err) {
+        console.error('[AgentRunner] Budget pre-check failed; proceeding:', err);
+      }
+    }
 
     // Register stateful subagent session so parent/peer agents can message or reuse it
     this.store.registerSubagentSession(
@@ -282,7 +339,7 @@ export class AgentRunner {
     const sandboxInfo =
       existingRun?.container_id && existingRun?.preview_url
         ? { containerId: existingRun.container_id, previewUrl: existingRun.preview_url }
-        : await this.spawnDockerSandboxForRun(run.id, agent, primaryRepo, gitBranch);
+        : await this.spawnDockerSandboxForRun(run.id, agent, primaryRepo, effectiveBranch);
 
     this.store.updateRun(run.id, {
       container_id: sandboxInfo.containerId,
@@ -333,7 +390,8 @@ export class AgentRunner {
           queryText: params.inputPrompt,
           pinnedMemories: this.store.getMemoriesForAgent(
             agent.id,
-            agent.project_scope
+            agent.project_scope,
+            params.userId ?? undefined
           ),
         });
         if (typeof built === 'string' && built.length > 0) {
@@ -1479,6 +1537,7 @@ export class AgentRunner {
         : ['APPROVE', 'REVISE'];
 
       const gate = this.store.createApprovalGate({
+        user_id: run.user_id ?? params.userId ?? null,
         run_id: run.id,
         thread_id: run.chat_thread_id,
         agent_id: agent.id,

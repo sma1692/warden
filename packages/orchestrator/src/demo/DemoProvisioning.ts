@@ -1,0 +1,472 @@
+/**
+ * Cloud user provisioning: demo + full modes.
+ *
+ * Runs once when a user completes dashboard onboarding. Every operator gets
+ * isolated Postgres rows stamped with their user id — never shared Markdown.
+ *
+ * - demo: seeds a template project context, welcome thread, and starter
+ *   backlog, copies the game scaffold into the user's own folder (see
+ *   DemoFolders), then — when git is configured — creates the user's own
+ *   `demo/<id>` branch off DEMO_BASE_REF on DEMO_REPO_FULL_NAME and opens
+ *   one draft PR per user. Agent work lands on that branch (see AgentRunner
+ *   branch routing).
+ * - full: seeds a welcome thread. Project contexts come from the user's own
+ *   connected repos via the GitHub OAuth flow.
+ *
+ * Git uses a single server-side demo credential (GITHUB_DEMO_TOKEN); branch
+ * naming provides per-user isolation. Without git config, DB seeding still
+ * runs and the workspace is marked NO_GIT_CONFIG. Folders need no git at
+ * all, so the demo game + Cloudflare deploy work either way.
+ *
+ * Env: DATABASE_URL, GITHUB_DEMO_TOKEN, DEMO_REPO_FULL_NAME (owner/repo),
+ * DEMO_BASE_REF (default 'demo-base'), DEMO_PR_BASE (default 'main').
+ */
+import crypto from 'node:crypto';
+import { Pool } from 'pg';
+
+export type DemoWorkspaceStatus = 'ACTIVE' | 'NO_GIT_CONFIG' | 'GIT_FAILED';
+
+export type DemoDeployState =
+  | 'NOT_DEPLOYED'
+  | 'NOT_CONFIGURED'
+  | 'BUILDING'
+  | 'DEPLOYING'
+  | 'ACTIVE'
+  | 'FAILED';
+
+export interface DemoWorkspace {
+  user_id: string;
+  mode: 'demo' | 'full';
+  repo_full_name: string | null;
+  base_ref: string | null;
+  base_sha: string | null;
+  branch: string | null;
+  pr_number: number | null;
+  pr_url: string | null;
+  status: DemoWorkspaceStatus;
+  local_dir: string | null;
+  deploy_url: string | null;
+  deploy_status: DemoDeployState;
+}
+
+const DATABASE_URL =
+  process.env.DATABASE_URL || 'postgresql://warden:warden_secret@localhost:5432/warden';
+
+const pool = new Pool({ connectionString: DATABASE_URL, max: 5 });
+
+const WORKSPACE_DDL = `
+CREATE TABLE IF NOT EXISTS demo_workspaces (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL DEFAULT 'demo' CHECK (mode IN ('demo', 'full')),
+  repo_full_name TEXT,
+  base_ref TEXT,
+  base_sha TEXT,
+  branch TEXT,
+  pr_number INTEGER,
+  pr_url TEXT,
+  status TEXT NOT NULL DEFAULT 'ACTIVE'
+    CHECK (status IN ('ACTIVE', 'NO_GIT_CONFIG', 'GIT_FAILED')),
+  local_dir TEXT,
+  deploy_url TEXT,
+  deploy_status TEXT NOT NULL DEFAULT 'NOT_DEPLOYED',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);`;
+
+const WORKSPACE_ALTER = `
+ALTER TABLE demo_workspaces ADD COLUMN IF NOT EXISTS local_dir TEXT;
+ALTER TABLE demo_workspaces ADD COLUMN IF NOT EXISTS deploy_url TEXT;
+ALTER TABLE demo_workspaces ADD COLUMN IF NOT EXISTS deploy_status TEXT NOT NULL DEFAULT 'NOT_DEPLOYED';`;
+
+let ready: Promise<void> | null = null;
+function ensureReady(): Promise<void> {
+  if (!ready) {
+    ready = pool
+      .query(WORKSPACE_DDL)
+      .then(() => pool.query(WORKSPACE_ALTER))
+      .then(() => undefined)
+      .catch((err) => {
+        ready = null;
+        throw err;
+      });
+  }
+  return ready;
+}
+
+/** Test/CLI hook to drain the pool so the process can exit. */
+export async function closeDemoPool(): Promise<void> {
+  await pool.end().catch(() => undefined);
+}
+
+function toWorkspace(row: Record<string, any>): DemoWorkspace {
+  return {
+    user_id: String(row.user_id),
+    mode: row.mode === 'full' ? 'full' : 'demo',
+    repo_full_name: row.repo_full_name ?? null,
+    base_ref: row.base_ref ?? null,
+    base_sha: row.base_sha ?? null,
+    branch: row.branch ?? null,
+    pr_number: row.pr_number !== null && row.pr_number !== undefined ? Number(row.pr_number) : null,
+    pr_url: row.pr_url ?? null,
+    status: (row.status || 'ACTIVE') as DemoWorkspaceStatus,
+    local_dir: row.local_dir ?? null,
+    deploy_url: row.deploy_url ?? null,
+    deploy_status: (row.deploy_status || 'NOT_DEPLOYED') as DemoDeployState,
+  };
+}
+
+export async function getDemoWorkspace(userId: string): Promise<DemoWorkspace | null> {
+  await ensureReady();
+  const res = await pool.query('SELECT * FROM demo_workspaces WHERE user_id = $1', [userId]);
+  return res.rows[0] ? toWorkspace(res.rows[0]) : null;
+}
+
+async function saveWorkspace(ws: DemoWorkspace): Promise<DemoWorkspace> {
+  await ensureReady();
+  const res = await pool.query(
+    `INSERT INTO demo_workspaces
+       (user_id, mode, repo_full_name, base_ref, base_sha, branch, pr_number, pr_url, status,
+        local_dir, deploy_url, deploy_status, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET
+       mode = EXCLUDED.mode,
+       repo_full_name = EXCLUDED.repo_full_name,
+       base_ref = EXCLUDED.base_ref,
+       base_sha = EXCLUDED.base_sha,
+       branch = EXCLUDED.branch,
+       pr_number = EXCLUDED.pr_number,
+       pr_url = EXCLUDED.pr_url,
+       status = EXCLUDED.status,
+       local_dir = COALESCE(EXCLUDED.local_dir, demo_workspaces.local_dir),
+       deploy_url = COALESCE(EXCLUDED.deploy_url, demo_workspaces.deploy_url),
+       deploy_status = EXCLUDED.deploy_status,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      ws.user_id,
+      ws.mode,
+      ws.repo_full_name,
+      ws.base_ref,
+      ws.base_sha,
+      ws.branch,
+      ws.pr_number,
+      ws.pr_url,
+      ws.status,
+      ws.local_dir,
+      ws.deploy_url,
+      ws.deploy_status,
+    ]
+  );
+  return toWorkspace(res.rows[0]);
+}
+
+/** Record a deploy outcome without touching any other workspace field. */
+export async function recordDemoDeploy(
+  userId: string,
+  outcome: { deploy_url: string | null; deploy_status: DemoDeployState }
+): Promise<DemoWorkspace | null> {
+  await ensureReady();
+  const res = await pool.query(
+    `UPDATE demo_workspaces
+     SET deploy_url = COALESCE($2, deploy_url), deploy_status = $3, updated_at = NOW()
+     WHERE user_id = $1 RETURNING *`,
+    [userId, outcome.deploy_url, outcome.deploy_status]
+  );
+  return res.rows[0] ? toWorkspace(res.rows[0]) : null;
+}
+
+// ----------------------------------------------------------------------------
+// Minimal GitHub REST helpers (no new dependencies)
+// ----------------------------------------------------------------------------
+
+async function ghFetch(
+  path: string,
+  token: string,
+  init?: { method?: string; body?: unknown }
+): Promise<{ ok: boolean; status: number; json: any }> {
+  const res = await fetch(`https://api.github.com${path}`, {
+    method: init?.method || 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'warden-control-plane',
+      'Content-Type': 'application/json',
+    },
+    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+  });
+  let json: any = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+  return { ok: res.ok, status: res.status, json };
+}
+
+async function resolveBaseSha(repo: string, token: string, baseRef: string): Promise<string> {
+  for (const kind of ['heads', 'tags']) {
+    const res = await ghFetch(`/repos/${repo}/git/ref/${kind}/${baseRef}`, token);
+    if (res.ok && res.json?.object?.sha) return String(res.json.object.sha);
+  }
+  throw new Error(`Base ref '${baseRef}' not found on ${repo} (need a branch or tag).`);
+}
+
+async function createBranch(
+  repo: string,
+  token: string,
+  branch: string,
+  sha: string
+): Promise<void> {
+  const res = await ghFetch(`/repos/${repo}/git/refs`, token, {
+    method: 'POST',
+    body: { ref: `refs/heads/${branch}`, sha },
+  });
+  // 422 = ref already exists (idempotent retry); anything else is fatal.
+  if (!res.ok && res.status !== 422) {
+    throw new Error(`Branch create failed (${res.status}): ${res.json?.message || 'unknown'}`);
+  }
+}
+
+async function openDraftPr(
+  repo: string,
+  token: string,
+  head: string,
+  base: string,
+  title: string
+): Promise<{ number: number; html_url: string }> {
+  const created = await ghFetch(`/repos/${repo}/pulls`, token, {
+    method: 'POST',
+    body: { title, head, base, body: 'Warden demo workspace PR. One branch per demo user.', draft: true },
+  });
+  if (created.ok && created.json?.number) {
+    return { number: Number(created.json.number), html_url: String(created.json.html_url || '') };
+  }
+  // 422 usually means a PR already exists for this head; reuse it.
+  const existing = await ghFetch(
+    `/repos/${repo}/pulls?head=${encodeURIComponent(head)}&state=open`,
+    token
+  );
+  const first = Array.isArray(existing.json) ? existing.json[0] : null;
+  if (first?.number) {
+    return { number: Number(first.number), html_url: String(first.html_url || '') };
+  }
+  throw new Error(`PR open failed (${created.status}): ${created.json?.message || 'unknown'}`);
+}
+
+// ----------------------------------------------------------------------------
+// Provisioning
+// ----------------------------------------------------------------------------
+
+function shortUserId(userId: string): string {
+  return userId.replace(/-/g, '').slice(0, 8);
+}
+
+async function seedDemoRows(
+  userId: string,
+  opts: { repoFullName: string | null; branch: string | null }
+): Promise<void> {
+  const mod: Record<string, any> = await import(/* @vite-ignore */ '@warden/db');
+  const dbStore = mod?.dbStore;
+  if (!dbStore) throw new Error('Provisioning requires @warden/db');
+  if (typeof dbStore.init === 'function') await dbStore.init().catch(() => undefined);
+
+  const repoSlug = opts.repoFullName ? opts.repoFullName.split('/')[1] || 'demo-project' : 'demo-project';
+
+  await dbStore.upsertProjectContext({
+    user_id: userId,
+    project_slug: 'demo-project',
+    repo_slug: repoSlug,
+    git_repo_url: opts.repoFullName ? `https://github.com/${opts.repoFullName}` : null,
+    default_branch: opts.branch || 'main',
+    role: 'fullstack',
+    build_cmd: 'npm install && npm run build',
+    test_cmd: 'npm run typecheck',
+    architecture_doc_md:
+      '# Demo Project: Tic-Tac-Toe Arena\n\nSeeded Warden demo target. Playable Vite + vanilla JS game ' +
+      'in your own folder. Expansion roadmap in BACKLOG.md: Chest System, LiveOps, Trophy Ladder, Realtime Multiplayer.',
+  });
+
+  const thread = await dbStore.createChatThread({
+    user_id: userId,
+    title: 'Welcome to your Warden demo',
+    mode: 'WARDEN_EXECUTIVE',
+    target_agent_id: 'warden',
+    project_scope: 'demo-project',
+    status: 'ACTIVE',
+  });
+  await dbStore.appendChatMessage({
+    user_id: userId,
+    thread_id: thread.id,
+    sender_type: 'AGENT',
+    sender_agent_id: 'warden',
+    content:
+      `Your demo workspace is ready.` +
+      (opts.branch ? ` Your branch is \`${opts.branch}\`; every change I make lands there through your PR.` : ``) +
+      ` Ask me to build something in the demo project to begin.`,
+  });
+
+  const starters = [
+    {
+      title: 'Play the demo game and propose the first expansion',
+      spec_md: 'Open the Tic-Tac-Toe Arena scaffold in the demo folder, confirm it builds, and propose one P0 expansion from BACKLOG.md.',
+      stage: 'TODO',
+      priority: 'P0',
+    },
+    {
+      title: 'Build the Chest System slice',
+      spec_md: 'Per BACKLOG.md Module 1: wood/silver/gold chest tiers, 4-slot inventory, unlock timers. Smallest playable slice first.',
+      stage: 'TODO',
+      priority: 'P1',
+    },
+    {
+      title: 'Approve the demo scope',
+      spec_md: 'Gate: confirm the expansion pick (Chest, LiveOps, Trophy Ladder, or Multiplayer) before agents build beyond the slice.',
+      stage: 'NEEDS_CEO',
+      priority: 'P0',
+    },
+  ] as const;
+  for (const s of starters) {
+    await dbStore.createBacklogItem({
+      user_id: userId,
+      title: s.title,
+      spec_md: s.spec_md,
+      stage: s.stage,
+      priority: s.priority,
+      department: 'tech',
+      project_slug: 'demo-project',
+    });
+  }
+}
+
+async function seedFullRows(userId: string): Promise<void> {
+  const mod: Record<string, any> = await import(/* @vite-ignore */ '@warden/db');
+  const dbStore = mod?.dbStore;
+  if (!dbStore) throw new Error('Provisioning requires @warden/db');
+  if (typeof dbStore.init === 'function') await dbStore.init().catch(() => undefined);
+
+  const thread = await dbStore.createChatThread({
+    user_id: userId,
+    title: 'Welcome to Warden',
+    mode: 'WARDEN_EXECUTIVE',
+    target_agent_id: 'warden',
+    project_scope: 'GLOBAL',
+    status: 'ACTIVE',
+  });
+  await dbStore.appendChatMessage({
+    user_id: userId,
+    thread_id: thread.id,
+    sender_type: 'AGENT',
+    sender_agent_id: 'warden',
+    content:
+      'Onboarding complete. Connect a GitHub repo to let agents branch, edit, and open PRs on your code.',
+  });
+}
+
+/**
+ * Idempotent per-user provisioning. Safe to call on every COMPLETE save;
+ * existing workspaces return immediately.
+ */
+export async function provisionUser(
+  userId: string,
+  form: Record<string, unknown> | null | undefined
+): Promise<DemoWorkspace> {
+  const existing = await getDemoWorkspace(userId).catch(() => null);
+  if (existing) return existing;
+
+  const isDemo = form?.demo === true || form?.mode === 'demo';
+  const mode = isDemo ? 'demo' : 'full';
+
+  const { ensureBudget } = await import('../budgets/UserBudgets.js');
+  await ensureBudget(userId, mode).catch((err) =>
+    console.error('[DemoProvisioning] Budget row failed:', err)
+  );
+
+  if (!isDemo) {
+    await seedFullRows(userId);
+    return saveWorkspace({
+      user_id: userId,
+      mode: 'full',
+      repo_full_name: null,
+      base_ref: null,
+      base_sha: null,
+      branch: null,
+      pr_number: null,
+      pr_url: null,
+      status: 'ACTIVE',
+      local_dir: null,
+      deploy_url: null,
+      deploy_status: 'NOT_DEPLOYED',
+    });
+  }
+
+  const repo = (process.env.DEMO_REPO_FULL_NAME || '').trim();
+  const baseRef = (process.env.DEMO_BASE_REF || 'demo-base').trim();
+  const prBase = (process.env.DEMO_PR_BASE || 'main').trim();
+  const token = (process.env.GITHUB_DEMO_TOKEN || '').trim();
+  const branch = `demo/u${shortUserId(userId)}-${crypto.randomBytes(3).toString('hex')}`;
+
+  // DB seeds first: the workspace is usable even if git is unconfigured.
+  await seedDemoRows(userId, { repoFullName: repo || null, branch });
+
+  // Per-user demo folder: best effort, never fails provisioning.
+  let localDir: string | null = null;
+  try {
+    const { ensureDemoFolder } = await import('./DemoFolders.js');
+    localDir = ensureDemoFolder(userId).dir;
+  } catch (err) {
+    console.error('[DemoProvisioning] Demo folder seed failed; DB seeds kept:', err);
+  }
+
+  if (!token || !repo) {
+    return saveWorkspace({
+      user_id: userId,
+      mode: 'demo',
+      repo_full_name: repo || null,
+      base_ref: baseRef,
+      base_sha: null,
+      branch,
+      pr_number: null,
+      pr_url: null,
+      status: 'NO_GIT_CONFIG',
+      local_dir: localDir,
+      deploy_url: null,
+      deploy_status: 'NOT_DEPLOYED',
+    });
+  }
+
+  try {
+    const sha = await resolveBaseSha(repo, token, baseRef);
+    await createBranch(repo, token, branch, sha);
+    const pr = await openDraftPr(repo, token, branch, prBase, `Demo workspace ${branch}`);
+    return saveWorkspace({
+      user_id: userId,
+      mode: 'demo',
+      repo_full_name: repo,
+      base_ref: baseRef,
+      base_sha: sha,
+      branch,
+      pr_number: pr.number,
+      pr_url: pr.html_url || null,
+      status: 'ACTIVE',
+      local_dir: localDir,
+      deploy_url: null,
+      deploy_status: 'NOT_DEPLOYED',
+    });
+  } catch (err) {
+    console.error('[DemoProvisioning] Git setup failed; DB seeds kept:', err);
+    return saveWorkspace({
+      user_id: userId,
+      mode: 'demo',
+      repo_full_name: repo,
+      base_ref: baseRef,
+      base_sha: null,
+      branch,
+      pr_number: null,
+      pr_url: null,
+      status: 'GIT_FAILED',
+      local_dir: localDir,
+      deploy_url: null,
+      deploy_status: 'NOT_DEPLOYED',
+    });
+  }
+}

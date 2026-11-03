@@ -64,6 +64,38 @@ export type WsEventPayload = {
 
 type Listener = (event: WsEventPayload) => void;
 
+export interface DemoWorkspaceInfo {
+  user_id: string;
+  mode: 'demo' | 'full';
+  branch: string | null;
+  pr_url: string | null;
+  status: string;
+  local_dir: string | null;
+  deploy_url: string | null;
+  deploy_status: string;
+}
+
+export interface DemoWorkspaceState {
+  ok: boolean;
+  workspace: DemoWorkspaceInfo;
+  deploy: { project_name: string; cloudflare_configured: boolean };
+}
+
+export interface DemoDeployState {
+  ok: boolean;
+  result: {
+    ok: boolean;
+    status: string;
+    projectName: string;
+    primaryUrl: string | null;
+    pagesDevUrl: string | null;
+    fileCount: number;
+    totalDurationMs: number;
+    error: string | null;
+  };
+  workspace: DemoWorkspaceInfo;
+}
+
 class WardenApiClient {
   private agents: Agent[] = [...INITIAL_AGENTS];
   private projectContexts: ProjectContext[] = [...INITIAL_PROJECT_CONTEXTS];
@@ -1450,6 +1482,16 @@ class WardenApiClient {
       };
     });
     return [...this.credentials];
+  }
+
+  public async getDemoWorkspace(): Promise<DemoWorkspaceState | null> {
+    const remote = await this.safeFetch<DemoWorkspaceState>('/demo/workspace');
+    return remote;
+  }
+
+  public async deployDemo(): Promise<DemoDeployState | null> {
+    const remote = await this.safeFetch<DemoDeployState>('/demo/deploy', { method: 'POST' });
+    return remote;
   }
 
   public destroy() {

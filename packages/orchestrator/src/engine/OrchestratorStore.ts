@@ -126,6 +126,7 @@ export interface AgentRecord {
 
 export interface ProjectContextRecord {
   id: string;
+  user_id?: string | null;
   project_slug: string;
   repo_slug: string;
   git_repo_url: string;
@@ -148,6 +149,7 @@ export type MemoryType =
 
 export interface AgentMemoryRecord {
   id: string;
+  user_id?: string | null;
   agent_id: string;
   project_scope: string | null;
   memory_type: MemoryType;
@@ -200,6 +202,7 @@ export interface RunInboxMessage {
 
 export interface AgentRunRecord {
   id: string;
+  user_id?: string | null;
   agent_id: string;
   agent_slug: string;
   parent_run_id: string | null;
@@ -244,6 +247,7 @@ export type InferenceStepType =
 
 export interface InferenceStepRecord {
   id: string;
+  user_id?: string | null;
   run_id: string;
   step_index: number;
   step_type: InferenceStepType;
@@ -270,6 +274,7 @@ export type ChatThreadMode =
 
 export interface ChatThreadRecord {
   id: string;
+  user_id?: string | null;
   title: string;
   mode: ChatThreadMode;
   target_agent_id: string;
@@ -291,6 +296,7 @@ export interface MediaAttachment {
 
 export interface ChatMessageRecord {
   id: string;
+  user_id?: string | null;
   thread_id: string;
   sender_type: 'CEO' | 'AGENT' | 'SYSTEM';
   sender_agent_id: string | null;
@@ -343,6 +349,7 @@ export interface SprintTaskMovementEntry {
 
 export interface SprintRecord {
   id: string;
+  user_id?: string | null;
   date_ist: string;
   week_label?: string;
   status: 'AWAITING_CEO_APPROVAL' | 'EXECUTING' | 'COMPLETED';
@@ -356,6 +363,7 @@ export interface SprintRecord {
 
 export interface BacklogItemRecord {
   id: string;
+  user_id?: string | null;
   title: string;
   spec_md: string;
   stage: BacklogStage;
@@ -396,6 +404,7 @@ export interface SuggestedBacklogSpec {
 
 export interface ApprovalGateRecord {
   id: string;
+  user_id?: string | null;
   run_id: string | null;
   thread_id: string | null;
   sprint_id?: string | null;
@@ -419,6 +428,7 @@ export interface ApprovalGateRecord {
 
 export interface ContractRecord {
   id: string;
+  user_id?: string | null;
   project_slug: string;
   feature_slug: string;
   locked_by_agent_id: string;
@@ -432,7 +442,12 @@ export type EventBroadcastFn = (event: string, payload: unknown) => void;
 
 export type WardenSource = 'db' | 'md';
 
+export function isCloudMode(): boolean {
+  return (process.env.WARDEN_CLOUD || '').trim().toLowerCase() === 'true';
+}
+
 export function resolveWardenSource(): WardenSource {
+  if (isCloudMode()) return 'db';
   return (process.env.WARDEN_SOURCE || '').trim().toLowerCase() === 'db' ? 'db' : 'md';
 }
 
@@ -635,12 +650,24 @@ export class OrchestratorStore {
         return null;
       }
     );
-    if (!mod?.dbStore) return false;
+    if (!mod?.dbStore) {
+      if (isCloudMode()) {
+        throw new Error(
+          '[OrchestratorStore] WARDEN_CLOUD=true requires @warden/db; refusing snapshot fallback.'
+        );
+      }
+      return false;
+    }
 
     const { mode } = await mod.dbStore.init();
     const pool = mod.pgClient?.getPool?.() ?? null;
     this.dbModule = { ...mod, pool };
     this.dbConnected = mode === 'postgres' && pool !== null;
+    if (isCloudMode() && !this.dbConnected) {
+      throw new Error(
+        '[OrchestratorStore] WARDEN_CLOUD=true requires Postgres; connection failed.'
+      );
+    }
     console.log(`[OrchestratorStore] Source=db, storage=${mode}`);
     this.attachMemoryExecutor();
 
@@ -651,7 +678,7 @@ export class OrchestratorStore {
     return this.dbConnected;
   }
 
-  private async hydrateFromDbStore(): Promise<void> {
+  private async hydrateFromDbStore(userId?: string | null): Promise<void> {
     const dbStore = this.dbModule?.dbStore;
     if (!dbStore) return;
 
@@ -665,16 +692,28 @@ export class OrchestratorStore {
       return out as T;
     };
 
+    const userClause = userId === undefined ? '' : 'WHERE user_id IS NOT DISTINCT FROM $1';
+    const userParams = userId === undefined ? [] : [userId];
     const threads: ChatThreadRecord[] = pool
-      ? (await pool.query('SELECT * FROM chat_threads ORDER BY updated_at DESC')).rows.map(isoRow)
-      : await dbStore.listChatThreads();
+      ? (
+          await pool.query(
+            `SELECT * FROM chat_threads ${userClause} ORDER BY updated_at DESC`,
+            userParams
+          )
+        ).rows.map(isoRow)
+      : await dbStore.listChatThreads({ userId });
     const messages: ChatMessageRecord[] = pool
       ? (
           await pool.query(
-            'SELECT id, thread_id, sender_type, sender_agent_id, recipient_agent_id, content, run_id, attachments_json, created_at FROM chat_messages ORDER BY created_at ASC'
+            `SELECT id, user_id, thread_id, sender_type, sender_agent_id, recipient_agent_id, content, run_id, attachments_json, created_at FROM chat_messages ${userClause} ORDER BY created_at ASC`,
+            userParams
           )
         ).rows.map(isoRow)
-      : (await Promise.all(threads.map((t) => dbStore.listChatMessages(t.id)))).flat();
+      : (
+          await Promise.all(
+            threads.map((t) => dbStore.listChatMessages(t.id, undefined, userId))
+          )
+        ).flat();
 
     const agentRows: Array<{ id: string }> = pool
       ? (await pool.query('SELECT id FROM agents')).rows
@@ -690,8 +729,10 @@ export class OrchestratorStore {
     }
 
     const items: BacklogItemRecord[] = pool
-      ? (await pool.query('SELECT * FROM backlog_items')).rows.map(isoRow)
-      : await dbStore.listBacklogItems();
+      ? (
+          await pool.query(`SELECT * FROM backlog_items ${userClause}`, userParams)
+        ).rows.map(isoRow)
+      : await dbStore.listBacklogItems({ userId });
     for (const item of items) {
       this.backlogItems.set(item.id, { ...item, project_slug: item.project_slug || 'general' });
     }
@@ -699,6 +740,15 @@ export class OrchestratorStore {
     console.log(
       `[OrchestratorStore] Hydrated from DB: ${threads.length} threads, ${items.length} backlog items`
     );
+  }
+
+  /**
+   * Per-user hydration for cloud multi-user mode: loads one operator's
+   * threads, messages, and backlog into the shared mirrors. Call after login.
+   */
+  public async hydrateUser(userId: string): Promise<void> {
+    if (this.source !== 'db') return;
+    await this.hydrateFromDbStore(userId);
   }
 
   /**
@@ -806,6 +856,8 @@ export class OrchestratorStore {
     const workspaceRoot = path.resolve(process.cwd(), '../..');
 
     const readMdSafe = (relPath: string, fallback: string): string => {
+      // Cloud mode never reads local Markdown; per-user state comes from Postgres.
+      if (isCloudMode()) return fallback;
       try {
         const candidatePaths = [
           path.resolve(this.wardenRoot, relPath),
@@ -965,6 +1017,9 @@ export class OrchestratorStore {
       this.projectContexts.set(ctx.id, ctx);
     }
 
+    // Cloud mode skips user-scoped seeds (memories, backlog, sprint, welcome
+    // thread): each operator is provisioned their own rows after signup.
+    if (!isCloudMode()) {
     // Seed Pinned & Episodic Memories
     this.memories = seed.memories;
 
@@ -1007,6 +1062,8 @@ export class OrchestratorStore {
         created_at: now,
       },
     ]);
+
+    } // end cloud-mode user-seed skip
 
     // Perform non-destructive initial Disk -> DB sync so any existing context/memory/worklist markdown files hydrate the store
     if (this.source === 'md') {
@@ -1601,6 +1658,7 @@ export class OrchestratorStore {
    * Never deletes or overwrites any native IDE files (`AGENTS.md`, `MUSE.md`, etc.).
    */
   public syncDiskToDb(): DiskDbSyncStatus {
+    if (isCloudMode()) return this.lastSyncStatus;
     const now = new Date().toISOString();
     let syncedContextFiles = 0;
     let syncedMemoryFiles = 0;
@@ -1777,6 +1835,7 @@ export class OrchestratorStore {
    * and Web/Cloud Control Plane Mode always stay 100% synchronized.
    */
   public syncDbToDisk(): DiskDbSyncStatus {
+    if (isCloudMode()) return this.lastSyncStatus;
     const now = new Date().toISOString();
     let syncedContextFiles = 0;
     let syncedMemoryFiles = 0;
@@ -1928,6 +1987,7 @@ export class OrchestratorStore {
       }
       await dbStore.createAgentRun({
         id: run.id,
+        user_id: run.user_id ?? null,
         agent_id: run.agent_id,
         parent_run_id: run.parent_run_id,
         chat_thread_id: run.chat_thread_id,
@@ -1988,6 +2048,7 @@ export class OrchestratorStore {
     const list = this.stepsByRun.get(input.run_id) || [];
     const step: InferenceStepRecord = {
       ...input,
+      user_id: input.user_id ?? this.runs.get(input.run_id)?.user_id ?? null,
       id: `stp_${randomUUID().slice(0, 12)}`,
       step_index: list.length + 1,
       created_at: new Date().toISOString(),
@@ -1998,6 +2059,7 @@ export class OrchestratorStore {
     this.enqueueDbWrite('step', (dbStore) =>
       dbStore.appendInferenceStep({
         id: step.id,
+        user_id: step.user_id ?? null,
         run_id: step.run_id,
         step_index: step.step_index,
         step_type: step.step_type,
@@ -2018,14 +2080,23 @@ export class OrchestratorStore {
     return step;
   }
 
-  public getStepsForRun(runId: string): InferenceStepRecord[] {
-    return this.stepsByRun.get(runId) || [];
+  public getStepsForRun(runId: string, userId?: string | null): InferenceStepRecord[] {
+    const steps = this.stepsByRun.get(runId) || [];
+    if (userId === undefined) return steps;
+    return steps.filter((s) => (s.user_id ?? null) === (userId ?? null));
   }
 
-  public getRunsForAgent(agentId: string, limit = 30): AgentRunRecord[] {
+  public getRunsForAgent(
+    agentId: string,
+    limit = 30,
+    userId?: string | null
+  ): AgentRunRecord[] {
     const result: AgentRunRecord[] = [];
     for (const run of this.runs.values()) {
-      if (run.agent_id === agentId || run.agent_slug === `@${agentId}`) {
+      if (
+        (run.agent_id === agentId || run.agent_slug === `@${agentId}`) &&
+        (userId === undefined || (run.user_id ?? null) === (userId ?? null))
+      ) {
         result.push(run);
       }
     }
@@ -2115,8 +2186,16 @@ export class OrchestratorStore {
     return mem;
   }
 
-  public getMemoriesForAgent(agentId: string, projectScope?: string | null): AgentMemoryRecord[] {
-    return this.memories.filter(
+  public getMemoriesForAgent(
+    agentId: string,
+    projectScope?: string | null,
+    userId?: string | null
+  ): AgentMemoryRecord[] {
+    const scoped =
+      userId === undefined
+        ? this.memories
+        : this.memories.filter((m) => (m.user_id ?? null) === (userId ?? null));
+    return scoped.filter(
       (m) =>
         m.agent_id === agentId ||
         m.is_pinned ||
@@ -2126,6 +2205,7 @@ export class OrchestratorStore {
 
   public createThread(input: {
     id?: string;
+    user_id?: string | null;
     title: string;
     mode: ChatThreadMode;
     target_agent_id: string;
@@ -2135,6 +2215,7 @@ export class OrchestratorStore {
     const now = new Date().toISOString();
     const thread: ChatThreadRecord = {
       id: input.id || `thr_${randomUUID().slice(0, 10)}`,
+      user_id: input.user_id ?? null,
       title: input.title,
       mode: input.mode,
       target_agent_id: input.target_agent_id,
@@ -2153,6 +2234,7 @@ export class OrchestratorStore {
 
   public addChatMessage(input: {
     thread_id: string;
+    user_id?: string | null;
     sender_type: 'CEO' | 'AGENT' | 'SYSTEM';
     sender_agent_id?: string | null;
     recipient_agent_id?: string | null;
@@ -2163,6 +2245,7 @@ export class OrchestratorStore {
     const now = new Date().toISOString();
     const msg: ChatMessageRecord = {
       id: `msg_${randomUUID().slice(0, 12)}`,
+      user_id: input.user_id ?? this.threads.get(input.thread_id)?.user_id ?? null,
       thread_id: input.thread_id,
       sender_type: input.sender_type,
       sender_agent_id: input.sender_agent_id ?? null,
@@ -2250,6 +2333,7 @@ export class OrchestratorStore {
     intervention_prompt?: string | null;
     required_env_keys?: string[];
     requested_by_agent_id?: string | null;
+    user_id?: string | null;
   }): BacklogItemRecord {
     const now = new Date().toISOString();
     const projectSlug = input.project_slug || this.getDefaultProjectSlug();
@@ -2260,6 +2344,7 @@ export class OrchestratorStore {
 
     const item: BacklogItemRecord = {
       id: `bl_${randomUUID().slice(0, 10)}`,
+      user_id: input.user_id ?? null,
       title: input.title,
       spec_md: input.spec_md || '',
       stage,
@@ -2327,9 +2412,10 @@ export class OrchestratorStore {
 
     // Record task movement on the latest sprint whenever stage or priority changes
     if (stageChanged || priorityChanged) {
-      const latestSprint = Array.from(this.sprints.values()).sort((a, b) =>
-        b.date_ist.localeCompare(a.date_ist)
-      )[0];
+      const userKey = updated.user_id ?? null;
+      const latestSprint = Array.from(this.sprints.values())
+        .filter((s) => (s.user_id ?? null) === userKey)
+        .sort((a, b) => b.date_ist.localeCompare(a.date_ist))[0];
       if (latestSprint) {
         const movement: SprintTaskMovementEntry = {
           id: `mv_${randomUUID().slice(0, 8)}`,
@@ -2387,7 +2473,7 @@ export class OrchestratorStore {
     });
   }
 
-  public getCollatedBacklog(): {
+  public getCollatedBacklog(userId?: string | null): {
     updated_at: string;
     week_label: string;
     human_intervention_items: BacklogItemRecord[];
@@ -2403,7 +2489,13 @@ export class OrchestratorStore {
     >;
   } {
     const priorityRank: Record<BacklogPriority, number> = { P0: 0, P1: 1, P2: 2 };
-    const allItems = Array.from(this.backlogItems.values()).sort(
+    const scoped =
+      userId === undefined
+        ? Array.from(this.backlogItems.values())
+        : Array.from(this.backlogItems.values()).filter(
+            (i) => (i.user_id ?? null) === (userId ?? null)
+          );
+    const allItems = scoped.sort(
       (a, b) =>
         priorityRank[a.priority] - priorityRank[b.priority] ||
         a.title.localeCompare(b.title)

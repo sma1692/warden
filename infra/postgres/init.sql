@@ -434,3 +434,69 @@ CREATE TABLE IF NOT EXISTS onboarding_profiles (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
+
+-- ----------------------------------------------------------------------------
+-- 19. Per-user scoping (cloud multi-user: every operator owns isolated rows)
+-- ----------------------------------------------------------------------------
+-- users (17) is created above, so backfill user FKs here to stay re-runnable.
+-- Shared catalogs stay global: agents, provider_credentials, routing_profiles.
+ALTER TABLE project_contexts ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE sprints ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE backlog_items ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE inference_steps ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE approval_gates ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE contracts ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE chat_session_logs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE reminders ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_project_contexts_user ON project_contexts(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_threads_user ON chat_threads(user_id);
+CREATE INDEX IF NOT EXISTS idx_sprints_user ON sprints(user_id);
+CREATE INDEX IF NOT EXISTS idx_backlog_items_user ON backlog_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs(user_id);
+CREATE INDEX IF NOT EXISTS idx_agent_memories_user ON agent_memories(user_id);
+CREATE INDEX IF NOT EXISTS idx_inference_steps_user ON inference_steps(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_approval_gates_user ON approval_gates(user_id);
+CREATE INDEX IF NOT EXISTS idx_contracts_user ON contracts(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_session_logs_user ON chat_session_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);
+
+-- Scope uniqueness per user (was global single-operator).
+ALTER TABLE project_contexts DROP CONSTRAINT IF EXISTS project_contexts_project_slug_repo_slug_key;
+ALTER TABLE project_contexts ADD CONSTRAINT project_contexts_user_project_repo_key UNIQUE (user_id, project_slug, repo_slug);
+ALTER TABLE contracts DROP CONSTRAINT IF EXISTS contracts_project_slug_feature_slug_key;
+ALTER TABLE contracts ADD CONSTRAINT contracts_user_project_feature_key UNIQUE (user_id, project_slug, feature_slug);
+
+-- ----------------------------------------------------------------------------
+-- 20. demo_workspaces (per-user demo/full provisioning: branch, PR, seed state)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS demo_workspaces (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL DEFAULT 'demo' CHECK (mode IN ('demo', 'full')),
+  repo_full_name TEXT,
+  base_ref TEXT,
+  base_sha TEXT,
+  branch TEXT,
+  pr_number INTEGER,
+  pr_url TEXT,
+  status TEXT NOT NULL DEFAULT 'ACTIVE'
+    CHECK (status IN ('ACTIVE', 'NO_GIT_CONFIG', 'GIT_FAILED')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ----------------------------------------------------------------------------
+-- 21. user_budgets (per-operator token caps; usage derives from agent_runs)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_budgets (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL DEFAULT 'demo' CHECK (mode IN ('demo', 'full')),
+  token_cap BIGINT NOT NULL DEFAULT 1000000,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

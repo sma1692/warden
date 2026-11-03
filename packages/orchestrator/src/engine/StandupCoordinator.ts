@@ -58,8 +58,11 @@ export class StandupCoordinator {
   /**
    * Alias for `triggerDailyStandup` used by the 12:00 PM IST cron scheduler.
    */
-  public async runDailyStandup(_triggerSource?: string): Promise<TriggerStandupResult> {
-    return this.triggerDailyStandup();
+  public async runDailyStandup(
+    _triggerSource?: string,
+    userId?: string | null
+  ): Promise<TriggerStandupResult> {
+    return this.triggerDailyStandup({ userId });
   }
 
   /**
@@ -68,10 +71,13 @@ export class StandupCoordinator {
   public async triggerDailyStandup(options?: {
     dateIst?: string;
     autoExecute?: boolean;
+    userId?: string | null;
   }): Promise<TriggerStandupResult> {
     const dateIst =
       options?.dateIst || new Date().toISOString().slice(0, 10);
-    const sprintId = `spr_${dateIst.replace(/-/g, '_')}`;
+    const userId = options?.userId ?? null;
+    const userPrefix = userId ? `u${userId.replace(/-/g, '').slice(0, 8)}_` : '';
+    const sprintId = `spr_${userPrefix}${dateIst.replace(/-/g, '_')}`;
 
     // 1. Triage INBOX items into TODO via per-project PMs (@pm:<project>, @infra_head, @pm)
     const triagedItems: BacklogItemRecord[] = [];
@@ -79,6 +85,7 @@ export class StandupCoordinator {
     const nowIso = new Date().toISOString();
 
     for (const item of this.store.backlogItems.values()) {
+      if ((item.user_id ?? null) !== userId) continue;
       if (item.stage === 'INBOX') {
         const assigned = this.inferExecutorForBacklogItem(item);
         const pmOwner = item.pm_owner_id || this.store.pmForProject(item.project_slug, 'pm');
@@ -114,10 +121,14 @@ export class StandupCoordinator {
     }
 
     const activeSprintItems = Array.from(this.store.backlogItems.values()).filter(
-      (b) => b.stage === 'TODO' || b.stage === 'IN_PROGRESS'
+      (b) =>
+        (b.stage === 'TODO' || b.stage === 'IN_PROGRESS') &&
+        (b.user_id ?? null) === userId
     );
     const humanInterventionItems = Array.from(this.store.backlogItems.values()).filter(
-      (b) => b.stage === 'NEEDS_CEO' || b.requires_human_intervention
+      (b) =>
+        (b.stage === 'NEEDS_CEO' || b.requires_human_intervention) &&
+        (b.user_id ?? null) === userId
     );
 
     // 2. Poll Project PMs & Senior Leads (@pm:<project>, @pm, @tech_lead:<project>, @infra_head, @seo_aeo_head)
@@ -140,6 +151,7 @@ export class StandupCoordinator {
     const defaultLeadId = this.store.leadForProject(this.store.getDefaultProjectSlug());
 
     const thread = this.store.createThread({
+      user_id: userId,
       title: `📋 12:00 PM IST Standup & Weekly Plan — ${dateIst}`,
       mode: 'STANDUP',
       target_agent_id: 'cto',
@@ -150,6 +162,7 @@ export class StandupCoordinator {
     const leadRuns: AgentRunRecord[] = [];
     for (const leadId of polledLeadIds) {
       const leadRes = await this.agentRunner.runTask({
+        userId: userId ?? undefined,
         agentIdOrSlug: leadId,
         inputPrompt: `12:00 PM IST Pre-Standup Poll (${dateIst}): Report what is decided for the week (P0/P1/P2), task movements across stages, and any NEEDS_CEO human intervention tasks (questions, API keys, manual actions).`,
         triggerType: 'DAILY_STANDUP',
@@ -247,6 +260,7 @@ export class StandupCoordinator {
 
     const sprint: SprintRecord = {
       id: sprintId,
+      user_id: userId,
       date_ist: dateIst,
       week_label: '2026-W43',
       status: 'AWAITING_CEO_APPROVAL',
@@ -269,6 +283,7 @@ export class StandupCoordinator {
 
     // 4. Create STANDUP_SIGN_OFF ApprovalGate
     const gate = this.store.createApprovalGate({
+      user_id: userId,
       run_id: leadRuns[0]?.id ?? null,
       thread_id: thread.id,
       sprint_id: sprint.id,

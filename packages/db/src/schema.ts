@@ -255,6 +255,7 @@ export interface RoutingProfileRow {
 
 export interface ProjectContextRow {
   id: string;
+  user_id: string | null;
   project_slug: string;
   repo_slug: string;
   git_repo_url: string | null;
@@ -272,6 +273,7 @@ export interface ProjectContextRow {
 
 export interface AgentMemoryRow {
   id: string;
+  user_id: string | null;
   agent_id: string;
   project_scope: string | null;
   memory_type: MemoryType;
@@ -284,6 +286,7 @@ export interface AgentMemoryRow {
 
 export interface AgentRunRow {
   id: string;
+  user_id: string | null;
   agent_id: string;
   parent_run_id: string | null;
   chat_thread_id: string | null;
@@ -312,6 +315,7 @@ export interface AgentRunRow {
 
 export interface InferenceStepRow {
   id: string;
+  user_id: string | null;
   run_id: string;
   step_index: number;
   step_type: InferenceStepType;
@@ -331,6 +335,7 @@ export interface InferenceStepRow {
 
 export interface ChatThreadRow {
   id: string;
+  user_id: string | null;
   title: string;
   mode: ChatThreadMode;
   target_agent_id: string | null;
@@ -342,6 +347,7 @@ export interface ChatThreadRow {
 
 export interface ChatMessageRow {
   id: string;
+  user_id: string | null;
   thread_id: string;
   sender_type: ChatSenderType;
   sender_agent_id: string | null;
@@ -355,6 +361,7 @@ export interface ChatMessageRow {
 
 export interface SprintRow {
   id: string;
+  user_id: string | null;
   date_ist: string;
   week_label?: string;
   status: SprintStatus;
@@ -368,6 +375,7 @@ export interface SprintRow {
 
 export interface BacklogItemRow {
   id: string;
+  user_id: string | null;
   title: string;
   spec_md: string;
   stage: BacklogStage;
@@ -392,6 +400,7 @@ export interface BacklogItemRow {
 
 export interface ApprovalGateRow {
   id: string;
+  user_id: string | null;
   run_id: string | null;
   thread_id: string | null;
   agent_id: string;
@@ -424,6 +433,7 @@ export type ContractStatus = 'DRAFT' | 'LOCKED' | 'IMPLEMENTED';
 
 export interface ContractRow {
   id: string;
+  user_id: string | null;
   project_slug: string;
   feature_slug: string;
   title: string;

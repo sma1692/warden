@@ -215,6 +215,14 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
     }
     try {
       const updated = await updateOnboarding(user.id, patch);
+      if (updated?.onboarding.status === 'COMPLETE') {
+        try {
+          const { provisionUser } = await import('../demo/DemoProvisioning.js');
+          await provisionUser(user.id, updated.onboarding.form as Record<string, unknown>);
+        } catch (err) {
+          console.error('[Auth] Provisioning failed; onboarding kept COMPLETE:', err);
+        }
+      }
       sendJson(res, 200, { ok: true, user: updated ? publicUser(updated) : publicUser(user) });
     } catch {
       sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });

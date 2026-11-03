@@ -47,6 +47,7 @@ import { fileURLToPath } from "node:url";
 })();
 
 import { ControlPlaneServer } from "./server/ControlPlaneServer.js";
+import { isCloudMode } from "./engine/OrchestratorStore.js";
 
 export * from "./engine/OrchestratorStore.js";
 export * from "./engine/AgentRunner.js";
@@ -127,6 +128,8 @@ export async function startOrchestrator(options?: {
     const utcMinutes = now.getUTCMinutes();
     const todayKey = now.toISOString().slice(0, 10);
 
+    // Cloud mode skips the global cron: standups run per user after provisioning.
+    if (isCloudMode()) return;
     if (utcHours === 6 && utcMinutes === 30 && lastStandupDate !== todayKey) {
       lastStandupDate = todayKey;
       void server.standupCoordinator.runDailyStandup("scheduled_12pm_ist").catch((err) => {

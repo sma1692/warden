@@ -204,6 +204,38 @@ export class HealthAndQuotaGuard {
       }
     }
 
+    // 1b. Per-user token budgets (cloud demo control): pause every RUNNING run
+    // for operators who exhausted their cap. One gate per user per sweep.
+    try {
+      const running = Array.from(this.store.runs.values()).filter(
+        (r) => r.status === 'RUNNING' && r.user_id
+      );
+      if (running.length > 0) {
+        const { getOverBudgetUserIds } = await import('../budgets/UserBudgets.js');
+        const overBudget = await getOverBudgetUserIds(
+          running.map((r) => r.user_id as string)
+        );
+        const gatedUsers = new Set<string>();
+        for (const entry of overBudget) {
+          for (const run of running) {
+            if ((run.user_id ?? null) !== entry.userId) continue;
+            const agent = this.store.getAgent(run.agent_id);
+            if (!agent) continue;
+            await this.pauseRunForUserBudget(
+              agent,
+              run,
+              entry.used,
+              entry.cap,
+              gatedUsers.has(entry.userId)
+            );
+            gatedUsers.add(entry.userId);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[HealthAndQuotaGuard] User budget sweep failed:', err);
+    }
+
     // 2. Inspect all agents for 30s Heartbeat & Zombie Detection
     for (const agent of this.store.getAllAgents()) {
       if (agent.status === 'WORKING') {
@@ -405,6 +437,50 @@ export class HealthAndQuotaGuard {
       prompt_text: promptText,
       options_json: {
         choices: ['EXTEND_BUDGET_500K', 'TERMINATE_RUN'],
+        current_tokens: totalTokens,
+        max_tokens: maxTokens,
+      },
+      telegram_notified_at: new Date().toISOString(),
+    });
+
+    await this.telegramPager.sendAlert({
+      type: 'TOKEN_CAP',
+      agentSlug: agent.slug,
+      projectScope: agent.project_scope,
+      runId: run.id,
+      threadId: run.chat_thread_id,
+      gateId: gate.id,
+      details: promptText,
+    });
+  }
+
+  private async pauseRunForUserBudget(
+    agent: AgentRecord,
+    run: AgentRunRecord,
+    totalTokens: number,
+    maxTokens: number,
+    skipGate: boolean
+  ): Promise<void> {
+    const promptText = `Operator token budget exhausted (${totalTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens). Run paused; raise the budget to continue.`;
+
+    this.store.updateRun(run.id, {
+      status: 'PAUSED_TOKEN_CAP',
+      output_summary: promptText,
+    });
+
+    if (skipGate) return;
+
+    const gate = this.store.createApprovalGate({
+      user_id: run.user_id ?? null,
+      run_id: run.id,
+      thread_id: run.chat_thread_id,
+      agent_id: agent.id,
+      department: agent.department,
+      project_scope: agent.project_scope,
+      gate_type: 'TOKEN_CAP_EXCEEDED',
+      prompt_text: promptText,
+      options_json: {
+        choices: ['EXTEND_BUDGET', 'TERMINATE_RUN'],
         current_tokens: totalTokens,
         max_tokens: maxTokens,
       },
