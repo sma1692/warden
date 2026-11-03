@@ -10,6 +10,7 @@ projects.yaml
 .claude/settings.json
 .claude/settings.local.json
 uploads
+user-demos/
 # Generated project contracts, persistent project/repo context, per-agent memory, inter-agent chats, standups, and project worklists
 contracts/*.md
 !contracts/TEMPLATE.md
@@ -45,4 +46,5 @@ dist*/
 .state/chrome-data/
 .state/onboarded.json
 .state/commit-msg.txt
+.state/certs/
 saved-changes.diff

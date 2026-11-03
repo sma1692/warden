@@ -6,6 +6,7 @@ export type OnboardingStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE';
 export interface AuthUser {
   id: string;
   phone: string;
+  email?: string | null;
   created_at: string;
   onboarding: {
     status: OnboardingStatus;

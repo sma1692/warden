@@ -3,10 +3,11 @@
  *
  * Every demo user gets an isolated copy of the Tic-Tac-Toe Arena scaffold
  * under DEMO_WORKSPACE_ROOT/<userId>/, seeded from the tracked template in
- * `./template/`. No GitHub login, no branches required — the user id prefix
- * provides isolation and the demo_workspaces row records the path.
+ * `./template/`. All code edits happen in that folder; git pushes ride the
+ * server's SSH setup. The user id prefix provides isolation and the
+ * demo_workspaces row records the path.
  *
- * Env: DEMO_WORKSPACE_ROOT (default `<repo>/.state/demo-workspaces`).
+ * Env: DEMO_WORKSPACE_ROOT (default `<repo>/user-demos`, gitignored).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,7 +23,7 @@ export function demoWorkspaceRoot(): string {
   const configured = (process.env.DEMO_WORKSPACE_ROOT || '').trim();
   if (configured) return path.resolve(configured);
   // packages/orchestrator/src/demo -> repo root is 4 levels up.
-  return path.resolve(HERE, '..', '..', '..', '..', '.state', 'demo-workspaces');
+  return path.resolve(HERE, '..', '..', '..', '..', 'user-demos');
 }
 
 function sanitizeUserDir(userId: string): string {

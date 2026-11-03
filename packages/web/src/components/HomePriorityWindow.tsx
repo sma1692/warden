@@ -53,144 +53,171 @@ export interface PriorityDecisionItem {
 
 const PRIORITY_ITEMS: PriorityDecisionItem[] = [
   {
-    id: 'prio_tech_pulse_core',
+    id: 'prio_tech_trophy_assets',
     vertical: 'TECH',
     verticalLabel: 'Tech',
-    projectSlug: 'pulse-core',
-    agentSlug: '@cto',
-    agentRole: 'Head of Tech + @tech_lead',
+    projectSlug: 'demo-project',
+    agentSlug: '@tech_lead',
+    agentRole: 'Tech Lead + game team',
     priority: 'P0',
-    impactBadge: '$180K Enterprise ARR Gate',
-    decisiveTitle: 'Approve Prod Deploy: pulse-core v3 Checkout & Real-Time Event Bus',
+    impactBadge: 'Trophy launch unblocked',
+    decisiveTitle: 'Approve trophy asset batch: 12 sprites + 4 animations',
     decisiveSummary:
-      '@cto selected Authoritative REST + WebSocket relay (pulse-api) with Dedicated Worker Pool queue processing (<25ms P99 latency). Ready to push to origin/main.',
-    decisiveCtaLabel: 'Approve Prod Deploy',
-    questionTitle:
-      'Architecture Principle: pulse-core Real-Time Event Streaming vs Edge Polling',
+      '@tech_lead generated the trophy ladder art set from ASSETS_MANIFEST. Ready to merge into the demo game.',
+    decisiveCtaLabel: 'Approve asset batch',
+    questionTitle: 'Art style lock for the trophy ladder',
     questionPrompt:
-      'Before we lock contracts/pulse-core-v3.md, how should we balance deterministic billing state authority vs edge latency for enterprise checkout webhooks?',
-    principleTag: 'API & Latency Principle',
+      'Which style should the trophy art set lock to before agents animate it?',
+    principleTag: 'Art direction',
     options: [
       {
-        id: 'opt_ws_relay',
-        label: 'A. Authoritative WebSocket + Idempotent Outbox Relay (pulse-api)',
-        summary:
-          'Server-authoritative transactional outbox on pulse-api with <25ms P99 latency and zero duplicate webhook deliveries.',
+        id: 'opt_neon_arcade',
+        label: 'A. Neon arcade',
+        summary: 'Bold glow sprites that read well in gameplay clips and reels.',
         recommended: true,
       },
       {
-        id: 'opt_edge_sse',
-        label: 'B. Multi-Region Edge SSE Stream',
-        summary:
-          'Server-Sent Events pushed from Cloudflare Workers edge cache with eventual consistency reconciliation.',
+        id: 'opt_flat_vector',
+        label: 'B. Flat vector',
+        summary: 'Clean minimal icons, fastest to animate, matches the video style.',
       },
       {
-        id: 'opt_hybrid_queue',
-        label: 'C. Queue + Snapshot Rollback',
-        summary:
-          'Ephemeral Redis Streams edge state with asynchronous Postgres ledger settlement.',
+        id: 'opt_pixel_retro',
+        label: 'C. Pixel retro',
+        summary: '16-bit nostalgia set. Distinctive but slowest to animate.',
       },
     ],
-    coArchitectFollowUp:
-      'Level 3 Co-Architect Principle: Where should customer invoice PDF & telemetry aggregation run during peak checkout?',
+    coArchitectFollowUp: 'Where should the animated trophy frames live?',
     coArchitectPills: [
-      'Dedicated Worker Pool (Zero Main-Thread Jank)',
-      'Streaming Edge Function Pipeline',
-      'Pre-computed Materialized View after 1st Event',
+      'Sprite atlas in the game bundle',
+      'Lazy-loaded animation pack',
+      'CDN-hosted seasonal skins',
     ],
   },
   {
-    id: 'prio_aeo_citations',
-    vertical: 'SEO_AEO',
-    verticalLabel: 'SEO/AEO',
-    projectSlug: 'pulse-seo',
-    agentSlug: '@aeo_lead',
-    agentRole: 'Head of SEO/AEO + @cbo',
+    id: 'prio_tech_crash_patch',
+    vertical: 'TECH',
+    verticalLabel: 'Tech',
+    projectSlug: 'demo-project',
+    agentSlug: '@frontend_dev',
+    agentRole: 'Frontend Dev + support triage',
     priority: 'P0',
-    impactBadge: '+2,400 Daily Organic Views',
-    decisiveTitle: 'Approve AEO Schema Patch: SoftwareApplication JSON-LD & /llms.txt Citation Graph',
+    impactBadge: 'Support case → hotfix',
+    decisiveTitle: 'Approve hotfix: game crashes after the final move',
     decisiveSummary:
-      '@aeo_lead prepared entity-first SoftwareApplication + FAQPage JSON-LD and /llms.txt endpoints on novapulse.io targeting Meta AI answers.',
-    decisiveCtaLabel: 'Approve AEO Schema Patch',
-    questionTitle:
-      'Citation Targeting Principle for LLM Answer Engines (Meta AI answers)',
+      'Support case reproduced: the arena crashes on match end. Patch ready with Playwright proof. One approval ships it.',
+    decisiveCtaLabel: 'Approve hotfix',
+    questionTitle: 'Hotfix scope',
     questionPrompt:
-      'Which primary citation & entity authority principle should guide our programmatic SEO/AEO rollout across novapulse.io commerce and support automation search intents?',
-    principleTag: 'AEO Entity & Citation Principle',
+      'How much should this hotfix touch before the trophy launch?',
+    principleTag: 'Fix scope',
     options: [
       {
-        id: 'opt_entity_llms_txt',
-        label: 'A. Entity-First JSON-LD Graph + /llms.txt Canonical Feed',
-        summary:
-          'Structured SoftwareApplication + FAQPage schema paired with machine-readable /llms.txt benchmark tables for direct LLM grounding.',
+        id: 'opt_guard_test',
+        label: 'A. Guard + regression test',
+        summary: 'Minimal end-state guard with a Playwright test. Ships today.',
         recommended: true,
       },
       {
-        id: 'opt_comparison_clusters',
-        label: 'B. Zero-Click SaaS Comparison & Category Authority Pages',
-        summary:
-          'Publish high-intent "Best AI Commerce & Support Platforms 2026" answer blocks with verified ROI tables.',
+        id: 'opt_endstate_refactor',
+        label: 'B. End-state refactor',
+        summary: 'Rework match-end flow fully. Safer long term, slips the launch.',
       },
       {
-        id: 'opt_devlog_backlinks',
-        label: 'C. Technical Benchmark Citation Syndication',
-        summary:
-          'Syndicate sub-25ms checkout latency & AI support deflection benchmarks to GitHub Discussions and HackerNews for high-DR seed citations.',
+        id: 'opt_rollback_queue',
+        label: 'C. Roll back + queue',
+        summary: 'Revert to the last stable build and queue the fix for next sprint.',
       },
     ],
-    coArchitectFollowUp:
-      'Level 3 Co-Architect Principle: How should @aeo_specialist gate programmatic landing page updates?',
+    coArchitectFollowUp: 'Should the crash replay go back to the reporter?',
     coArchitectPills: [
-      'Auto-deploy Schema + Stage Copy in contracts/aeo.md',
-      '100% Autonomous Publish on High-Confidence Keywords',
-      'Require @cbo EV Sign-Off per Cluster',
+      'Auto-reply with the fix + deploy link',
+      'Human support reply first',
+      'Silent fix, note in changelog',
     ],
   },
   {
-    id: 'prio_social_cadence',
+    id: 'prio_social_trophy_launch',
     vertical: 'SOCIAL',
     verticalLabel: 'Social Media',
-    projectSlug: 'pulse-social',
+    projectSlug: 'demo-project',
     agentSlug: '@social_lead',
-    agentRole: 'Social Growth Lead + @social_creator',
+    agentRole: 'Social Growth Lead',
     priority: 'P1',
-    impactBadge: '3.8x Hook Retention Target',
-    decisiveTitle: 'Approve Weekly Social Batch: 5 Product Demo Reels + 4 Founder Growth Threads',
+    impactBadge: 'Trophy launch week',
+    decisiveTitle: 'Approve trophy launch pack: 5 visuals + launch thread',
     decisiveSummary:
-      '@social_lead queued a 60/40 Technical Founder Log + High-Converting Product Demo clip schedule across X, LinkedIn, Reels, and Shorts for NovaPulse.',
-    decisiveCtaLabel: 'Approve 7-Day Social Batch',
-    questionTitle:
-      'Brand Voice & Hook Cadence Principle for Founder X/LinkedIn + Product Reels',
+      '@social_lead cut the trophy launch visuals and the announcement thread from the new art set. Ready to post.',
+    decisiveCtaLabel: 'Approve launch pack',
+    questionTitle: 'Launch angle',
     questionPrompt:
-      'What core narrative identity and first-2-second hook principle should @social_creator enforce across this week’s multi-channel NovaPulse distribution?',
-    principleTag: 'Brand Voice & Hook Principle',
+      'Which angle should the trophy launch lead with?',
+    principleTag: 'Launch narrative',
     options: [
       {
-        id: 'opt_founder_eng_logs',
-        label: 'A. Raw Founder Engineering Logs + Live ROI Metrics (60/40 Split)',
-        summary:
-          'Pair hard engineering proof (sub-25ms checkout API, 78% AI ticket deflection) on X/LinkedIn with 15s product demo Reels.',
+        id: 'opt_player_flex',
+        label: 'A. Player flex clips',
+        summary: 'Trophy unlock moments from real matches. Highest share rate.',
         recommended: true,
       },
       {
-        id: 'opt_viral_gameplay',
-        label: 'B. High-Velocity 15s Customer Transformation & ROI Hooks',
-        summary:
-          'Maximize top-of-funnel SaaS buyer impressions with before/after conversion lift visuals and instant interactive demo links.',
+        id: 'opt_dev_diary',
+        label: 'B. Dev diary',
+        summary: 'How the art set was made, start to finish. Builds trust.',
       },
       {
-        id: 'opt_build_in_public',
-        label: 'C. AI Workforce "Autonomous SaaS" Build-in-Public Series',
-        summary:
-          'Showcase NovaPulse multi-agent orchestration + live token firewall savings to attract enterprise founders.',
+        id: 'opt_season_countdown',
+        label: 'C. Season countdown',
+        summary: 'Daily teaser ladder into launch day. Slowest burn.',
       },
     ],
-    coArchitectFollowUp:
-      'Level 3 Co-Architect Principle: What opening hook style should @social_creator use in the first 1.8 seconds?',
+    coArchitectFollowUp: 'Which channel gets the premiere?',
     coArchitectPills: [
-      'Hard Metric Callout ("94.2% Token Cut / +38% Checkout Lift")',
-      'Visual Live Dashboard Cold Open (Zero Text Delay)',
-      'Contrarian SaaS Architecture Question Hook',
+      'Reels + Shorts first',
+      'X thread first',
+      'All channels at once',
+    ],
+  },
+  {
+    id: 'prio_seo_trophy_cluster',
+    vertical: 'SEO_AEO',
+    verticalLabel: 'SEO/AEO',
+    projectSlug: 'demo-project',
+    agentSlug: '@seo_aeo_head',
+    agentRole: 'SEO/AEO Lead',
+    priority: 'P1',
+    impactBadge: 'Launch search coverage',
+    decisiveTitle: 'Approve trophy launch SEO cluster: 4 pages + FAQ schema',
+    decisiveSummary:
+      '@seo_aeo_head drafted the trophy guide cluster with FAQ schema so launch searches land on us.',
+    decisiveCtaLabel: 'Approve SEO cluster',
+    questionTitle: 'Keyword focus',
+    questionPrompt:
+      'Which search intent should the trophy cluster lead with?',
+    principleTag: 'Search intent',
+    options: [
+      {
+        id: 'opt_how_to',
+        label: 'A. How-to trophy guides',
+        summary: '"How to unlock every trophy" guides. Highest intent traffic.',
+        recommended: true,
+      },
+      {
+        id: 'opt_tier_lists',
+        label: 'B. Tier lists + rankings',
+        summary: 'Trophy tier lists. Strong shares, thinner intent.',
+      },
+      {
+        id: 'opt_update_notes',
+        label: 'C. Update notes hub',
+        summary: 'Canonical launch notes page. Defensive coverage.',
+      },
+    ],
+    coArchitectFollowUp: 'How fast should the cluster publish?',
+    coArchitectPills: [
+      'All four on launch day',
+      'One per day through launch week',
+      'Drip over two weeks',
     ],
   },
 ];
@@ -216,16 +243,18 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
 
   // Selected option per item
   const [selectedOptionById, setSelectedOptionById] = useState<Record<string, string>>({
-    prio_tech_pulse_core: 'opt_ws_relay',
-    prio_aeo_citations: 'opt_entity_llms_txt',
-    prio_social_cadence: 'opt_founder_eng_logs',
+    prio_tech_trophy_assets: 'opt_neon_arcade',
+    prio_tech_crash_patch: 'opt_guard_test',
+    prio_social_trophy_launch: 'opt_player_flex',
+    prio_seo_trophy_cluster: 'opt_how_to',
   });
 
   // Selected Level 3 co-architect pill per item
   const [selectedCoPillById, setSelectedCoPillById] = useState<Record<string, string>>({
-    prio_tech_pulse_core: 'Dedicated Worker Pool (Zero Main-Thread Jank)',
-    prio_aeo_citations: 'Auto-deploy Schema + Stage Copy in contracts/aeo.md',
-    prio_social_cadence: 'Hard Metric Callout ("94.2% Token Cut / +38% Checkout Lift")',
+    prio_tech_trophy_assets: 'Sprite atlas in the game bundle',
+    prio_tech_crash_patch: 'Auto-reply with the fix + deploy link',
+    prio_social_trophy_launch: 'Reels + Shorts first',
+    prio_seo_trophy_cluster: 'All four on launch day',
   });
 
   // Custom CEO guidance text per item
@@ -258,11 +287,6 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
     if (activeVertical === 'ALL') return PRIORITY_ITEMS;
     return PRIORITY_ITEMS.filter((item) => item.vertical === activeVertical);
   }, [activeVertical]);
-
-  const pendingCount = useMemo(
-    () => visibleItems.filter((i) => !resolvedById[i.id]).length,
-    [visibleItems, resolvedById]
-  );
 
   const handleResolveItem = (item: PriorityDecisionItem, level: ConsultationLevel) => {
     let summary = '';
@@ -321,19 +345,9 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
             <AlertTriangle className="h-5 w-5 text-[var(--surface-accent-gold)]" />
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base sm:text-lg font-bold text-[var(--surface-text)]">
-                Top Priority `[NEEDS_CEO]` Decision &amp; Co-Design Window
-              </h2>
-              <span className="rounded-full bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/30 px-2.5 py-0.5 text-[11px] font-mono font-bold text-[var(--surface-accent-gold)]">
-                {pendingCount} Active {pendingCount === 1 ? 'Item' : 'Items'}
-              </span>
-            </div>
-            <p className="text-xs text-[var(--surface-text-secondary)] mt-0.5">
-              Live across <strong className="text-[var(--surface-accent-gold)]">Tech</strong>,{' '}
-              <strong className="text-[var(--surface-accent)]">SEO/AEO</strong>, and{' '}
-              <strong className="text-[var(--surface-text)]">Social Media</strong>.
-            </p>
+            <h2 className="text-base sm:text-lg font-bold text-[var(--surface-text)]">
+              NEEDS ACTION
+            </h2>
           </div>
         </div>
 

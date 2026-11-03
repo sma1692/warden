@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 import http, { IncomingMessage, ServerResponse } from 'node:http';
+import https from 'node:https';
+import type { Socket } from 'node:net';
 import { WebSocketServer, WebSocket } from 'ws';
+import { ensureDevCerts, getLanIp, isHttpsEnabled } from './devHttps.js';
 import {
   AgentRecord,
   ApprovalGateRecord,
@@ -49,6 +52,8 @@ import {
 export interface ControlPlaneServerOptions {
   port?: number;
   host?: string;
+  /** Serve TLS with the shared `.state/certs/` dev cert. Defaults to WARDEN_HTTPS env. */
+  https?: boolean;
   wardenRoot?: string;
   store?: OrchestratorStore;
   telegramPager?: TelegramPushPager;
@@ -79,11 +84,13 @@ const EVENT_TO_WEB_TYPE: Record<string, string> = {
 };
 
 /**
- * ControlPlaneServer — Node HTTP REST API + WebSocket (`/ws`) + Static `/media/*` Server
+ * ControlPlaneServer — Node HTTP(S) REST API + WebSocket (`/ws`) + Static `/media/*` Server
  * (the architecture spec Sections 2, 4, 5, 7)
  */
 export class ControlPlaneServer {
   public readonly port: number;
+  public readonly host: string;
+  public readonly httpsEnabled: boolean;
   public readonly store: OrchestratorStore;
   public readonly telegramPager: TelegramPushPager;
   public readonly healthGuard: HealthAndQuotaGuard;
@@ -94,7 +101,8 @@ export class ControlPlaneServer {
   public readonly mediaService: MediaUploadService;
   public readonly whatsAppCommands: WhatsAppCommandCenter;
 
-  private server: http.Server | null = null;
+  private server: http.Server | https.Server | null = null;
+  private sockets = new Set<Socket>();
   private wss: WebSocketServer | null = null;
   private clients = new Set<WebSocket>();
   private hydratedUsers = new Set<string>();
@@ -107,6 +115,12 @@ export class ControlPlaneServer {
   constructor(options?: ControlPlaneServerOptions) {
     this.wardenRoot = options?.wardenRoot || process.cwd();
     this.port = Number(options?.port ?? process.env.PORT ?? 4000);
+    this.host =
+      options?.host ??
+      process.env.ORCHESTRATOR_HOST ??
+      process.env.HOST ??
+      '0.0.0.0';
+    this.httpsEnabled = options?.https ?? isHttpsEnabled();
     this.store =
       options?.store ||
       new OrchestratorStore({
@@ -198,7 +212,7 @@ export class ControlPlaneServer {
     }
   }
 
-  /** `/ws` on the HTTP server: JWT-gated, and closed when the user's tokens are revoked. */
+  /** `/ws` on the HTTP(S) server: JWT-gated, and closed when the user's tokens are revoked. */
   private attachWebSocketServer(): void {
     this.wss = new WebSocketServer({
       server: this.server!,
@@ -251,13 +265,39 @@ export class ControlPlaneServer {
   }
 
   /**
-   * Starts the HTTP + WebSocket server and background watchdogs.
+   * Starts the HTTP(S) + WebSocket server and background watchdogs.
    */
-  public async start(): Promise<http.Server> {
+  public async start(): Promise<http.Server | https.Server> {
     await this.store.tryConnectDatabase();
 
-    this.server = http.createServer((req, res) => {
+    const requestHandler = (req: IncomingMessage, res: ServerResponse) => {
       void this.handleRequest(req, res);
+    };
+    let usingHttps = false;
+    if (this.httpsEnabled) {
+      const creds = ensureDevCerts(this.wardenRoot);
+      if (creds) {
+        this.server = https.createServer(
+          { key: creds.key, cert: creds.cert },
+          requestHandler
+        );
+        usingHttps = true;
+      } else {
+        console.warn(
+          '[WARDEN API] WARDEN_HTTPS is enabled but no dev certs are available; falling back to HTTP.'
+        );
+        this.server = http.createServer(requestHandler);
+      }
+    } else {
+      this.server = http.createServer(requestHandler);
+    }
+
+    // Track raw sockets so stop() never hangs on keep-alive connections (clean tsx restarts).
+    this.server.on('connection', (socket) => {
+      this.sockets.add(socket);
+      socket.on('close', () => {
+        this.sockets.delete(socket);
+      });
     });
 
     this.attachWebSocketServer();
@@ -279,11 +319,35 @@ export class ControlPlaneServer {
       onFired: (event) => this.broadcastEvent('reminder:fired', event),
     });
 
-    return new Promise((resolve) => {
-      this.server!.listen(this.port, () => {
-        console.log(
-          `[🟢 WARDEN API] ControlPlaneServer listening on http://localhost:${this.port} (WS: ws://localhost:${this.port}/ws)`
+    return new Promise((resolve, reject) => {
+      const onError = (err: NodeJS.ErrnoException) => {
+        if (err?.code === 'EADDRINUSE') {
+          console.error(
+            `[WARDEN API] Port ${this.port} is already in use. Stop the other process and retry.`
+          );
+        }
+        reject(err);
+      };
+      this.server!.once('error', onError);
+      this.server!.listen(this.port, this.host, () => {
+        this.server!.off('error', onError);
+        this.server!.on('error', (err) =>
+          console.error('[WARDEN API] Server error:', err)
         );
+        const proto = usingHttps ? 'https' : 'http';
+        const wsProto = usingHttps ? 'wss' : 'ws';
+        const lanIp = getLanIp();
+        console.log(
+          `[🟢 WARDEN API] ControlPlaneServer listening on ${proto}://${this.host}:${this.port} (WS: ${wsProto}://${this.host}:${this.port}/ws)`
+        );
+        console.log(
+          `[WARDEN API] Local: ${proto}://localhost:${this.port} (WS: ${wsProto}://localhost:${this.port}/ws)`
+        );
+        if (lanIp) {
+          console.log(
+            `[WARDEN API] LAN (phone): ${proto}://${lanIp}:${this.port} (WS: ${wsProto}://${lanIp}:${this.port}/ws)`
+          );
+        }
         resolve(this.server!);
       });
     });
@@ -372,13 +436,46 @@ export class ControlPlaneServer {
     this.clients.clear();
 
     if (this.wss) {
-      await new Promise<void>((resolve) => this.wss!.close(() => resolve()));
+      const wss = this.wss;
       this.wss = null;
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          try {
+            for (const c of wss.clients) c.terminate();
+          } catch {
+            // ignore
+          }
+          resolve();
+        }, 2000);
+        timer.unref();
+        wss.close(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
     }
 
+    // Destroy idle keep-alive sockets first so close() resolves promptly on tsx restarts.
+    for (const socket of this.sockets) {
+      try {
+        socket.destroy();
+      } catch {
+        // ignore
+      }
+    }
+    this.sockets.clear();
+
     if (this.server) {
-      await new Promise<void>((resolve) => this.server!.close(() => resolve()));
+      const closing = this.server;
       this.server = null;
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => resolve(), 2000);
+        timer.unref();
+        closing.close(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
     }
   }
 

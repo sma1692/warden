@@ -300,29 +300,35 @@ async function seedDemoRows(
     sender_type: 'AGENT',
     sender_agent_id: 'warden',
     content:
-      `Your demo workspace is ready.` +
-      (opts.branch ? ` Your branch is \`${opts.branch}\`; every change I make lands there through your PR.` : ``) +
-      ` Ask me to build something in the demo project to begin.`,
+      `Your demo workspace is ready. Your game folder is seeded and the trophy launch backlog is waiting.` +
+      (opts.branch ? ` Code edits land on \`${opts.branch}\` through your PR.` : ``) +
+      ` Approve the hotfix or the asset batch in NEEDS ACTION to watch a loop close.`,
   });
 
   const starters = [
     {
-      title: 'Play the demo game and propose the first expansion',
-      spec_md: 'Open the Tic-Tac-Toe Arena scaffold in the demo folder, confirm it builds, and propose one P0 expansion from BACKLOG.md.',
+      title: 'Generate trophy system art set (12 sprites + 4 animations)',
+      spec_md: 'Per ASSETS_MANIFEST.md: trophy ladder art in the locked style, packed as a sprite atlas in the demo game bundle.',
       stage: 'TODO',
       priority: 'P0',
     },
     {
-      title: 'Build the Chest System slice',
-      spec_md: 'Per BACKLOG.md Module 1: wood/silver/gold chest tiers, 4-slot inventory, unlock timers. Smallest playable slice first.',
+      title: 'Support case: game crashes after the final move',
+      spec_md: 'Player report: the arena crashes on match end. Reproduced by triage; minimal end-state guard plus Playwright regression test ready for approval.',
+      stage: 'NEEDS_CEO',
+      priority: 'P0',
+    },
+    {
+      title: 'Trophy launch SEO cluster (4 guides + FAQ schema)',
+      spec_md: 'How-to trophy guides with FAQ schema so launch searches land on the demo game. How-to intent first.',
       stage: 'TODO',
       priority: 'P1',
     },
     {
-      title: 'Approve the demo scope',
-      spec_md: 'Gate: confirm the expansion pick (Chest, LiveOps, Trophy Ladder, or Multiplayer) before agents build beyond the slice.',
-      stage: 'NEEDS_CEO',
-      priority: 'P0',
+      title: 'Trophy launch social visuals (5 clips + launch thread)',
+      spec_md: 'Player-flex clips cut from the new art set plus the announcement thread. Premiere on Reels + Shorts.',
+      stage: 'TODO',
+      priority: 'P1',
     },
   ] as const;
   for (const s of starters) {
@@ -358,7 +364,7 @@ async function seedFullRows(userId: string): Promise<void> {
     sender_type: 'AGENT',
     sender_agent_id: 'warden',
     content:
-      'Onboarding complete. Connect a GitHub repo to let agents branch, edit, and open PRs on your code.',
+      'Onboarding complete. Warden now holds your company memory. Connect a GitHub repo and agents will close loops on your code with one approval from you.',
   });
 }
 

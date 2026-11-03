@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Warden — Installable Mobile-Ready Dashboard PWA for the 1-Man Unicorn AI Workforce OS",
   "scripts": {
-    "dev": "vite --port 5173 --host",
+    "dev": "WARDEN_HTTPS=true vite --port 5173 --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 5173 --host",
     "typecheck": "tsc --noEmit",

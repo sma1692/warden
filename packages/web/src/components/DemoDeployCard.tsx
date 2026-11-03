@@ -81,7 +81,7 @@ export const DemoDeployCard: React.FC = () => {
                 <ExternalLink className="h-3 w-3" />
               </a>
             ) : (
-              'Your own copy of the game scaffold. Deploy it to your subdomain when ready.'
+              'Your own copy of the demo game. One click puts it on your subdomain.'
             )}
           </span>
         </span>

@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { authenticateToken, issueToken, otpLoginStatus, requestOtp, verifyOtp } from './OtpService.js';
+import { emailLoginStatus, requestEmailOtp, verifyEmailOtp } from './EmailOtpService.js';
 import * as waLogin from './WhatsAppLinkLogin.js';
 import {
   bumpTokenVersion,
@@ -30,6 +31,7 @@ export function isPublicPath(pathname: string, method: string): boolean {
   if (method === 'OPTIONS') return true;
   if (pathname === '/webhook/whatsapp') return true;
   if (pathname.startsWith('/api/auth/otp/') || pathname.startsWith('/api/auth/wa/')) return true;
+  if (pathname.startsWith('/api/auth/email/')) return true;
   if (pathname.startsWith('/api/github/')) return true;
   if (pathname.startsWith('/api/seo/')) return true;
   if (pathname === '/api/health' && (method === 'GET' || method === 'HEAD')) return true;
@@ -86,6 +88,9 @@ function clientIp(req: IncomingMessage): string {
  *  GET   /api/auth/otp/status        { whatsapp, dev }                        public
  *  POST  /api/auth/otp/request       { phone }        -> code via WhatsApp    public
  *  POST  /api/auth/otp/verify        { phone, code }  -> { token, user, ... } public
+ *  GET   /api/auth/email/status      { email, dev }                           public
+ *  POST  /api/auth/email/request     { email }        -> code via SMTP        public
+ *  POST  /api/auth/email/verify      { email, code }  -> { token, user, ... } public
  *  POST  /api/auth/wa/start                           -> { id, code, wa_link } public (click-to-chat)
  *  GET   /api/auth/wa/status?id=     PENDING | VERIFIED { token, user } | EXPIRED  public
  *  GET   /api/auth/me                                 -> { user }             Bearer
@@ -118,6 +123,35 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
   if (pathname === '/api/auth/otp/verify' && method === 'POST') {
     const body = await ctx.readJsonBody();
     const r = await verifyOtp(String(body.phone ?? ''), String(body.code ?? ''));
+    if (r.ok) {
+      setSessionCookie(res, r.token, r.expiresAt);
+      sendJson(res, 200, { ok: true, token: r.token, expires_at: r.expiresAt, is_new_user: r.isNewUser, user: r.user });
+    } else {
+      sendJson(res, r.status, { ok: false, error: r.error, attempts_left: r.attemptsLeft });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/auth/email/status' && method === 'GET') {
+    sendJson(res, 200, emailLoginStatus());
+    return true;
+  }
+
+  if (pathname === '/api/auth/email/request' && method === 'POST') {
+    const body = await ctx.readJsonBody();
+    const r = await requestEmailOtp(String(body.email ?? ''), clientIp(req));
+    if (r.ok) {
+      sendJson(res, 200, { ok: true, expires_in_sec: r.expiresInSec, resend_in_sec: r.resendInSec, via: r.via });
+    } else {
+      if (r.retryAfterSec) res.setHeader('Retry-After', String(r.retryAfterSec));
+      sendJson(res, r.status, { ok: false, error: r.error, retry_after_sec: r.retryAfterSec });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/auth/email/verify' && method === 'POST') {
+    const body = await ctx.readJsonBody();
+    const r = await verifyEmailOtp(String(body.email ?? ''), String(body.code ?? ''));
     if (r.ok) {
       setSessionCookie(res, r.token, r.expiresAt);
       sendJson(res, 200, { ok: true, token: r.token, expires_at: r.expiresAt, is_new_user: r.isNewUser, user: r.user });

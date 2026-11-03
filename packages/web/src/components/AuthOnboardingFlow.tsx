@@ -9,6 +9,7 @@ import {
   Cpu,
   FileCode2,
   FolderGit2,
+  Gamepad2,
   Globe,
   KeyRound,
   Layers,
@@ -409,6 +410,9 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   const [signedIn, setSignedIn] = useState<boolean>(isLive && PERSISTED_STEPS.includes(initialStep));
   const [step, setStep] = useState<OnboardingStepId>(initialStep);
   const [persona, setPersona] = useState<ReturnUserPersona>('FIRST_TIME');
+  // Explore-live-demo: freezes the user on the demo path with a boot loader.
+  const [exploreBooting, setExploreBooting] = useState<boolean>(false);
+  const [pendingExplore, setPendingExplore] = useState<boolean>(false);
 
   // Step 0: Loader state
   const [loadProgress, setLoadProgress] = useState<number>(0);
@@ -425,8 +429,8 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   const [emailAddress, setEmailAddress] = useState<string>('alex@example.com');
   const [otpDigits, setOtpDigits] = useState<string[]>(['1', '2', '3', '1', '2', '3']);
   const [authError, setAuthError] = useState<string | null>(null);
-  // Product Mode + WhatsApp sends a real code via /api/auth/otp/*; Demo Mode keeps the 123123 preset.
-  const liveOtp = !demoMode && authChannel === 'WHATSAPP';
+  // Product Mode sends a real code (WhatsApp via /api/auth/otp/*, Email via /api/auth/email/*); Demo Mode keeps the 123123 preset.
+  const liveOtp = !demoMode;
   const [otpBusy, setOtpBusy] = useState<boolean>(false);
   // Live WhatsApp sign-in defaults to click-to-chat (QR); the 6-digit code is the fallback.
   const [loginMethod, setLoginMethod] = useState<'qr' | 'code'>('qr');
@@ -808,8 +812,9 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   };
 
   const postAuth = async (path: string, body: Record<string, string>) => {
+    const prefix = authChannel === 'EMAIL' ? 'email' : 'otp';
     try {
-      const res = await fetch(`/api/auth/otp/${path}`, {
+      const res = await fetch(`/api/auth/${prefix}/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -823,7 +828,10 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
 
   const sendLiveOtp = async (): Promise<boolean> => {
     setOtpBusy(true);
-    const { ok, data } = await postAuth('request', { phone: whatsappNumber });
+    const { ok, data } =
+      authChannel === 'EMAIL'
+        ? await postAuth('request', { email: emailAddress.trim() })
+        : await postAuth('request', { phone: whatsappNumber });
     setOtpBusy(false);
     if (!ok) {
       setAuthError(data.error || 'Could not send the code.');
@@ -891,11 +899,14 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     const code = otpDigits.join('');
     if (liveOtp) {
       if (code.length !== 6) {
-        setAuthError('Enter the 6-digit code from WhatsApp.');
+        setAuthError(authChannel === 'EMAIL' ? 'Enter the 6-digit code from your email.' : 'Enter the 6-digit code from WhatsApp.');
         return;
       }
       setOtpBusy(true);
-      const { ok, data } = await postAuth('verify', { phone: whatsappNumber, code });
+      const { ok, data } =
+        authChannel === 'EMAIL'
+          ? await postAuth('verify', { email: emailAddress.trim(), code })
+          : await postAuth('verify', { phone: whatsappNumber, code });
       setOtpBusy(false);
       if (!ok) {
         const left = typeof data.attempts_left === 'number' && data.attempts_left > 0 ? ` ${data.attempts_left} attempts left.` : '';
@@ -916,6 +927,32 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     if (isLive) await saveOnboarding({ status: 'COMPLETE', form: formSnapshot });
     onComplete();
   };
+
+  // Explore-live-demo: freeze on this path, provision the demo workspace
+  // (folder + seeds + branch) behind a loader, then enter the dashboard.
+  const handleExploreDemo = async () => {
+    setExploreBooting(true);
+    try {
+      if (isLive) {
+        await saveOnboarding({
+          status: 'COMPLETE',
+          form: { ...formSnapshot, demo: true, mode: 'demo', exploreDemo: true },
+        });
+      } else {
+        await new Promise((r) => setTimeout(r, 1800));
+      }
+    } finally {
+      onComplete();
+    }
+  };
+
+  // Landing "explore" goes through login first, then auto-freezes onto the demo path.
+  useEffect(() => {
+    if (step === 'f1' && pendingExplore && !exploreBooting) {
+      setPendingExplore(false);
+      void handleExploreDemo();
+    }
+  }, [step, pendingExplore, exploreBooting]);
 
   const handleToggleAgentAccepted = (slug: string, accept: boolean) => {
     setSoloAgents((prev) =>
@@ -1176,17 +1213,16 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               </div>
               <div className="inline-flex items-center gap-2 rounded-full bg-gold-500/15 border border-gold-500/35 px-3 py-1 text-xs font-mono text-gold-300">
                 <Sparkles className="h-3.5 w-3.5" />
-                <span>WARDEN • STRICT OVERSEER WORKFORCE ENGINE</span>
+                <span>WARDEN • THE COMPANY BRAIN</span>
               </div>
               <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white leading-tight">
-                Run Your Entire Company Across{' '}
+                Stop pasting context between prompts.{' '}
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#F5F0E6]">
-                  Tech, SEO/AEO &amp; Social
+                  Warden remembers.
                 </span>
               </h1>
               <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto">
-                Data and code reads stay downstairs in isolated Level 2 sandboxes while you steer architecture, search citations, and viral distribution from one executive command center.
-                Prefer a tour first? The demo workspace shows a live company where copilots resolve requests human-to-human without interrupting anyone.
+                One system holds your projects, backlogs, and decisions. Agents close the loops, from support case to patch to deploy, and tap you once for real decisions.
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -1216,12 +1252,17 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    try {
-                      window.localStorage.setItem('warden_demo_workspace', '1');
-                    } catch {
-                      // ignore storage errors
+                    if (isLive) {
+                      setPendingExplore(true);
+                      setStep('login');
+                    } else {
+                      try {
+                        window.localStorage.setItem('warden_demo_workspace', '1');
+                      } catch {
+                        // ignore storage errors
+                      }
+                      onComplete();
                     }
-                    onComplete();
                   }}
                   className="inline-flex items-center gap-2 rounded-2xl border border-[#C6A664]/50 bg-[#C6A664]/10 hover:bg-[#C6A664]/20 px-5 py-3.5 text-sm font-bold text-[#D4B475] transition cursor-pointer"
                 >
@@ -1255,44 +1296,44 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               )}
             </div>
 
-            {/* 3 Vertical Pillars Showcase */}
+            {/* 3 Thesis Pillars Showcase */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="rounded-2xl border border-gold-500/30 bg-[#14161A]/90 p-5 space-y-2.5">
                 <div className="inline-flex items-center gap-2 rounded-xl bg-gold-500/15 border border-gold-500/30 px-2.5 py-1 text-xs font-bold text-gold-300">
                   <Cpu className="h-4 w-4" />
-                  <span>1. Tech &amp; Product Vertical</span>
+                  <span>1. Shared memory</span>
                 </div>
                 <h3 className="text-sm font-bold text-white">
-                  Sharded Multi-Repo Execution
+                  One brain per company
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  `@cto`, `@pm`, and `@tech_lead` orchestrate `@frontend_dev`, `@backend_dev`, `@rust_lowlat_dev`, and `@xr_3d_dev` with mandatory `sync-in → work → pushit`.
+                  Projects, backlogs, threads, and decisions in one place. Every agent works with full context, so nobody re-explains anything.
                 </p>
               </div>
 
               <div className="rounded-2xl border border-[#C6A664]/30 bg-[#162030]/90 p-5 space-y-2.5">
                 <div className="inline-flex items-center gap-2 rounded-xl bg-[#C6A664]/15 border border-[#C6A664]/30 px-2.5 py-1 text-xs font-bold text-[#D4B475]">
                   <Globe className="h-4 w-4" />
-                  <span>2. SEO &amp; AEO Vertical</span>
+                  <span>2. Loops that close</span>
                 </div>
                 <h3 className="text-sm font-bold text-white">
-                  LLM Citation &amp; Answer Engine Share
+                  Support to deploy, no ferries
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  `@aeo_lead` and `@aeo_specialist` ship `/llms.txt`, `VideoGame` JSON-LD schemas, and comparative clusters across Meta AI answers and Muse.
+                  A support case becomes a patch on a live URL. SEO, enquiries, and social run as always-on functions, not forgotten chores.
                 </p>
               </div>
 
               <div className="rounded-2xl border border-[#C6A664]/30 bg-[#162030]/90 p-5 space-y-2.5">
                 <div className="inline-flex items-center gap-2 rounded-xl bg-[#C6A664]/15 border border-[#C6A664]/30 px-2.5 py-1 text-xs font-bold text-[#D4B475]">
                   <Share2 className="h-4 w-4" />
-                  <span>3. Social Media Vertical</span>
+                  <span>3. One approval</span>
                 </div>
                 <h3 className="text-sm font-bold text-white">
-                  High-Retention Hooks &amp; Founder Threads
+                  Briefs with gates
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  `@social_lead` and `@social_creator` produce 9:16 gameplay hooks, Devpost trailers, and technical X/LinkedIn devlogs.
+                  Work compresses upward into one brief. You tap once on real decisions and skip everything else.
                 </p>
               </div>
             </div>
@@ -1305,10 +1346,10 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-wider text-gold-400">
-                  STEP 2 • PASSWORDLESS EXECUTIVE AUTH
+                  STEP 2 • PASSWORDLESS SIGN IN
                 </span>
                 <h2 className="text-lg font-bold text-white mt-0.5">
-                  Sign In to Command Center
+                  Sign in to Warden
                 </h2>
               </div>
               <button
@@ -1320,8 +1361,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               </button>
             </div>
 
-            {/* Channel Tabs: WhatsApp (Default) vs Email (gallery only; email OTP has no backend yet) */}
-            {!isLive && (
+            {/* Channel Tabs: WhatsApp (Default) vs Email */}
             <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-[#101216] border border-[#22262E] p-1">
               <button
                 type="button"
@@ -1354,9 +1394,8 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                 <span>Work Email</span>
               </button>
             </div>
-            )}
 
-            {liveOtp && loginMethod === 'qr' ? (
+            {liveOtp && loginMethod === 'qr' && authChannel === 'WHATSAPP' ? (
               <WhatsAppQrLogin
                 onVerified={completeSignIn}
                 onUseCode={() => {
@@ -1593,15 +1632,25 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
         {/* STEP F1: ONBOARDING TRACK SELECTION (2 Main CTAs + 1 Secondary .md Import CTA) */}
         {step === 'f1' && (
           <div className="max-w-4xl w-full space-y-6">
+            {exploreBooting ? (
+              <div className="rounded-3xl border border-[#C6A664]/40 bg-[#101216] p-10 text-center space-y-4">
+                <RefreshCw className="h-8 w-8 text-[#D4B475] animate-spin mx-auto" />
+                <h1 className="text-xl font-black text-white">Spinning up your live demo…</h1>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  Creating your demo folder, seeding the game project and starter backlog. This takes a few seconds. Please wait.
+                </p>
+              </div>
+            ) : (
+            <>
             <div className="text-center space-y-2">
               <span className="rounded-full bg-gold-500/15 border border-gold-500/35 px-3 py-0.5 text-[10px] font-mono text-gold-300">
-                F1 • SELECT YOUR WORKSPACE ARCHITECTURE PATH
+                F1 • HOW DO YOU WANT TO START?
               </span>
               <h1 className="text-2xl sm:text-3xl font-black text-white">
-                How Would You Like to Provision Your Workforce?
+                Tell Warden about your company
               </h1>
               <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
-                Choose between starting from a clean founder brief, mirroring an existing human team, or importing an open-source Warden `.md` bundle.
+                Start from a founder brief, mirror your existing team, or jump straight into the live demo. This builds your shared memory.
               </p>
             </div>
 
@@ -1662,6 +1711,30 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               </div>
             </div>
 
+            {/* Featured: Explore the live demo (freezes onto the demo path) */}
+            <div className="rounded-3xl border border-[#C6A664]/50 bg-gradient-to-r from-[#162030] via-[#14161A] to-[#14161A] p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-xl">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#C6A664]/15 border border-[#C6A664]/40">
+                <Gamepad2 className="h-5 w-5 text-[#D4B475]" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
+                  Fastest way in • your own demo folder
+                </p>
+                <h2 className="text-base font-bold text-white">Explore the live demo</h2>
+                <p className="text-xs text-slate-400">
+                  We spin up your copy of the demo game, seed a starter backlog, and drop you in the dashboard. No setup.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleExploreDemo()}
+                className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] hover:brightness-110 px-5 py-3 text-xs transition cursor-pointer"
+              >
+                <span>Launch demo</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+
             {/* Secondary Option 3: Import Open-Source .md File Structure Bundle */}
             <div className="flex justify-center pt-1">
               <button
@@ -1675,6 +1748,8 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                 </span>
               </button>
             </div>
+            </>
+            )}
           </div>
         )}
 
