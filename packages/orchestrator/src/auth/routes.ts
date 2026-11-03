@@ -122,12 +122,16 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
 
   if (pathname === '/api/auth/otp/verify' && method === 'POST') {
     const body = await ctx.readJsonBody();
-    const r = await verifyOtp(String(body.phone ?? ''), String(body.code ?? ''));
-    if (r.ok) {
-      setSessionCookie(res, r.token, r.expiresAt);
-      sendJson(res, 200, { ok: true, token: r.token, expires_at: r.expiresAt, is_new_user: r.isNewUser, user: r.user });
-    } else {
-      sendJson(res, r.status, { ok: false, error: r.error, attempts_left: r.attemptsLeft });
+    try {
+      const r = await verifyOtp(String(body.phone ?? ''), String(body.code ?? ''));
+      if (r.ok) {
+        setSessionCookie(res, r.token, r.expiresAt);
+        sendJson(res, 200, { ok: true, token: r.token, expires_at: r.expiresAt, is_new_user: r.isNewUser, user: r.user });
+      } else {
+        sendJson(res, r.status, { ok: false, error: r.error, attempts_left: r.attemptsLeft });
+      }
+    } catch {
+      sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
     }
     return true;
   }
@@ -151,12 +155,16 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
 
   if (pathname === '/api/auth/email/verify' && method === 'POST') {
     const body = await ctx.readJsonBody();
-    const r = await verifyEmailOtp(String(body.email ?? ''), String(body.code ?? ''));
-    if (r.ok) {
-      setSessionCookie(res, r.token, r.expiresAt);
-      sendJson(res, 200, { ok: true, token: r.token, expires_at: r.expiresAt, is_new_user: r.isNewUser, user: r.user });
-    } else {
-      sendJson(res, r.status, { ok: false, error: r.error, attempts_left: r.attemptsLeft });
+    try {
+      const r = await verifyEmailOtp(String(body.email ?? ''), String(body.code ?? ''));
+      if (r.ok) {
+        setSessionCookie(res, r.token, r.expiresAt);
+        sendJson(res, 200, { ok: true, token: r.token, expires_at: r.expiresAt, is_new_user: r.isNewUser, user: r.user });
+      } else {
+        sendJson(res, r.status, { ok: false, error: r.error, attempts_left: r.attemptsLeft });
+      }
+    } catch {
+      sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
     }
     return true;
   }

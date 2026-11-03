@@ -16,7 +16,15 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export function demoTemplateDir(): string {
-  return path.join(HERE, 'template');
+  const candidates = [
+    path.join(HERE, 'template'),
+    // Bundled deploys: resolve from the workspace checkout instead.
+    path.resolve(process.cwd(), 'packages/orchestrator/src/demo/template'),
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, 'index.html'))) return dir;
+  }
+  return candidates[0];
 }
 
 export function demoWorkspaceRoot(): string {

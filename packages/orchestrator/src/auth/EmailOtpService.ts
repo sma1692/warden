@@ -12,9 +12,10 @@ import { publicUser, upsertUserOnEmail } from './UserStore.js';
 
 const CODE_TTL_MS = 5 * 60_000;
 const RESEND_COOLDOWN_MS = 30_000;
-const MAX_SENDS_PER_HOUR = 5;
+// Email is cheap (unlike WhatsApp per-message pricing), so testing caps stay generous.
+const MAX_SENDS_PER_HOUR = 25;
 const MAX_VERIFY_ATTEMPTS = 5;
-const MAX_REQUESTS_PER_IP_PER_HOUR = 20;
+const MAX_REQUESTS_PER_IP_PER_HOUR = 60;
 const HOUR_MS = 60 * 60_000;
 
 interface PendingCode {

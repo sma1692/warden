@@ -426,7 +426,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   const [localNumber, setLocalNumber] = useState<string>('');
   const dialCode = findCountry(countryIso)?.dial ?? '1';
   const whatsappNumber = `+${dialCode} ${localNumber.trim()}`;
-  const [emailAddress, setEmailAddress] = useState<string>('alex@example.com');
+  const [emailAddress, setEmailAddress] = useState<string>('');
   const [otpDigits, setOtpDigits] = useState<string[]>(['1', '2', '3', '1', '2', '3']);
   const [authError, setAuthError] = useState<string | null>(null);
   // Product Mode sends a real code (WhatsApp via /api/auth/otp/*, Email via /api/auth/email/*); Demo Mode keeps the 123123 preset.
@@ -830,7 +830,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     setOtpBusy(true);
     const { ok, data } =
       authChannel === 'EMAIL'
-        ? await postAuth('request', { email: emailAddress.trim() })
+        ? await postAuth('request', { email: emailAddress.trim().toLowerCase() })
         : await postAuth('request', { phone: whatsappNumber });
     setOtpBusy(false);
     if (!ok) {
@@ -849,7 +849,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       return;
     }
     if (authChannel === 'EMAIL' && !isEmailValid) {
-      setAuthError('Enter a valid work email address.');
+      setAuthError('Enter a valid email address.');
       return;
     }
     setAuthError(null);
@@ -864,6 +864,10 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
 
   const handleResendOtp = async () => {
     setAuthError(null);
+    if (authChannel === 'EMAIL' && !isEmailValid) {
+      setAuthError('Enter a valid email address.');
+      return;
+    }
     if (await sendLiveOtp()) setOtpDigits(['', '', '', '', '', '']);
   };
 
@@ -905,7 +909,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       setOtpBusy(true);
       const { ok, data } =
         authChannel === 'EMAIL'
-          ? await postAuth('verify', { email: emailAddress.trim(), code })
+          ? await postAuth('verify', { email: emailAddress.trim().toLowerCase(), code })
           : await postAuth('verify', { phone: whatsappNumber, code });
       setOtpBusy(false);
       if (!ok) {
