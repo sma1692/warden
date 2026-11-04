@@ -331,6 +331,18 @@ export class DatabaseStore {
     return results;
   }
 
+  /**
+   * Seed writes go through the null-swallowing pg client; surface failures
+   * loudly instead of pretending the seed landed. Never throws, so boot can
+   * still degrade to snapshot when Postgres is flaky.
+   */
+  private async seedQuery(label: string, sql: string, params: unknown[]): Promise<void> {
+    const res = await this.pg.query(sql, params);
+    if (!res) {
+      console.error(`[@warden/db] Seed update failed (${label}); row may be missing or stale.`);
+    }
+  }
+
   private async syncSeedAgentsToPostgres(): Promise<void> {
     if (!this.pg.isConnected()) return;
 
@@ -527,6 +539,157 @@ export class DatabaseStore {
           id, name, description, is_active, config_json, updated_at
         ) VALUES ($1, $2, $3, $4, $5::jsonb, $6)
         ON CONFLICT (id) DO NOTHING`,
+        [
+          profile.id,
+          profile.name,
+          profile.description,
+          profile.is_active,
+          JSON.stringify(profile.config_json || {}),
+          profile.updated_at,
+        ]
+      );
+    }
+
+    // Code seeds are the source of truth for impersonal catalog config: push
+    // changed seed values on every boot. Runtime-owned columns (status,
+    // heartbeats, counters, budgets, keys, timestamps) are never overwritten.
+    for (const agent of SEED_AGENTS) {
+      await this.seedQuery(
+        `agent ${agent.id}`,
+        `INSERT INTO agents (
+          id, slug, name, department, hierarchy_level, parent_agent_id, project_scope,
+          model_provider, model_id, fallback_provider, fallback_model_id, step_routing_json,
+          init_prompt, allowed_repos, permission_tier,
+          status, health_status, last_heartbeat_at, max_subagents, active_subagent_count,
+          max_run_duration_ms, current_run_id, clocked_in_at, total_work_time_ms,
+          total_runs, total_commits, max_tokens_per_run, today_tokens_used,
+          total_tokens_in, total_tokens_cached, total_tokens_thinking, total_tokens_out,
+          total_cost_usd, needs_review, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, $11, $12::jsonb,
+          $13, $14::jsonb, $15,
+          $16, $17, $18, $19, $20,
+          $21, $22, $23, $24,
+          $25, $26, $27, $28,
+          $29, $30, $31, $32,
+          $33, $34, $35, $36
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          slug = EXCLUDED.slug,
+          name = EXCLUDED.name,
+          department = EXCLUDED.department,
+          hierarchy_level = EXCLUDED.hierarchy_level,
+          parent_agent_id = EXCLUDED.parent_agent_id,
+          project_scope = EXCLUDED.project_scope,
+          model_provider = EXCLUDED.model_provider,
+          model_id = EXCLUDED.model_id,
+          fallback_provider = EXCLUDED.fallback_provider,
+          fallback_model_id = EXCLUDED.fallback_model_id,
+          step_routing_json = EXCLUDED.step_routing_json,
+          init_prompt = EXCLUDED.init_prompt,
+          allowed_repos = EXCLUDED.allowed_repos,
+          permission_tier = EXCLUDED.permission_tier,
+          max_subagents = EXCLUDED.max_subagents,
+          max_run_duration_ms = EXCLUDED.max_run_duration_ms,
+          max_tokens_per_run = EXCLUDED.max_tokens_per_run,
+          needs_review = EXCLUDED.needs_review,
+          updated_at = NOW()`,
+        [
+          agent.id,
+          agent.slug,
+          agent.name,
+          agent.department,
+          agent.hierarchy_level,
+          agent.parent_agent_id,
+          agent.project_scope,
+          agent.model_provider,
+          agent.model_id,
+          agent.fallback_provider || 'meta_muse',
+          agent.fallback_model_id || 'muse-spark-1.3',
+          JSON.stringify(agent.step_routing_json || {}),
+          agent.init_prompt,
+          JSON.stringify(agent.allowed_repos || []),
+          agent.permission_tier,
+          agent.status,
+          agent.health_status,
+          agent.last_heartbeat_at,
+          agent.max_subagents,
+          agent.active_subagent_count,
+          agent.max_run_duration_ms,
+          agent.current_run_id,
+          agent.clocked_in_at,
+          agent.total_work_time_ms,
+          agent.total_runs,
+          agent.total_commits,
+          agent.max_tokens_per_run,
+          agent.today_tokens_used,
+          agent.total_tokens_in,
+          agent.total_tokens_cached,
+          agent.total_tokens_thinking,
+          agent.total_tokens_out,
+          agent.total_cost_usd,
+          agent.needs_review ?? false,
+          agent.created_at,
+          agent.updated_at,
+        ]
+      );
+    }
+
+    for (const cred of SEED_PROVIDER_CREDENTIALS) {
+      await this.seedQuery(
+        `credential ${cred.id}`,
+        `INSERT INTO provider_credentials (
+          id, provider, label, api_key_encrypted, base_url, remaining_budget_usd,
+          rpm_limit, tpm_limit, priority_order, is_active, cooldown_until,
+          total_requests, total_failures, last_error, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10, $11,
+          $12, $13, $14, $15, $16
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          provider = EXCLUDED.provider,
+          label = EXCLUDED.label,
+          base_url = EXCLUDED.base_url,
+          rpm_limit = EXCLUDED.rpm_limit,
+          tpm_limit = EXCLUDED.tpm_limit,
+          priority_order = EXCLUDED.priority_order,
+          is_active = EXCLUDED.is_active,
+          updated_at = NOW()`,
+        [
+          cred.id,
+          cred.provider,
+          cred.label,
+          cred.api_key_encrypted,
+          cred.base_url,
+          cred.remaining_budget_usd,
+          cred.rpm_limit,
+          cred.tpm_limit,
+          cred.priority_order,
+          cred.is_active,
+          cred.cooldown_until,
+          cred.total_requests,
+          cred.total_failures,
+          cred.last_error,
+          cred.created_at,
+          cred.updated_at,
+        ]
+      );
+    }
+
+    for (const profile of SEED_ROUTING_PROFILES) {
+      await this.seedQuery(
+        `routing profile ${profile.id}`,
+        `INSERT INTO routing_profiles (
+          id, name, description, is_active, config_json, updated_at
+        ) VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          description = EXCLUDED.description,
+          is_active = EXCLUDED.is_active,
+          config_json = EXCLUDED.config_json,
+          updated_at = NOW()`,
         [
           profile.id,
           profile.name,

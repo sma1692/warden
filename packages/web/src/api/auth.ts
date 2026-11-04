@@ -1,5 +1,6 @@
 // JWT session for the signed-in operator. The token comes from POST /api/auth/otp/verify
 // and is sent as `Authorization: Bearer` on every /api call.
+import { API_BASE } from './base';
 
 export type OnboardingStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE';
 
@@ -63,7 +64,7 @@ export async function authRequest<T = any>(
   init: { method?: string; body?: unknown } = {}
 ): Promise<{ ok: boolean; status: number; data: T & { error?: string } }> {
   try {
-    const res = await fetch(`/api/auth/${path}`, {
+    const res = await fetch(`${API_BASE}/auth/${path}`, {
       method: init.method ?? (init.body ? 'POST' : 'GET'),
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: init.body ? JSON.stringify(init.body) : undefined,
@@ -74,7 +75,7 @@ export async function authRequest<T = any>(
     return {
       ok: false,
       status: 0,
-      data: { error: 'Cannot reach the Warden server. Is the orchestrator running?' } as T & { error?: string },
+      data: { error: 'Unable to connect right now. Please try again in a moment.' } as T & { error?: string },
     };
   }
 }

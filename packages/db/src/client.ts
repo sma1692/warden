@@ -266,9 +266,13 @@ export class PostgresClientManager {
         const ddl = fs.readFileSync(INIT_SQL_PATH, 'utf8');
         await this.pool.query(ddl);
         this.schemaInitialized = true;
+        console.log('[@warden/db] Core schema ensured from infra/postgres/init.sql');
+      } else {
+        console.warn('[@warden/db] infra/postgres/init.sql not found; skipping schema ensure.');
       }
       return true;
-    } catch {
+    } catch (err) {
+      console.error('[@warden/db] Schema ensure failed:', err instanceof Error ? err.message : err);
       return false;
     }
   }

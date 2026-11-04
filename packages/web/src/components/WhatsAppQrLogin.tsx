@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { MessageSquare, RefreshCw } from 'lucide-react';
 import type { AuthUser } from '../api/auth';
+import { API_BASE } from '../api/base';
 import { AsyncButton } from './AsyncButton';
 
 export interface WhatsAppSignInResult {
@@ -46,7 +47,7 @@ export const WhatsAppQrLogin: React.FC<WhatsAppQrLoginProps> = ({ onVerified, on
     setRequest(null);
     setQrDataUrl('');
     try {
-      const res = await fetch('/api/auth/wa/start', { method: 'POST' });
+      const res = await fetch(`${API_BASE}/auth/wa/start`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         setError(data.error || 'Could not start WhatsApp sign-in.');
@@ -57,7 +58,7 @@ export const WhatsAppQrLogin: React.FC<WhatsAppQrLoginProps> = ({ onVerified, on
         await QRCode.toDataURL(data.wa_link, { margin: 1, width: 440, errorCorrectionLevel: 'M' })
       );
     } catch {
-      setError('Cannot reach the Warden server. Is the orchestrator running?');
+      setError('Unable to connect right now. Please try again in a moment.');
     }
   }, []);
 
@@ -73,7 +74,7 @@ export const WhatsAppQrLogin: React.FC<WhatsAppQrLoginProps> = ({ onVerified, on
     const check = async () => {
       if (stopped) return;
       try {
-        const res = await fetch(`/api/auth/wa/status?id=${encodeURIComponent(request.id)}`);
+        const res = await fetch(`${API_BASE}/auth/wa/status?id=${encodeURIComponent(request.id)}`);
         const data = await res.json().catch(() => ({}));
         if (stopped) return;
         if (data.status === 'VERIFIED') {

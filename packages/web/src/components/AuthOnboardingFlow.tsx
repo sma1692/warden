@@ -34,6 +34,7 @@ import {
 import { CountryCodePicker } from './CountryCodePicker';
 import { COUNTRIES, detectCountryIso, findCountry } from '../data/countries';
 import { saveOnboarding, setToken, type AuthUser } from '../api/auth';
+import { API_BASE } from '../api/base';
 import { WhatsAppQrLogin, type WhatsAppSignInResult } from './WhatsAppQrLogin';
 import { AsyncButton, ToastHost, useToasts, type ActionOutcome } from './AsyncButton';
 import {
@@ -741,7 +742,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   const postAuth = async (path: string, body: Record<string, string>) => {
     const prefix = authChannel === 'EMAIL' ? 'email' : 'otp';
     try {
-      const res = await fetch(`/api/auth/${prefix}/${path}`, {
+      const res = await fetch(`${API_BASE}/auth/${prefix}/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -749,7 +750,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       const data = await res.json().catch(() => ({}));
       return { ok: res.ok && data.ok !== false, data };
     } catch {
-      return { ok: false, data: { error: 'Cannot reach the Warden server. Is the orchestrator running?' } };
+      return { ok: false, data: { error: 'Unable to connect right now. Please try again in a moment.' } };
     }
   };
 
@@ -855,7 +856,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     if (isLive) {
       const saved = await saveOnboarding({ status: 'COMPLETE', form: formSnapshot });
       if (!saved) {
-        return { ok: false, error: 'Could not save onboarding. Is the server running? Try again.' };
+        return { ok: false, error: 'Could not save your progress. Please try again.' };
       }
     }
     onComplete();
@@ -1070,185 +1071,282 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       )}
 
       {/* MAIN ONBOARDING STAGE CONTAINER */}
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
+      <div
+        className={
+          step === 'landing'
+            ? 'flex-1 flex flex-col'
+            : 'flex-1 flex items-center justify-center p-4 sm:p-6'
+        }
+      >
         {/* STEP 0: LOADING SCREEN */}
         {step === 'loading' && (
-          <div className="max-w-lg w-full rounded-3xl border border-[#22262E] bg-[#14161A]/95 p-6 sm:p-8 shadow-2xl space-y-6 text-center">
-            <div className="mx-auto flex flex-col items-center justify-center">
-              <StrictOverseerCrest size="lg" />
-            </div>
-            <div>
-              <span className="rounded-full bg-gold-500/15 border border-gold-500/30 px-2.5 py-0.5 text-[10px] font-mono text-gold-300">
-                BOOTSTRAPPING AUTONOMOUS WORKFORCE OS
-              </span>
-              <h1 className="text-xl font-black text-white mt-2">
-                Warming Up Multi-Vertical Hierarchy
-              </h1>
-              <p className="text-xs text-slate-400 mt-1">
-                Preloading bottom-heavy token firewalls across Tech, SEO/AEO, and Social Media.
-              </p>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="space-y-2">
-              <div className="h-2.5 w-full rounded-full bg-[#101216] overflow-hidden border border-[#22262E]">
-                <div
-                  className="h-full bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] transition-all duration-300"
-                  style={{ width: `${loadProgress}%` }}
+          <div className="flex flex-col items-center justify-center gap-8">
+            <div className="relative flex items-center justify-center">
+              <div className="absolute -inset-6 rounded-full bg-[#C6A664]/15 blur-3xl pointer-events-none" />
+              <div className="relative h-56 w-56 sm:h-72 sm:w-72 rounded-3xl bg-gradient-to-b from-[#D4B475]/20 via-[#162030] to-[#0B121C] border border-[#C6A664]/45 p-3 shadow-2xl shadow-[#C6A664]/20 flex items-center justify-center overflow-hidden">
+                <img
+                  src="/warden-logo.png"
+                  alt="WARDEN Strict Overseer Logo"
+                  className="h-full w-full object-cover rounded-2xl"
                 />
               </div>
-              <div className="flex items-center justify-between text-[11px] font-mono text-gold-300">
-                <span>Loading Blueprints &amp; Mirrors...</span>
-                <span>{loadProgress}%</span>
-              </div>
             </div>
-
-            {/* Checklist */}
-            <div className="space-y-2 text-left rounded-2xl bg-[#101216]/90 border border-[#22262E] p-4 text-xs">
-              {[
-                { pct: 20, label: 'Root & Level 0 Executive Firewall (warden, cto, cbo)' },
-                { pct: 40, label: 'Tech Vertical: Repo Mirrors & Contract Sharding' },
-                { pct: 60, label: 'SEO / AEO Engine: /llms.txt & Programmatic JSON-LD' },
-                { pct: 80, label: 'Social Media Loop: 9:16 Hooks & X/LinkedIn Funnels' },
-                { pct: 100, label: 'Consultation Depth Knob & 94.2% Token Compression' },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center gap-2.5">
-                  <CheckCircle2
-                    className={`h-4 w-4 shrink-0 ${
-                      loadProgress >= item.pct ? 'text-[#D4B475]' : 'text-slate-600'
-                    }`}
-                  />
-                  <span
-                    className={
-                      loadProgress >= item.pct ? 'text-slate-200' : 'text-slate-500'
-                    }
-                  >
-                    {item.label}
-                  </span>
-                </div>
-              ))}
+            <div className="w-56 sm:w-72 h-1.5 rounded-full bg-[#14161A] overflow-hidden border border-[#C6A664]/25 shadow-inner">
+              <div
+                className="h-full bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] transition-all duration-300"
+                style={{ width: `${loadProgress}%` }}
+              />
             </div>
-
-            <button
-              type="button"
-              onClick={() => setStep('landing')}
-              className="w-full rounded-xl bg-[#1D2128] hover:bg-[#22262E] border border-[#22262E] py-2.5 text-xs font-semibold text-slate-200 transition cursor-pointer"
-            >
-              Skip Preloader → Landing Page
-            </button>
           </div>
         )}
 
-        {/* STEP 1: LANDING PAGE */}
+        {/* STEP 1: LANDING PAGE (2 Viewports on Mobile, 1 Split Viewport on Desktop) */}
         {step === 'landing' && (
-          <div className="max-w-5xl w-full space-y-8 py-4">
-            <div className="text-center space-y-4 max-w-3xl mx-auto">
-              <div className="flex items-center justify-center pb-2">
-                <StrictOverseerCrest size="lg" />
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-gold-500/15 border border-gold-500/35 px-3 py-1 text-xs font-mono text-gold-300">
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>WARDEN • THE COMPANY BRAIN</span>
-              </div>
-              <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white leading-tight">
-                Stop pasting context between prompts.{' '}
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#F5F0E6]">
-                  Warden remembers.
-                </span>
-              </h1>
-              <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto">
-                One system holds your projects, backlogs, and decisions. Agents close the loops, from support case to patch to deploy, and tap you once for real decisions.
-              </p>
+          <div className="relative w-full lg:h-dvh lg:overflow-hidden flex flex-col justify-between max-w-md lg:max-w-7xl mx-auto">
+            {/* Subtle Ambient Sovereign Glow (Desktop) */}
+            <div className="hidden lg:block pointer-events-none absolute -top-32 left-1/4 h-96 w-96 rounded-full bg-[#C6A664]/[0.06] blur-3xl" />
+            <div className="hidden lg:block pointer-events-none absolute bottom-12 right-10 h-96 w-96 rounded-full bg-[#162030]/60 blur-3xl" />
 
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setStep('login')}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 px-6 py-3.5 text-sm transition cursor-pointer"
-                >
-                  <span>Sign Up / Login</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isLive) {
-                      setPendingTrack('3_import');
-                      setStep('login');
-                    } else {
-                      setStep('3_import');
-                    }
-                  }}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-[#22262E] bg-[#1D2128] hover:bg-[#22262E] px-5 py-3.5 text-sm font-semibold text-slate-200 transition cursor-pointer"
-                >
-                  <FileCode2 className="h-4 w-4 text-gold-400" />
-                  <span>Import .md Bundle</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isLive) {
-                      setPendingExplore(true);
-                      setStep('login');
-                    } else {
-                      try {
-                        window.localStorage.setItem('warden_demo_workspace', '1');
-                      } catch {
-                        // ignore storage errors
-                      }
-                      onComplete();
-                    }
-                  }}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-[#C6A664]/50 bg-[#C6A664]/10 hover:bg-[#C6A664]/20 px-5 py-3.5 text-sm font-bold text-[#D4B475] transition cursor-pointer"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  <span>Explore live demo workspace</span>
-                </button>
-              </div>
+            <div className="relative flex-1 flex flex-col lg:grid lg:grid-cols-12 lg:gap-10 xl:gap-14 lg:items-center lg:px-10 xl:px-12 lg:py-6 min-h-0">
+              {/* VIEWPORT 1 (Mobile) / LEFT HERO COLUMN (Desktop) */}
+              <section className="min-h-dvh lg:min-h-0 lg:h-full w-full px-5 py-6 lg:p-0 flex flex-col justify-between lg:justify-center lg:items-start lg:col-span-5 lg:gap-7">
+                {/* Top Half on Mobile / Hero Emblem on Desktop */}
+                <div className="h-[48dvh] lg:h-auto w-full flex items-center justify-center lg:justify-start">
+                  <div className="relative group">
+                    <div className="hidden lg:block absolute -inset-4 rounded-3xl bg-[#C6A664]/15 blur-2xl opacity-75 pointer-events-none" />
+                    <div className="relative aspect-square h-full lg:h-60 xl:h-68 max-h-full rounded-3xl bg-gradient-to-b from-[#D4B475]/20 via-[#162030] to-[#0B121C] border border-[#C6A664]/45 p-3 shadow-2xl shadow-[#C6A664]/15 flex items-center justify-center overflow-hidden">
+                      <img
+                        src="/warden-logo.png"
+                        alt="WARDEN Strict Overseer Logo"
+                        className="h-full w-full object-cover rounded-2xl"
+                      />
+                    </div>
+                  </div>
+                </div>
 
+                {/* Bottom Half: Text + Subtext + Start Button */}
+                <div className="flex-1 lg:flex-initial flex flex-col items-center lg:items-start justify-evenly lg:justify-start text-center lg:text-left pt-4 lg:pt-0 pb-2 lg:pb-0 gap-4 lg:gap-6">
+                  <div className="space-y-3">
+                    <div className="hidden lg:inline-flex items-center gap-2 rounded-full border border-[#C6A664]/30 bg-[#14161A]/90 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.2em] text-[#D4B475]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#D4B475]" />
+                      <span>Sovereign AI Operating System</span>
+                    </div>
+                    <h1 className="text-3xl sm:text-4xl xl:text-5xl font-black tracking-tight text-white leading-[1.1]">
+                      Stop pasting context.
+                      <span className="block mt-1 text-transparent bg-clip-text bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#F5F0E6]">
+                        Warden remembers.
+                      </span>
+                    </h1>
+                    <p className="text-xs sm:text-sm lg:text-base text-slate-300 max-w-xs sm:max-w-md mx-auto lg:mx-0 leading-relaxed line-clamp-2">
+                      Your persistent company brain that coordinates every project and decision at a fraction of the token cost.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setStep('login')}
+                    className="w-full max-w-xs inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-black tracking-widest uppercase border border-[#D4B475] shadow-[0_6px_28px_rgba(198,166,100,0.32)] hover:brightness-110 px-8 py-4 text-sm sm:text-base transition cursor-pointer"
+                  >
+                    <span>Start</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </section>
+
+              {/* VIEWPORT 2 (Mobile < lg): 3 Alternating Rows + Bottom Nav */}
+              <section className="lg:hidden min-h-dvh w-full px-4 pt-4 pb-4 flex flex-col justify-between gap-3">
+                <div className="flex-1 grid grid-rows-3 gap-3 items-center">
+                  {/* Row 1: Card 1 Text & Subtext -> Image */}
+                  <div className="grid grid-cols-2 gap-3 items-center">
+                    <div className="rounded-2xl border border-[#C6A664]/35 bg-[#14161A]/95 p-3.5 sm:p-4 flex flex-col justify-center space-y-1.5 h-full">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
+                        01 • Company Brain
+                      </span>
+                      <h3 className="text-sm sm:text-base font-black text-white leading-snug">
+                        Shared memory, 90% lower token burn
+                      </h3>
+                      <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed">
+                        One brain holds your repos, backlogs, and decisions. Tiered context firewalls slash token costs so you never pay to re-explain.
+                      </p>
+                    </div>
+                    <div className="relative flex items-center justify-center">
+                      <div className="pointer-events-none absolute h-28 w-28 rounded-full bg-[#C6A664]/15 blur-2xl" />
+                      <img
+                        src="/landing-brain-tokens.png"
+                        alt="Company Brain and Token Firewall"
+                        className="relative h-36 w-36 sm:h-40 sm:w-40 object-contain mix-blend-lighten drop-shadow-[0_0_24px_rgba(198,166,100,0.2)]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 2: Image -> Card 2 Text & Subtext */}
+                  <div className="grid grid-cols-2 gap-3 items-center">
+                    <div className="relative flex items-center justify-center">
+                      <div className="pointer-events-none absolute h-28 w-28 rounded-full bg-[#C6A664]/15 blur-2xl" />
+                      <img
+                        src="/landing-ephemeral-agents.png"
+                        alt="Ephemeral Agentic Workforce"
+                        className="relative h-36 w-36 sm:h-40 sm:w-40 object-contain mix-blend-lighten drop-shadow-[0_0_24px_rgba(198,166,100,0.2)]"
+                      />
+                    </div>
+                    <div className="rounded-2xl border border-[#C6A664]/35 bg-[#162030]/95 p-3.5 sm:p-4 flex flex-col justify-center space-y-1.5 h-full">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
+                        02 • Transient Workforce
+                      </span>
+                      <h3 className="text-sm sm:text-base font-black text-white leading-snug">
+                        Ephemeral agents at a button click
+                      </h3>
+                      <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed">
+                        Spin up on-demand agentic employees for a single mission. They ship the patch or campaign and dissolve—zero idle overhead.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Row 3: Card 3 Text & Subtext -> Image */}
+                  <div className="grid grid-cols-2 gap-3 items-center">
+                    <div className="rounded-2xl border border-[#C6A664]/35 bg-[#14161A]/95 p-3.5 sm:p-4 flex flex-col justify-center space-y-1.5 h-full">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
+                        03 • Force Multiplier
+                      </span>
+                      <h3 className="text-sm sm:text-base font-black text-white leading-snug">
+                        Augment every employee with an AI twin
+                      </h3>
+                      <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed">
+                        Pair your team with autonomous agents that crush busywork, clear ticket queues, and bring down operational drag.
+                      </p>
+                    </div>
+                    <div className="relative flex items-center justify-center">
+                      <div className="pointer-events-none absolute h-28 w-28 rounded-full bg-[#C6A664]/15 blur-2xl" />
+                      <img
+                        src="/landing-augmented-team.png"
+                        alt="Human Augmented with Autonomous Agent Twin"
+                        className="relative h-36 w-36 sm:h-40 sm:w-40 object-contain mix-blend-lighten drop-shadow-[0_0_24px_rgba(198,166,100,0.2)]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Generic Bottom Navigation (Mobile) */}
+                <nav
+                  aria-label="Mobile bottom navigation"
+                  className="rounded-2xl border border-[#22262E] bg-[#14161A]/90 backdrop-blur-md px-4 py-3 flex items-center justify-around text-[11px] font-mono text-slate-400"
+                >
+                  <span className="text-[#D4B475] font-semibold">Overview</span>
+                  <span>Architecture</span>
+                  <span>Security</span>
+                  <span>Docs</span>
+                </nav>
+              </section>
+
+              {/* RIGHT EDITORIAL ARCHITECTURE SHOWCASE (Desktop lg+) */}
+              <section className="hidden lg:flex lg:col-span-7 flex-col justify-center h-full">
+                <div className="rounded-3xl border border-[#C6A664]/25 bg-gradient-to-b from-[#14161A]/90 via-[#0E131B]/90 to-[#0B1017]/90 p-6 xl:p-7 shadow-[0_24px_80px_rgba(0,0,0,0.65)] backdrop-blur-md space-y-5">
+                  {/* Editorial Section Header */}
+                  <div className="flex items-center justify-between border-b border-[#C6A664]/15 pb-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-2 w-2 rounded-full bg-[#D4B475]" />
+                      <span className="text-[11px] font-mono uppercase tracking-[0.22em] text-[#D4B475] font-semibold">
+                        System Architecture • Three Pillars
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-400">
+                      PERSISTENT CONTEXT ENGINE
+                    </span>
+                  </div>
+
+                  {/* Pillar 01 — Featured Wide Showcase */}
+                  <div className="relative overflow-hidden rounded-2xl border border-[#C6A664]/35 bg-gradient-to-r from-[#14161A] via-[#131923] to-[#0B121C] p-5 xl:p-6 flex items-center justify-between gap-6">
+                    <div className="pointer-events-none absolute -right-10 -top-10 h-52 w-52 rounded-full bg-[#C6A664]/15 blur-3xl" />
+                    <div className="space-y-2 max-w-md z-10">
+                      <div className="inline-flex items-center gap-2">
+                        <span className="rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-[#D4B475]">
+                          01 • Company Brain
+                        </span>
+                        <span className="text-[11px] font-mono text-[#D4B475]/80">
+                          −90% Token Burn
+                        </span>
+                      </div>
+                      <h3 className="text-lg xl:text-xl font-black text-white leading-snug">
+                        Shared memory, 90% lower token burn
+                      </h3>
+                      <p className="text-xs xl:text-sm text-slate-300 leading-relaxed">
+                        One brain holds your repos, backlogs, and decisions. Tiered context firewalls slash token costs so you never pay to re-explain.
+                      </p>
+                    </div>
+                    <div className="relative shrink-0 flex items-center justify-center">
+                      <div className="pointer-events-none absolute inset-0 rounded-full bg-[#C6A664]/20 blur-2xl" />
+                      <img
+                        src="/landing-brain-tokens.png"
+                        alt="Company Brain and Token Firewall"
+                        className="relative h-36 w-36 xl:h-40 xl:w-40 object-contain mix-blend-lighten drop-shadow-[0_0_28px_rgba(212,180,117,0.28)]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Pillars 02 & 03 — Balanced Architectural Pair */}
+                  <div className="grid grid-cols-2 gap-5">
+                    {/* Pillar 02 */}
+                    <div className="relative overflow-hidden rounded-2xl border border-[#C6A664]/30 bg-gradient-to-b from-[#162030]/90 to-[#0B121C]/95 p-5 flex flex-col justify-between gap-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-[#D4B475]">
+                          02 • Transient Workforce
+                        </span>
+                        <img
+                          src="/landing-ephemeral-agents.png"
+                          alt="Ephemeral Agentic Workforce"
+                          className="h-24 w-24 xl:h-28 xl:w-28 object-contain mix-blend-lighten drop-shadow-[0_0_22px_rgba(212,180,117,0.25)] -mt-1 -mr-1 shrink-0"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <h3 className="text-base xl:text-lg font-black text-white leading-snug">
+                          Ephemeral agents at a button click
+                        </h3>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          Spin up on-demand agentic employees for a single mission. They ship the patch or campaign and dissolve—zero idle overhead.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Pillar 03 */}
+                    <div className="relative overflow-hidden rounded-2xl border border-[#C6A664]/30 bg-gradient-to-b from-[#14161A]/95 to-[#0B121C]/95 p-5 flex flex-col justify-between gap-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-[#D4B475]">
+                          03 • Force Multiplier
+                        </span>
+                        <img
+                          src="/landing-augmented-team.png"
+                          alt="Human Augmented with Autonomous Agent Twin"
+                          className="h-24 w-24 xl:h-28 xl:w-28 object-contain mix-blend-lighten drop-shadow-[0_0_22px_rgba(212,180,117,0.25)] -mt-1 -mr-1 shrink-0"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <h3 className="text-base xl:text-lg font-black text-white leading-snug">
+                          Augment every employee with an AI twin
+                        </h3>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          Pair your team with autonomous agents that crush busywork, clear ticket queues, and bring down operational drag.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
 
-            {/* 3 Thesis Pillars Showcase */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="rounded-2xl border border-gold-500/30 bg-[#14161A]/90 p-5 space-y-2.5">
-                <div className="inline-flex items-center gap-2 rounded-xl bg-gold-500/15 border border-gold-500/30 px-2.5 py-1 text-xs font-bold text-gold-300">
-                  <Cpu className="h-4 w-4" />
-                  <span>1. Shared memory</span>
-                </div>
-                <h3 className="text-sm font-bold text-white">
-                  One brain per company
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Projects, backlogs, threads, and decisions in one place. Every agent works with full context, so nobody re-explains anything.
-                </p>
+            {/* Generic Bottom Bar (Desktop) */}
+            <nav
+              aria-label="Desktop bottom navigation"
+              className="hidden lg:flex items-center justify-between border-t border-[#22262E] px-10 xl:px-12 py-3 text-xs font-mono text-slate-400"
+            >
+              <span className="text-[#D4B475] font-semibold tracking-wider">WARDEN OS</span>
+              <div className="flex items-center gap-8">
+                <span className="text-slate-200">Overview</span>
+                <span>Architecture</span>
+                <span>Security</span>
+                <span>Docs</span>
               </div>
-
-              <div className="rounded-2xl border border-[#C6A664]/30 bg-[#162030]/90 p-5 space-y-2.5">
-                <div className="inline-flex items-center gap-2 rounded-xl bg-[#C6A664]/15 border border-[#C6A664]/30 px-2.5 py-1 text-xs font-bold text-[#D4B475]">
-                  <Globe className="h-4 w-4" />
-                  <span>2. Loops that close</span>
-                </div>
-                <h3 className="text-sm font-bold text-white">
-                  Support to deploy, no ferries
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  A support case becomes a patch on a live URL. SEO, enquiries, and social run as always-on functions, not forgotten chores.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-[#C6A664]/30 bg-[#162030]/90 p-5 space-y-2.5">
-                <div className="inline-flex items-center gap-2 rounded-xl bg-[#C6A664]/15 border border-[#C6A664]/30 px-2.5 py-1 text-xs font-bold text-[#D4B475]">
-                  <Share2 className="h-4 w-4" />
-                  <span>3. One approval</span>
-                </div>
-                <h3 className="text-sm font-bold text-white">
-                  Briefs with gates
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Work compresses upward into one brief. You tap once on real decisions and skip everything else.
-                </p>
-              </div>
-            </div>
+              <span className="text-slate-500">v1.0</span>
+            </nav>
           </div>
         )}
 

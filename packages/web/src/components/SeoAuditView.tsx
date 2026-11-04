@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE } from '../api/base';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -78,10 +79,10 @@ export const SeoAuditView: React.FC<SeoAuditViewProps> = ({
     setAuditing(true);
     setAuditError(null);
     try {
-      const res = await fetch(`/api/seo/audit?url=${encodeURIComponent(target)}`);
+      const res = await fetch(`${API_BASE}/seo/audit?url=${encodeURIComponent(target)}`);
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
-        fail(data?.error || 'Audit failed. Is the orchestrator running?');
+        fail(data?.error || 'Audit failed. Please try again.');
         return;
       }
       setReport({ url: data.url, score: data.score, checks: data.checks });
@@ -92,7 +93,7 @@ export const SeoAuditView: React.FC<SeoAuditViewProps> = ({
         // keep company field as-is
       }
     } catch {
-      fail('Cannot reach the Warden server. Start it with npm run dev:api.');
+      fail('Unable to connect right now. Please try again in a moment.');
     } finally {
       setAuditing(false);
     }
@@ -137,7 +138,7 @@ export const SeoAuditView: React.FC<SeoAuditViewProps> = ({
           return targetUrl;
         }
       })();
-      const res = await fetch('/api/seo/generate', {
+      const res = await fetch(`${API_BASE}/seo/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company, domain, description: brief }),
@@ -146,10 +147,10 @@ export const SeoAuditView: React.FC<SeoAuditViewProps> = ({
       if (res.ok && data?.ok) {
         setPack({ llms_txt: data.llms_txt, jsonld: data.jsonld });
       } else {
-        fail(data?.error || 'Pack generation failed. Is the orchestrator running?');
+        fail(data?.error || 'Pack generation failed. Please try again.');
       }
     } catch {
-      fail('Cannot reach the Warden server. Start it with npm run dev:api.');
+      fail('Unable to connect right now. Please try again in a moment.');
     } finally {
       setGenerating(false);
     }

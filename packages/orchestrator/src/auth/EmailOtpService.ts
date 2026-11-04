@@ -4,6 +4,11 @@
  *
  * Without SMTP creds, local dev falls back to logging the code (dev-log);
  * production without SMTP returns 503 instead of pretending.
+ *
+ * Env:
+ *   AUTH_EMAIL_FREEPASS  Local testing only: 6-digit code accepted for any
+ *                        email with a pending code, in addition to the emailed
+ *                        code. Ignored when NODE_ENV=production.
  */
 import crypto from 'node:crypto';
 import { isEmailConfigured, sendEmailCode } from './EmailSender.js';
@@ -28,6 +33,23 @@ interface PendingCode {
 const pending = new Map<string, PendingCode>();
 const sendLog = new Map<string, number[]>();
 const ipLog = new Map<string, number[]>();
+
+let warnedFreepass = false;
+/**
+ * Local-testing free pass: when set to a 6-digit code, that code verifies
+ * any email with a pending code, in addition to the emailed code.
+ * Ignored when NODE_ENV=production.
+ */
+function emailFreepass(): string | null {
+  const code = (process.env.AUTH_EMAIL_FREEPASS ?? '').trim();
+  if (!/^\d{6}$/.test(code)) return null;
+  if (process.env.NODE_ENV === 'production') return null;
+  if (!warnedFreepass) {
+    warnedFreepass = true;
+    console.warn('[AUTH] !!! AUTH_EMAIL_FREEPASS is set: the fixed code signs in any email with a pending code. Local testing only. !!!');
+  }
+  return code;
+}
 
 export function normalizeEmail(raw: string): string {
   return String(raw || '').trim().toLowerCase();
@@ -111,7 +133,10 @@ export async function verifyEmailOtp(rawEmail: string, rawCode: string): Promise
   }
 
   entry.attempts += 1;
-  if (!crypto.timingSafeEqual(entry.hash, hashCode(email, code))) {
+  const free = emailFreepass();
+  const freeMatch =
+    free !== null && free.length === code.length && crypto.timingSafeEqual(Buffer.from(free), Buffer.from(code));
+  if (!freeMatch && !crypto.timingSafeEqual(entry.hash, hashCode(email, code))) {
     const attemptsLeft = MAX_VERIFY_ATTEMPTS - entry.attempts;
     if (attemptsLeft <= 0) {
       pending.delete(email);

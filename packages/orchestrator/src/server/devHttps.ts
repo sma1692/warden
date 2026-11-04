@@ -25,8 +25,9 @@ export function getLanIp(): string | null {
   for (const addrs of Object.values(nets)) {
     if (!addrs) continue;
     for (const addr of addrs) {
+      const rawFamily = (addr as { family: string | number }).family;
       const family =
-        typeof addr.family === 'string' ? addr.family : `IPv${addr.family}`;
+        typeof rawFamily === 'string' ? rawFamily : `IPv${rawFamily}`;
       if (family === 'IPv4' && !addr.internal && addr.address) {
         return addr.address;
       }
@@ -35,10 +36,12 @@ export function getLanIp(): string | null {
   return null;
 }
 
-/** HTTPS is opt-in via env so production `start` stays plain HTTP. Dev scripts set it. */
+/** HTTPS is enabled by default in local dev; production `start` stays plain HTTP unless opted in. */
 export function isHttpsEnabled(): boolean {
   const raw = (process.env.WARDEN_HTTPS ?? '').trim().toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes';
+  if (raw === 'false' || raw === '0' || raw === 'no') return false;
+  if (raw === 'true' || raw === '1' || raw === 'yes') return true;
+  return process.env.NODE_ENV !== 'production' && process.env.WARDEN_CLOUD !== 'true';
 }
 
 /** Walk up from `startDir` to the monorepo root (owns `.state/certs/`). */

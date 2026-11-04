@@ -1,4 +1,5 @@
 import { authHeaders, getToken, notifyUnauthorized } from './auth';
+import { API_BASE, wsUrl } from './base';
 import type {
   Agent,
   AgentMemory,
@@ -46,8 +47,6 @@ import {
   executorForProject,
   pmForProject,
 } from '../data/workspaceProfile';
-
-const API_BASE = '/api';
 
 export type WsEventPayload = {
   type:
@@ -155,9 +154,7 @@ class WardenApiClient {
         return; // Backend offline
       }
 
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${proto}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
-      const socket = new WebSocket(wsUrl);
+      const socket = new WebSocket(wsUrl(token));
       this.ws = socket;
       let wasConnected = false;
 
@@ -1534,7 +1531,7 @@ class WardenApiClient {
       }
       return { ok: true, data: data as T };
     } catch {
-      return { ok: false, error: 'Cannot reach the Warden server. Is it running?' };
+      return { ok: false, error: 'Unable to connect right now. Please try again in a moment.' };
     }
   }
 

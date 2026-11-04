@@ -25,10 +25,18 @@ if (httpsEnabled) {
   }
 }
 
-// Orchestrator the dev proxy talks to; override to point a dev server at another instance.
+// Auto-detect the LAN IP + HTTPS protocol for the orchestrator backend during `npm run dev`.
+const apiPort = Number(process.env.PORT || 4000);
+const apiProto = https ? 'https' : 'http';
+const wsProto = https ? 'wss' : 'ws';
+const apiHost = lanIp || 'localhost';
 const apiTarget =
   process.env.WARDEN_API_URL ||
-  (https ? 'https://localhost:4000' : 'http://localhost:4000');
+  process.env.VITE_API_URL ||
+  `${apiProto}://${apiHost}:${apiPort}`;
+const wsTarget =
+  process.env.VITE_WS_URL ||
+  `${wsProto}://${apiHost}:${apiPort}/ws`;
 const apiTargetIsHttps = apiTarget.startsWith('https:');
 
 const printLanUrls: Plugin = {
@@ -45,12 +53,20 @@ const printLanUrls: Plugin = {
           `[WARDEN WEB] LAN (phone): ${proto}://${lanIp}:${port} (accept the self-signed cert warning once)`
         );
       }
+      console.log(`[WARDEN WEB] Backend API: ${apiTarget}`);
     });
   },
 };
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react(), tailwindcss(), printLanUrls],
+  define:
+    command === 'serve'
+      ? {
+          'import.meta.env.VITE_API_URL': JSON.stringify(apiTarget),
+          'import.meta.env.VITE_WS_URL': JSON.stringify(wsTarget),
+        }
+      : undefined,
   server: {
     port: 5173,
     strictPort: true,
@@ -84,4 +100,4 @@ export default defineConfig({
     host: '0.0.0.0',
     https,
   },
-});
+}));
