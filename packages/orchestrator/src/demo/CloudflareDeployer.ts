@@ -172,23 +172,42 @@ export async function attachCustomDomain(
   projectName: string,
   fqdn: string
 ): Promise<boolean> {
-  const base = 'https://api.cloudflare.com/client/v4';
+  const kaltiPath =
+    process.env.AWS_KALTI_CLI_PATH ||
+    '/Users/shabahatayubi/Documents/kehkasha/treefour/misc/commando/.state/mirror/aws-kalti/kalti.js';
+  const zoneId = (process.env.CLOUDFLARE_ZONE_ID || '').trim();
+  const zoneArgs = zoneId ? ` --zone-id ${zoneId} --require-dns` : '';
+  const cmd = `node ${kaltiPath} cloudflare attach-domain --project ${projectName} --domain ${fqdn}${zoneArgs}`;
+
   try {
-    const res = await fetch(`${base}/accounts/${accountId}/pages/projects/${projectName}/domains`, {
-      method: 'POST',
-      headers: cfHeaders(apiToken),
-      body: JSON.stringify({ name: fqdn }),
+    console.log(`[🚀 DEMO DEPLOY] Attaching domain ${fqdn} to project ${projectName} via aws-kalti...`);
+    execSync(cmd, {
+      env: {
+        ...process.env,
+        CLOUDFLARE_ACCOUNT_ID: accountId,
+        CLOUDFLARE_API_TOKEN: apiToken,
+      },
+      stdio: 'pipe',
+      timeout: 60000,
     });
-    if (res.ok || res.status === 409) {
-      return true;
-    }
-    const data = (await res.json().catch(() => null)) as any;
-    console.warn(
-      `[⚠️ DEMO DEPLOY] Custom domain attachment returned ${res.status}: ${JSON.stringify(data?.errors || res.statusText)}`
-    );
-    return false;
+    return true;
   } catch (err: any) {
-    console.warn(`[⚠️ DEMO DEPLOY] Failed to attach custom domain ${fqdn}: ${err?.message || err}`);
+    const errorOutput = err?.stderr ? String(err.stderr) : String(err?.message || err);
+    console.warn(
+      `[⚠️ DEMO DEPLOY] aws-kalti attach-domain failed for ${fqdn}: ${errorOutput.slice(0, 1000)}`
+    );
+    // Fallback to direct Cloudflare Pages custom domain API
+    const base = 'https://api.cloudflare.com/client/v4';
+    try {
+      const res = await fetch(`${base}/accounts/${accountId}/pages/projects/${projectName}/domains`, {
+        method: 'POST',
+        headers: cfHeaders(apiToken),
+        body: JSON.stringify({ name: fqdn }),
+      });
+      if (res.ok || res.status === 409) {
+        return true;
+      }
+    } catch {}
     return false;
   }
 }
@@ -252,7 +271,7 @@ export async function deployDemoProject(
 
     console.log(`[🚀 DEMO DEPLOY] Attaching custom domain ${fqdn} to project ${projectName} (aws-kalti)...`);
     await attachCustomDomain(accountId, apiToken, projectName, fqdn);
-    const primaryUrl = `https://${fqdn}`;
+    const primaryUrl = `https://${fqdn}/`;
     console.log(`[🚀 DEMO DEPLOY] Live at ${primaryUrl} (${Date.now() - started}ms)`);
     return {
       ok: true,

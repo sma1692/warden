@@ -109,7 +109,7 @@ export interface SpawnDemoResult {
 
 /**
  * Spawns the demo path for a user, provisioning the isolated scaffold
- * and configuring the unique `<unique-subdomain>.pages.dev` path.
+ * and configuring the unique `<unique-subdomain>.warden.autos` path.
  */
 export async function spawnDemoPath(
   userId: string,
@@ -169,12 +169,15 @@ export async function deployDemoPath(
   // Deploy project with custom domain specified
   const result = await deployDemoProject(userId, targetDir, gameId, subdomain);
   const effectiveProject = result.projectName || subdomain;
-  const canonicalUrl = `https://${subdomain}.${DEMO_BASE_DOMAIN}`;
+  const canonicalUrl = `https://${subdomain}.${DEMO_BASE_DOMAIN}/`;
   let finalUrl = result.primaryUrl || canonicalUrl;
 
   // If finalUrl points to a .pages.dev preview or dead hash link, normalize to .warden.autos
   if (finalUrl.includes('.pages.dev')) {
     finalUrl = canonicalUrl;
+  }
+  if (!finalUrl.endsWith('/')) {
+    finalUrl = `${finalUrl}/`;
   }
 
   // Record deployment: increments version (e.g. v1 -> v2) and stamps update timestamp

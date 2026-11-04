@@ -28,20 +28,43 @@ export function getDemoSubdomain(projectName?: string, deployUrl?: string | null
     try {
       const parsed = new URL(deployUrl.startsWith('http') ? deployUrl : `https://${deployUrl}`);
       if (parsed.hostname) {
-        let host = parsed.hostname.toLowerCase();
-        host = host.replace(/\.(warden\.autos|pages\.dev)$/i, '');
-        if (host.includes('.')) {
-          const parts = host.split('.').filter(Boolean);
-          host = parts[parts.length - 1];
+        const host = parsed.hostname.toLowerCase();
+        // If already ending with .warden.autos, preserve the full subdomain without stripping or truncating hostnames
+        if (host.endsWith('.warden.autos')) {
+          const sub = host.slice(0, -'.warden.autos'.length);
+          if (sub) {
+            return sub.replace(/[^a-zA-Z0-9-.]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
+          }
         }
-        return host.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
+        // If it's a .pages.dev preview URL (e.g. hash.projectName.pages.dev), normalize and extract canonical projectName
+        if (host.endsWith('.pages.dev')) {
+          let clean = host.slice(0, -'.pages.dev'.length);
+          if (clean.includes('.')) {
+            const parts = clean.split('.').filter(Boolean);
+            clean = parts[parts.length - 1];
+          }
+          return clean.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
+        }
+        // Generic hostname fallback: preserve full host structure
+        const clean = host.replace(/[^a-zA-Z0-9-.]/g, '-').replace(/^-+|-+$/g, '');
+        return clean || 'demo-arena';
       }
     } catch {
       // Fall through to project name
     }
   }
   if (projectName) {
-    return projectName.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'demo-arena';
+    let clean = projectName.trim().toLowerCase();
+    if (clean.endsWith('.warden.autos')) {
+      clean = clean.slice(0, -'.warden.autos'.length);
+    } else if (clean.endsWith('.pages.dev')) {
+      clean = clean.slice(0, -'.pages.dev'.length);
+      if (clean.includes('.')) {
+        const parts = clean.split('.').filter(Boolean);
+        clean = parts[parts.length - 1];
+      }
+    }
+    return clean.replace(/[^a-zA-Z0-9-.]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
   }
   return 'demo-arena';
 }
@@ -54,17 +77,22 @@ export function formatSubdomainUrl(subdomain: string): string {
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     try {
       const parsed = new URL(trimmed);
-      let host = parsed.hostname.toLowerCase();
+      const host = parsed.hostname.toLowerCase();
+      // If already ending with .warden.autos, preserve exact hostname without stripping or truncating
       if (host.endsWith('.warden.autos')) {
         return `https://${host}`;
       }
-      host = host.replace(/\.(pages\.dev)$/i, '');
-      if (host.includes('.')) {
-        const parts = host.split('.').filter(Boolean);
-        host = parts[parts.length - 1];
+      if (host.endsWith('.pages.dev')) {
+        let clean = host.slice(0, -'.pages.dev'.length);
+        if (clean.includes('.')) {
+          const parts = clean.split('.').filter(Boolean);
+          clean = parts[parts.length - 1];
+        }
+        const cleanSub = clean.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
+        return `https://${cleanSub}.warden.autos`;
       }
-      const cleanSub = host.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
-      return `https://${cleanSub}.warden.autos`;
+      const cleanHost = host.replace(/[^a-zA-Z0-9-.]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
+      return `https://${cleanHost}.warden.autos`;
     } catch {
       // Fall through
     }
@@ -74,12 +102,14 @@ export function formatSubdomainUrl(subdomain: string): string {
     return `https://${cleanHost}`;
   }
   let clean = trimmed.toLowerCase();
-  clean = clean.replace(/\.(pages\.dev)$/i, '');
-  if (clean.includes('.')) {
-    const parts = clean.split('.').filter(Boolean);
-    clean = parts[parts.length - 1];
+  if (clean.endsWith('.pages.dev')) {
+    clean = clean.slice(0, -'.pages.dev'.length);
+    if (clean.includes('.')) {
+      const parts = clean.split('.').filter(Boolean);
+      clean = parts[parts.length - 1];
+    }
   }
-  clean = clean.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
+  clean = clean.replace(/[^a-zA-Z0-9-.]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
   return `https://${clean}.warden.autos`;
 }
 
@@ -98,7 +128,18 @@ export const DemoDashboardView: React.FC<{
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            const sub = getDemoSubdomain(parsed.subdomain, parsed.url);
+            const url = formatSubdomainUrl(sub);
+            return {
+              ...parsed,
+              subdomain: sub,
+              url,
+            };
+          }
+        }
       } catch {
         // ignore
       }

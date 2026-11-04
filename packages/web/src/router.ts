@@ -27,7 +27,7 @@ export const ONBOARDING_STEPS = [
 ] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
-const AUTH_STEPS = ['landing', 'login', 'otp'] as const;
+const AUTH_STEPS = ['landing', 'architecture', 'security', 'docs', 'login', 'otp'] as const;
 
 function normalize(pathname: string): string {
   if (!pathname) return '/';
@@ -40,6 +40,9 @@ function normalize(pathname: string): string {
 export function authStepForPath(pathname: string): string | null {
   const path = normalize(pathname);
   if (path === '/') return 'landing';
+  if (path === '/architecture') return 'architecture';
+  if (path === '/security') return 'security';
+  if (path === '/docs') return 'docs';
   if (path === '/login') return 'login';
   if (path === '/otp') return 'otp';
   if (path.startsWith('/onboarding/')) {
@@ -52,6 +55,9 @@ export function authStepForPath(pathname: string): string | null {
 
 /** Canonical path for an auth/onboarding step id. `loading` shares `/` with landing. */
 export function pathForAuthStep(step: string): string {
+  if (step === 'architecture') return '/architecture';
+  if (step === 'security') return '/security';
+  if (step === 'docs') return '/docs';
   if (step === 'login') return '/login';
   if (step === 'otp') return '/otp';
   if ((ONBOARDING_STEPS as readonly string[]).includes(step)) return `/onboarding/${step}`;

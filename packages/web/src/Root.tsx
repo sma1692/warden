@@ -36,7 +36,15 @@ function sessionFor(user: AuthUser | null): Session {
     const urlStep = authStepForPath(path);
     // A cold /otp deep link has no pending code: start at login instead.
     if (urlStep === 'otp') navigateTo('/login', { replace: true });
-    else if (urlStep !== 'login' && path !== '/') navigateTo('/', { replace: true });
+    else if (
+      urlStep !== 'login' &&
+      urlStep !== 'architecture' &&
+      urlStep !== 'security' &&
+      urlStep !== 'docs' &&
+      path !== '/'
+    ) {
+      navigateTo('/', { replace: true });
+    }
     return { state: 'signed_out' };
   }
   if (user.onboarding.status === 'COMPLETE') {
@@ -52,10 +60,19 @@ function sessionFor(user: AuthUser | null): Session {
 
 /**
  * Signed-out entry step from the URL. `/` boots through the loader as before;
- * `/login` deep links straight to login.
+ * `/login`, `/architecture`, `/security`, and `/docs` deep link directly.
  */
 function signedOutStep(): OnboardingStepId {
-  return getPathname() === '/login' ? 'login' : 'loading';
+  const urlStep = authStepForPath(getPathname());
+  if (
+    urlStep === 'login' ||
+    urlStep === 'architecture' ||
+    urlStep === 'security' ||
+    urlStep === 'docs'
+  ) {
+    return urlStep;
+  }
+  return 'loading';
 }
 
 /**

@@ -48,10 +48,14 @@ import {
   pathForAuthStep,
 } from '../router';
 import { StorageKeys, readStorage, writeStorage } from '../utils/storage';
+import { LandingBottomNav, LandingInfoPage } from './LandingInfoPages';
 
 export type OnboardingStepId =
   | 'loading'
   | 'landing'
+  | 'architecture'
+  | 'security'
+  | 'docs'
   | 'login'
   | 'otp'
   | 'f1'
@@ -793,7 +797,11 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       {/* MAIN ONBOARDING STAGE CONTAINER */}
       <div
         className={
-          step === 'landing' || (step === 'f1' && f1Phase !== 'tracks')
+          step === 'landing' ||
+          step === 'architecture' ||
+          step === 'security' ||
+          step === 'docs' ||
+          (step === 'f1' && f1Phase !== 'tracks')
             ? 'flex-1 flex flex-col'
             : 'flex-1 flex items-center justify-center p-4 sm:p-6'
         }
@@ -948,16 +956,12 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   </div>
                 </div>
 
-                {/* Generic Bottom Navigation (Mobile) */}
-                <nav
-                  aria-label="Mobile bottom navigation"
-                  className="rounded-2xl border border-[#22262E] bg-[#14161A]/90 backdrop-blur-md px-4 py-3 flex items-center justify-around text-[11px] font-mono text-slate-400"
-                >
-                  <span className="text-[#D4B475] font-semibold">Overview</span>
-                  <span>Architecture</span>
-                  <span>Security</span>
-                  <span>Docs</span>
-                </nav>
+                {/* Bottom Navigation (Mobile) */}
+                <LandingBottomNav
+                  activeTab="landing"
+                  onSelectTab={(t) => setStep(t)}
+                  variant="mobile"
+                />
               </section>
 
               {/* RIGHT EDITORIAL ARCHITECTURE SHOWCASE (Desktop lg+) */}
@@ -1065,21 +1069,22 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               </section>
             </div>
 
-            {/* Generic Bottom Bar (Desktop) */}
-            <nav
-              aria-label="Desktop bottom navigation"
-              className="hidden lg:flex items-center justify-between border-t border-[#22262E] px-10 xl:px-12 py-3 text-xs font-mono text-slate-400"
-            >
-              <span className="text-[#D4B475] font-semibold tracking-wider">WARDEN OS</span>
-              <div className="flex items-center gap-8">
-                <span className="text-slate-200">Overview</span>
-                <span>Architecture</span>
-                <span>Security</span>
-                <span>Docs</span>
-              </div>
-              <span className="text-slate-500">v1.0</span>
-            </nav>
+            {/* Bottom Bar (Desktop) */}
+            <LandingBottomNav
+              activeTab="landing"
+              onSelectTab={(t) => setStep(t)}
+              variant="desktop"
+            />
           </div>
+        )}
+
+        {/* PUBLIC LANDING INFO PAGES: ARCHITECTURE / SECURITY / DOCS */}
+        {(step === 'architecture' || step === 'security' || step === 'docs') && (
+          <LandingInfoPage
+            tab={step}
+            onSelectTab={(t) => setStep(t)}
+            onStart={() => setStep('login')}
+          />
         )}
 
         {/* STEP 2: LOGIN MODAL (Email OTP) */}

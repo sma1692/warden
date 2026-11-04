@@ -51,14 +51,14 @@ export function getDemoMetadata(userId: string): DemoMetadata {
 /**
  * Normalizes a Pages deploy URL to ensure it never becomes a dead <hash>.pages.dev link.
  * If given a deployment URL like https://<hash>.<projectName>.pages.dev,
- * it returns the canonical https://<projectName>.pages.dev/ or preserves the full hostname intact.
+ * it returns the canonical https://<projectName>.warden.autos/ or preserves the full hostname intact.
  */
 export function normalizeDeployUrl(
   rawUrl: string | null | undefined,
   projectName?: string | null
 ): string | null {
   if (!rawUrl) {
-    return projectName ? `https://${projectName}.warden.autos` : null;
+    return projectName ? `https://${projectName}.warden.autos/` : null;
   }
 
   const trimmed = rawUrl.trim();
@@ -71,33 +71,33 @@ export function normalizeDeployUrl(
       if (parts.length > 1) {
         // Deployment preview or hash URL: <hash>.<projectName>.warden.autos
         const proj = projectName || parts[parts.length - 1];
-        return `https://${proj}.warden.autos`;
+        return `https://${proj}.warden.autos/`;
       }
       if (parts.length === 1) {
         const single = parts[0];
         if (projectName && single !== projectName && /^[a-f0-9]{7,}$/i.test(single)) {
-          return `https://${projectName}.warden.autos`;
+          return `https://${projectName}.warden.autos/`;
         }
-        return `https://${single}.warden.autos`;
+        return `https://${single}.warden.autos/`;
       }
-      return trimmed;
+      return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
     }
 
     if (host.endsWith('.pages.dev')) {
       const parts = host.replace(/\.pages\.dev$/, '').split('.').filter(Boolean);
       if (parts.length > 1) {
         // Deployment preview URL: <hash>.<projectName>.pages.dev
-        // Return canonical URL for project
+        // Return canonical URL for project on warden.autos
         const proj = projectName || parts[parts.length - 1];
-        return `https://${proj}.pages.dev/`;
+        return `https://${proj}.warden.autos/`;
       }
       if (parts.length === 1) {
         const single = parts[0];
         // Dead link check: if single part is a hex hash and projectName is known, heal it
         if (projectName && single !== projectName && /^[a-f0-9]{7,}$/i.test(single)) {
-          return `https://${projectName}.pages.dev/`;
+          return `https://${projectName}.warden.autos/`;
         }
-        return `https://${single}.pages.dev/`;
+        return `https://${single}.warden.autos/`;
       }
     }
     return trimmed;

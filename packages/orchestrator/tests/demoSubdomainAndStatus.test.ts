@@ -138,13 +138,13 @@ describe('Demo Subdomain & Demo Status', () => {
     const fqdnPagesDev = getDemoSubdomainFqdn(`https://7a8b9c0d.${projectName}.pages.dev`, 'pages.dev');
     assert.equal(fqdnPagesDev, `${projectName}.pages.dev`);
 
-    // 3. recordDeployment normalizes preview URL to canonical https://${projectName}.pages.dev/
+    // 3. recordDeployment normalizes preview URL to canonical https://${projectName}.warden.autos/
     const deployed = recordDeployment(userId, {
       deployUrl: `https://7a8b9c0d.${projectName}.pages.dev`,
       projectName,
       status: 'ACTIVE',
     });
-    assert.equal(deployed.deployUrl, `https://${projectName}.pages.dev/`);
+    assert.equal(deployed.deployUrl, `https://${projectName}.warden.autos/`);
     assert.equal(deployed.projectName, projectName);
     assert.equal(deployed.subdomain, projectName);
 
@@ -154,6 +154,6 @@ describe('Demo Subdomain & Demo Status', () => {
       projectName,
       status: 'ACTIVE',
     });
-    assert.equal(deployed2.deployUrl, `https://${projectName}.pages.dev/`);
+    assert.equal(deployed2.deployUrl, `https://${projectName}.warden.autos/`);
   });
 });
