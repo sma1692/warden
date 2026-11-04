@@ -327,6 +327,37 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
     };
   }, [pendingRun, activeThread, finishPendingRun]);
 
+  // Real-time stream for spawned Needs Action threads (@warden -> @cto/@cmo -> specialist)
+  useEffect(() => {
+    const tid = activeThread?.id;
+    if (!tid || !tid.startsWith('thr_spawn_')) return;
+    let cancelled = false;
+    const pollSpawnThread = async () => {
+      if (cancelled || activeThreadIdRef.current !== tid) return;
+      try {
+        const loaded = await apiClient.getChatMessages(tid);
+        if (cancelled || activeThreadIdRef.current !== tid) return;
+        setMessages((prev) => {
+          if (
+            prev.length === loaded.length &&
+            prev.every((m, i) => m.id === loaded[i]?.id)
+          ) {
+            return prev;
+          }
+          return loaded;
+        });
+      } catch {
+        // Ignore transient poll errors
+      }
+    };
+    const interval = window.setInterval(pollSpawnThread, 1800);
+    void pollSpawnThread();
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeThread?.id]);
+
   // Elapsed-seconds ticker for the typing indicator pill.
   useEffect(() => {
     if (!pendingRun) {

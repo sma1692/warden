@@ -5,11 +5,11 @@ import { getDemoMetadata, recordDeployment, type DemoMetadata } from '../../hand
 import { getDemoWorkspace, recordDemoDeploy } from '../../demo/DemoProvisioning.js';
 
 export const DEMO_BASE_DOMAIN =
-  (process.env.DEMO_BASE_DOMAIN || process.env.CLOUDFLARE_BASE_DOMAIN || 'warden.autos').trim();
+  (process.env.DEMO_BASE_DOMAIN || 'pages.dev').trim();
 
 /**
  * Builds a clean, unique DNS-compliant subdomain label.
- * Logic ensures format `<unique-subdomain>.warden.autos`.
+ * Logic ensures format `<unique-subdomain>.pages.dev`.
  */
 export function buildUniqueSubdomain(
   userId: string,
@@ -26,7 +26,7 @@ export function buildUniqueSubdomain(
 }
 
 /**
- * Returns the fully qualified domain name `<unique-subdomain>.warden.autos`
+ * Returns the fully qualified domain name `<unique-subdomain>.pages.dev`
  */
 export function getDemoSubdomainFqdn(subdomain: string, baseDomain = DEMO_BASE_DOMAIN): string {
   const stripped = subdomain.replace(new RegExp(`\\.${baseDomain}$`, 'i'), '');
@@ -35,7 +35,7 @@ export function getDemoSubdomainFqdn(subdomain: string, baseDomain = DEMO_BASE_D
 }
 
 /**
- * Returns the full HTTPS URL `https://<unique-subdomain>.warden.autos`
+ * Returns the full HTTPS URL `https://<unique-subdomain>.pages.dev`
  */
 export function getDemoSubdomainUrl(subdomain: string, baseDomain = DEMO_BASE_DOMAIN): string {
   return `https://${getDemoSubdomainFqdn(subdomain, baseDomain)}`;
@@ -43,7 +43,7 @@ export function getDemoSubdomainUrl(subdomain: string, baseDomain = DEMO_BASE_DO
 
 /**
  * Resolves the unique subdomain details for a user and game:
- * returns `<unique-subdomain>`, `<unique-subdomain>.warden.autos`, and HTTPS URL.
+ * returns `<unique-subdomain>`, `<unique-subdomain>.pages.dev`, and HTTPS URL.
  */
 export function resolveDemoSubdomain(
   userId: string,
@@ -73,7 +73,7 @@ export interface SpawnDemoResult {
 
 /**
  * Spawns the demo path for a user, provisioning the isolated scaffold
- * and configuring the unique `<unique-subdomain>.warden.autos` path.
+ * and configuring the unique `<unique-subdomain>.pages.dev` path.
  */
 export async function spawnDemoPath(
   userId: string,
@@ -112,7 +112,7 @@ export interface DeployDemoPathResult {
 }
 
 /**
- * Deploys the demo path to Cloudflare and attaches the unique `<unique-subdomain>.warden.autos`.
+ * Deploys the demo path to Cloudflare and returns the `.pages.dev` URL.
  * Automatically increments the version number (v1, v2, ...) and records the update timestamp.
  */
 export async function deployDemoPath(
@@ -132,7 +132,7 @@ export async function deployDemoPath(
 
   // Deploy project
   const result = await deployDemoProject(userId, targetDir, gameId);
-  const finalUrl = result.primaryUrl || url;
+  const finalUrl = result.pagesDevUrl || result.primaryUrl || url;
 
   // Record deployment: increments version (e.g. v1 -> v2) and stamps update timestamp
   const metadata = recordDeployment(userId, {
@@ -152,7 +152,7 @@ export async function deployDemoPath(
     subdomain,
     fqdn,
     url: finalUrl,
-    pagesDevUrl: result.pagesDevUrl,
+    pagesDevUrl: result.pagesDevUrl || finalUrl,
     status: result.status,
     metadata,
     rawDeployResult: result,
@@ -229,7 +229,7 @@ export async function handleDemoSubdomainRoutes(
   }
 
   if ((pathname === '/api/demo/subdomain/spawn' || pathname === '/api/demo/spawn') && method === 'POST') {
-    const body = await ctx.readJsonBody().catch(() => ({} as Record<string, any>));
+    const body: Record<string, any> = (await ctx.readJsonBody().catch(() => ({}))) || {};
     const spawnRes = await spawnDemoPath(targetUser, {
       gameId: body?.gameId,
       customSubdomain: body?.subdomain,
@@ -239,7 +239,7 @@ export async function handleDemoSubdomainRoutes(
   }
 
   if ((pathname === '/api/demo/subdomain/deploy' || pathname === '/api/demo/deploy') && method === 'POST') {
-    const body = await ctx.readJsonBody().catch(() => ({} as Record<string, any>));
+    const body: Record<string, any> = (await ctx.readJsonBody().catch(() => ({}))) || {};
     const deployRes = await deployDemoPath(targetUser, {
       gameId: body?.gameId,
       customSubdomain: body?.subdomain,

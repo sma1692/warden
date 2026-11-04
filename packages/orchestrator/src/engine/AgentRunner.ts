@@ -208,7 +208,7 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
 export class AgentRunner {
   private store: OrchestratorStore;
   private healthGuard: HealthAndQuotaGuard;
-  private modelRouter: ModelRouter;
+  public readonly modelRouter: ModelRouter;
   private memoryEngine: HybridMemoryEngine;
 
   constructor(options: {

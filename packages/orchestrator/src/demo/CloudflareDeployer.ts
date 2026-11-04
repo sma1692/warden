@@ -159,48 +159,14 @@ function deployViaWrangler(accountId: string, apiToken: string, distDir: string,
   return { deploymentId: idMatch ? idMatch[1] : `cf-${Date.now()}`, pagesDevUrl };
 }
 
-export async function attachCustomDomain(accountId: string, apiToken: string, projectName: string, fqdn: string): Promise<boolean> {
-  const defaultKaltiPath = '/Users/shabahatayubi/Documents/kehkasha/misc/aws-kalti/kalti.js';
-  const kaltiPath =
-    process.env.AWS_KALTI_PATH ||
-    (fs.existsSync(defaultKaltiPath)
-      ? defaultKaltiPath
-      : fs.existsSync(path.resolve(process.cwd(), '.state/mirror/aws-kalti/kalti.js'))
-        ? path.resolve(process.cwd(), '.state/mirror/aws-kalti/kalti.js')
-        : defaultKaltiPath);
-
-  let kaltiSuccess = false;
-  try {
-    const zoneFlag = process.env.CLOUDFLARE_ZONE_ID ? ` --zone-id ${process.env.CLOUDFLARE_ZONE_ID}` : '';
-    const cmd = `node ${kaltiPath} cloudflare attach-domain --project ${projectName} --domain ${fqdn}${zoneFlag} --json`;
-    console.log(`[DemoDeploy] Invoking aws-kalti to bind custom domain & DNS CNAME: ${cmd}`);
-    const { stdout, stderr } = await execAsync(cmd, {
-      env: {
-        ...process.env,
-        CLOUDFLARE_ACCOUNT_ID: accountId,
-        CLOUDFLARE_API_TOKEN: apiToken,
-      },
-      timeout: 120000,
-    });
-    if (stdout) console.log(`[DemoDeploy] aws-kalti output for ${fqdn}:`, stdout.trim());
-    if (stderr) console.warn(`[DemoDeploy] aws-kalti stderr for ${fqdn}:`, stderr.trim());
-    kaltiSuccess = true;
-  } catch (err: any) {
-    console.warn(`[DemoDeploy] aws-kalti attach-domain warning for ${fqdn}:`, err?.message || err);
-  }
-
-  // Idempotently ensure Cloudflare Pages custom domain binding via direct API as well
-  try {
-    const res = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}/domains`,
-      { method: 'POST', headers: cfHeaders(apiToken), body: JSON.stringify({ name: fqdn }) }
-    );
-    const directApiOk = res.ok || res.status === 409;
-    return kaltiSuccess || directApiOk;
-  } catch (err) {
-    console.warn(`[DemoDeploy] Direct Cloudflare custom domain attach failed for ${fqdn}:`, err);
-    return kaltiSuccess;
-  }
+export async function attachCustomDomain(
+  _accountId: string,
+  _apiToken: string,
+  _projectName: string,
+  _fqdn: string
+): Promise<boolean> {
+  // Bypassed: custom domain attachment removed in favor of direct *.pages.dev URLs
+  return true;
 }
 
 export function cloudflareConfigured(): boolean {
@@ -250,40 +216,14 @@ export async function deployDemoProject(
     console.log(`[🚀 DEMO DEPLOY] Uploading ${distPath} (${fileCount} files) via Wrangler to project=${projectName} branch=${branch}...`);
     const { deploymentId, pagesDevUrl } = deployViaWrangler(accountId, apiToken, distPath, projectName, branch);
     console.log(`[🚀 DEMO DEPLOY] Wrangler upload complete: deploymentId=${deploymentId} pagesDevUrl=${pagesDevUrl}`);
-    const baseDomain = (process.env.CLOUDFLARE_BASE_DOMAIN || process.env.DEMO_BASE_DOMAIN || 'warden.autos').trim();
-    let primaryUrl: string | null = pagesDevUrl;
-    const domainsToAttach: string[] = [];
-
-    if (customDomain && customDomain.trim()) {
-      const cleanCustom = customDomain.trim();
-      domainsToAttach.push(cleanCustom.includes('.') ? cleanCustom : `${cleanCustom}.${baseDomain}`);
-    }
-
-    if (baseDomain) {
-      const defaultFqdn = `${projectName}.${baseDomain}`;
-      if (!domainsToAttach.includes(defaultFqdn)) {
-        domainsToAttach.push(defaultFqdn);
-      }
-      // Also bind clean subdomain format <uuser-game>.<baseDomain> if projectName is prefixed
-      const cleanSubdomain = `u${shortUser(userId)}-${sanitizeSubdomain(gameId, 25)}.${baseDomain}`;
-      if (!domainsToAttach.includes(cleanSubdomain)) {
-        domainsToAttach.push(cleanSubdomain);
-      }
-    }
-
-    for (const fqdn of domainsToAttach) {
-      const attached = await attachCustomDomain(accountId, apiToken, projectName, fqdn);
-      if (attached && (!primaryUrl || primaryUrl === pagesDevUrl)) {
-        primaryUrl = `https://${fqdn}`;
-      }
-    }
+    const primaryUrl = pagesDevUrl || `https://${projectName}.pages.dev`;
     console.log(`[🚀 DEMO DEPLOY] Live at ${primaryUrl} (${Date.now() - started}ms)`);
     return {
       ok: true,
       status: 'ACTIVE',
       projectName,
       primaryUrl,
-      pagesDevUrl,
+      pagesDevUrl: primaryUrl,
       deploymentId,
       fileCount,
       totalDurationMs: Date.now() - started,

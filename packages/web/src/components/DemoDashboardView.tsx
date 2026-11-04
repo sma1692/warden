@@ -23,8 +23,8 @@ export interface DemoDeployMeta {
 const STORAGE_KEY = 'warden_demo_deploy_info';
 const CHANNEL_NAME = 'warden_demo_deploy_channel';
 
-export function getDemoSubdomain(projectName?: string, deployUrl?: string | null): string {
-  if (deployUrl && deployUrl.includes('.warden.autos')) {
+export function getDemoProject(projectName?: string, deployUrl?: string | null): string {
+  if (deployUrl) {
     try {
       const parsed = new URL(deployUrl.startsWith('http') ? deployUrl : `https://${deployUrl}`);
       const firstPart = parsed.hostname.split('.')[0];
@@ -39,10 +39,13 @@ export function getDemoSubdomain(projectName?: string, deployUrl?: string | null
   return 'demo-arena';
 }
 
-export function formatSubdomainUrl(subdomain: string): string {
-  const clean = subdomain.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase() || 'demo-arena';
-  return `https://${clean}.warden.autos`;
+export function formatPagesDevUrl(project: string): string {
+  const clean = project.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase() || 'demo-arena';
+  return `https://${clean}.pages.dev`;
 }
+
+export const getDemoSubdomain = getDemoProject;
+export const formatSubdomainUrl = formatPagesDevUrl;
 
 export const DemoDashboardView: React.FC<{
   onError?: (message: string) => void;
@@ -68,7 +71,7 @@ export const DemoDashboardView: React.FC<{
       updatedAt: now.toISOString(),
       formattedTimestamp: now.toLocaleString(),
       subdomain: 'demo-arena',
-      url: 'https://demo-arena.warden.autos',
+      url: 'https://demo-arena.pages.dev',
     };
   });
 
@@ -194,9 +197,9 @@ export const DemoDashboardView: React.FC<{
               </span>
             </div>
 
-            {/* Prominently display the https://<subdomain>.warden.autos URL */}
+            {/* Prominently display the https://<project>.pages.dev URL */}
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-400 font-mono">Domain:</span>
+              <span className="text-xs text-slate-400 font-mono">Pages URL:</span>
               <a
                 href={liveUrl}
                 target="_blank"
@@ -210,7 +213,7 @@ export const DemoDashboardView: React.FC<{
             </div>
 
             <p className="mt-0.5 text-xs text-slate-400">
-              Subdomain endpoint configured on Cloudflare edge. Last updated: {deployMeta.formattedTimestamp}
+              Cloudflare Pages deployment. Last updated: {deployMeta.formattedTimestamp}
             </p>
           </div>
         </div>

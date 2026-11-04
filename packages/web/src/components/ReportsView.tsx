@@ -133,7 +133,22 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     setRuns(sorted);
     setAgents(loadedAgents);
     setSelectedRunId((prev) => {
-      if (prev && sorted.some((r) => r.id === prev)) return prev;
+      if (prev) {
+        const current = sorted.find((r) => r.id === prev);
+        if (current) {
+          // If the currently viewed run just completed and spawned a live child run,
+          // advance automatically so the user sees the active subagent brain trace.
+          if (current.status === 'COMPLETED') {
+            const liveChild = sorted.find(
+              (r) =>
+                r.parent_run_id === prev &&
+                (r.status === 'RUNNING' || r.status === 'VERIFYING_QA')
+            );
+            if (liveChild) return liveChild.id;
+          }
+          return prev;
+        }
+      }
       const firstLive = sorted.find(
         (r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA'
       );
@@ -197,6 +212,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         if (evt.type === 'STEP_CREATED' && evt.data) {
           const step = evt.data as InferenceStep;
           if (step.run_id && step.run_id === selectedRunId) {
+            setSteps((prev) =>
+              prev.some((s) => s.id === step.id) ? prev : [...prev, step]
+            );
+            setExpandedSteps((prev) =>
+              prev[step.id] !== undefined ? prev : { ...prev, [step.id]: true }
+            );
             void loadStepsForSelected(selectedRunId);
           }
         } else if (evt.type === 'RUN_UPDATED' && evt.data) {
@@ -288,6 +309,36 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     if (!selectedRun?.backlog_item_id) return undefined;
     return backlogItems.find((b) => b.id === selectedRun.backlog_item_id);
   }, [selectedRun, backlogItems]);
+
+  const delegationChain = useMemo(() => {
+    if (!selectedRun) return [];
+    if (selectedRun.backlog_item_id) {
+      return runs
+        .filter((r) => r.backlog_item_id === selectedRun.backlog_item_id)
+        .sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''));
+    }
+    return [];
+  }, [runs, selectedRun]);
+
+  // Real-time 1.5s polling while any run is active so the Brain Trace updates
+  // live even if WebSocket frames are buffered or reconnected.
+  useEffect(() => {
+    const activeId = selectedRun?.id || selectedRunId;
+    const hasLive =
+      liveRuns.length > 0 ||
+      selectedRun?.status === 'RUNNING' ||
+      selectedRun?.status === 'VERIFYING_QA';
+    if (!hasLive) return;
+
+    const timer = window.setInterval(() => {
+      void loadActivity();
+      if (activeId) {
+        void loadStepsForSelected(activeId);
+      }
+    }, 1500);
+
+    return () => window.clearInterval(timer);
+  }, [liveRuns.length, selectedRun?.id, selectedRun?.status, selectedRunId, loadActivity, loadStepsForSelected]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
@@ -506,7 +557,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   run.status === 'RUNNING' || run.status === 'VERIFYING_QA';
                 const totalTokens =
                   (run.tokens_in || 0) +
-                  (run.tokens_cached || 0) +
                   (run.tokens_thinking || 0) +
                   (run.tokens_out || 0);
 
@@ -631,7 +681,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                         onClick={() => onOpenBacklogItem(selectedBacklogItem.id)}
                         className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-panel)] border border-[var(--surface-border)] hover:border-[var(--surface-accent-gold)]/50 px-3 py-1.5 text-xs font-semibold text-[var(--text-main)] transition cursor-pointer"
                       >
-                        <span>Task ({selectedBacklogItem.stage})</span>
+                        <span>
+                          Task (
+                          {selectedBacklogItem.stage === 'DONE' ||
+                          (delegationChain.length > 0 &&
+                            delegationChain.every((r) => r.status === 'COMPLETED'))
+                            ? 'DONE'
+                            : selectedBacklogItem.stage}
+                          )
+                        </span>
                       </button>
                     )}
                     {onOpenChatWithAgent && (
@@ -648,20 +706,45 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                         <span>Chat with Agent</span>
                       </button>
                     )}
-                    {selectedAgent && onInspectAgent && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onInspectAgent(selectedAgent, 'trace', selectedRun.id)
-                        }
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-panel)] border border-[var(--surface-border)] hover:border-[var(--surface-accent)]/50 px-3 py-1.5 text-xs font-semibold text-[var(--text-main)] transition cursor-pointer"
-                      >
-                        <Brain className="h-3.5 w-3.5 text-[var(--surface-accent)]" />
-                        <span>Full Agent Drawer</span>
-                      </button>
-                    )}
                   </div>
                 </div>
+
+                {delegationChain.length > 1 && (
+                  <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2 flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
+                    <span className="text-[var(--text-muted)] mr-1">Spawn Chain:</span>
+                    {delegationChain.map((chainRun, idx) => {
+                      const chainAgent = agentByIdOrSlug(chainRun.agent_id);
+                      const chainSlug = chainAgent?.slug || `@${chainRun.agent_id}`;
+                      const active = chainRun.id === selectedRun.id;
+                      const running =
+                        chainRun.status === 'RUNNING' ||
+                        chainRun.status === 'VERIFYING_QA';
+                      return (
+                        <React.Fragment key={chainRun.id}>
+                          {idx > 0 && (
+                            <span className="text-[var(--text-muted)]">→</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRunId(chainRun.id)}
+                            className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 transition cursor-pointer ${
+                              active
+                                ? 'border-[var(--surface-accent-gold)] bg-[var(--surface-accent-gold)]/20 text-[var(--surface-accent-gold)] font-bold'
+                                : 'border-[var(--surface-border)] bg-[var(--surface-elevated)] text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                            }`}
+                          >
+                            {running ? (
+                              <span className="h-1.5 w-1.5 rounded-full bg-[var(--semantic-success)] animate-pulse" />
+                            ) : (
+                              <CheckCircle2 className="h-3 w-3 text-[var(--surface-accent-gold)]" />
+                            )}
+                            <span>{chainSlug}</span>
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Output Summary & Metadata */}
                 {selectedRun.output_summary && (

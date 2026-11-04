@@ -900,29 +900,26 @@ export class ControlPlaneServer {
         try {
           const llmPromise = this.agentRunner.modelRouter.generate({
             agentId: wardenAgent.id,
-            hierarchyLevel: 0,
-            stepType: 'LLM_INFERENCE',
+            runId: wardenRunId,
             provider: wardenAgent.model_provider,
             modelId: wardenAgent.model_id,
-            fallbackProvider: wardenAgent.fallback_provider,
-            fallbackModelId: wardenAgent.fallback_model_id,
             systemPrompt:
               `You are @warden, Executive Chief of Staff. The CEO just approved the execution plan for "${item.title}". ` +
               `Acknowledge the approved plan and any custom CEO note in 2 concise sentences, and state that you are delegating execution to ${deptAgent.slug} and ${specialistAgent.slug}.`,
-            userPrompt: summary,
-            maxTokens: 220,
+            prompt: summary,
+            maxOutputTokens: 220,
             temperature: 0.3,
-            userId: item.user_id ?? null,
+            userId: item.user_id ?? undefined,
           });
           const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 4000));
           const llmRes = await Promise.race([llmPromise, timeoutPromise]);
-          if (llmRes && llmRes.content && !llmRes.content.includes('Offline fallback')) {
+          if (llmRes && llmRes.content && !llmRes.simulated && !llmRes.content.includes('Offline fallback')) {
             wardenReplyText = llmRes.content.trim();
-            wardenTokensIn = llmRes.tokensIn || wardenTokensIn;
-            wardenTokensCached = llmRes.tokensCached || wardenTokensCached;
-            wardenTokensThinking = llmRes.tokensThinking || wardenTokensThinking;
-            wardenTokensOut = llmRes.tokensOut || wardenTokensOut;
-            wardenCost = llmRes.costUsd || wardenCost;
+            wardenTokensIn = llmRes.usage?.tokens_in || wardenTokensIn;
+            wardenTokensCached = llmRes.usage?.tokens_cached || wardenTokensCached;
+            wardenTokensThinking = llmRes.usage?.tokens_thinking || wardenTokensThinking;
+            wardenTokensOut = llmRes.usage?.tokens_out || wardenTokensOut;
+            wardenCost = llmRes.usage?.cost_usd || wardenCost;
           } else {
             await new Promise((r) => setTimeout(r, 1400));
           }
