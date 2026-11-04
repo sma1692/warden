@@ -309,6 +309,18 @@ export interface ChatMessageRecord {
   created_at: string;
 }
 
+// Drops repeat rows by id, keeping the first. Hydration must not trust persisted
+// state blindly: a snapshot written before the upsert guards can hold the same
+// message twice, and React keys plus WS dedup both assume unique ids.
+export function dedupeMessagesById<T extends { id: string }>(messages: T[]): T[] {
+  const seen = new Set<string>();
+  return messages.filter((m) => {
+    if (!m?.id || seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
+}
+
 export type BacklogStage =
   | 'INBOX'
   | 'NEEDS_CEO'
@@ -678,6 +690,27 @@ export class OrchestratorStore {
             'Interrupted by server restart before completion. Resend your message to continue.',
           ended_at: nowIso,
         });
+        // Tell the user in the chat instead of leaving their message unanswered.
+        const isRootChatRun =
+          run.chat_thread_id &&
+          !run.parent_run_id &&
+          (run.trigger_type === 'CEO_CHAT' || run.trigger_type === 'DIRECT_MENTION') &&
+          this.threads.has(run.chat_thread_id);
+        if (isRootChatRun) {
+          const asked = String(run.input_prompt || '').replace(/\s+/g, ' ').trim();
+          const quoted = asked.length > 80 ? `${asked.slice(0, 79)}…` : asked;
+          this.addChatMessage({
+            thread_id: run.chat_thread_id!,
+            user_id: run.user_id ?? null,
+            sender_type: 'AGENT',
+            sender_agent_id: run.agent_id,
+            recipient_agent_id: 'CEO',
+            content: quoted
+              ? `Sorry, the server restarted while I was answering "${quoted}", so that reply was lost. Could you send it again?`
+              : 'Sorry, the server restarted while I was answering, so that reply was lost. Could you send it again?',
+            run_id: run.id,
+          });
+        }
       }
     }
 
@@ -815,7 +848,7 @@ export class OrchestratorStore {
       this.threads.set(t.id, { ...t, target_agent_id: t.target_agent_id || 'warden' });
       this.messagesByThread.set(t.id, []);
     }
-    for (const m of messages) {
+    for (const m of dedupeMessagesById(messages)) {
       this.messagesByThread.get(m.thread_id)?.push({ ...m, attachments_json: m.attachments_json || [] });
     }
 
@@ -2511,7 +2544,7 @@ export class OrchestratorStore {
   }): ChatMessageRecord {
     const now = new Date().toISOString();
     const msg: ChatMessageRecord = {
-      id: `msg_${randomUUID().slice(0, 12)}`,
+      id: `msg_${randomUUID()}`,
       user_id: input.user_id ?? this.threads.get(input.thread_id)?.user_id ?? null,
       thread_id: input.thread_id,
       sender_type: input.sender_type,

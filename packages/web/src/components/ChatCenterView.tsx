@@ -256,15 +256,20 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
         : [],
     [spawnTreeBacklogId]
   );
-  const visibleMessages = useMemo(
-    () =>
-      focusAgent
-        ? messages.filter(
-            (m) => m.sender_agent_id === focusAgent || m.sender_type !== 'AGENT'
-          )
-        : messages,
-    [messages, focusAgent]
-  );
+  const visibleMessages = useMemo(() => {
+    // The server list can hold the same message twice; dedupe by id so React keys stay unique.
+    const seen = new Set<string>();
+    const deduped = messages.filter((m) => {
+      if (!m?.id || seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+    return focusAgent
+      ? deduped.filter(
+          (m) => m.sender_agent_id === focusAgent || m.sender_type !== 'AGENT'
+        )
+      : deduped;
+  }, [messages, focusAgent]);
 
   useEffect(() => {
     setFocusAgent(null);

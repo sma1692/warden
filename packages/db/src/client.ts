@@ -163,6 +163,17 @@ export interface PgPoolLike {
  * Manages optional PostgreSQL (`pg.Pool` + Drizzle ORM) connection with automatic
  * fast health probing and fallback detection when the Docker Postgres container is offline.
  */
+/** Postgres/network errors that mean the connection itself is unusable. */
+function isConnectionError(e: { code?: string; message?: string }): boolean {
+  const code = e.code ?? '';
+  return (
+    code.startsWith('08') || // connection_exception class
+    code === '57P01' || code === '57P02' || code === '57P03' || // admin/crash shutdown, cannot connect now
+    ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND'].includes(code) ||
+    /Connection terminated|connection is closed|Client has encountered a connection error/i.test(e.message ?? '')
+  );
+}
+
 export class PostgresClientManager {
   private connectionString: string;
   private pool: PgPoolLike | null = null;
@@ -289,8 +300,13 @@ export class PostgresClientManager {
         rows: (res.rows as T[]) || [],
         rowCount: res.rowCount ?? res.rows?.length ?? 0,
       };
-    } catch {
-      this.connected = false;
+    } catch (err) {
+      // Callers treat null as "write did not land". Always say why, and only
+      // drop the connection for real connection failures, not bad SQL/data.
+      const e = err as { message?: string; code?: string };
+      const firstLine = sqlText.trim().split('\n')[0].slice(0, 120);
+      console.error(`[@warden/db] Query failed (${e.code ?? 'no-code'}): ${e.message ?? err} | ${firstLine}`);
+      if (isConnectionError(e)) this.connected = false;
       return null;
     }
   }

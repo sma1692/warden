@@ -163,15 +163,31 @@ class WardenApiClient {
   private ws: WebSocket | null = null;
   private listeners: Set<Listener> = new Set();
   private reconnectTimer: number | null = null;
+  private connecting = false;
+  private reconnectAttempts = 0;
 
   // The WebSocket needs a JWT, so the app shell calls connect() after sign-in.
   public connect() {
-    if (!this.ws) void this.connectWebSocket();
+    if (!this.ws && !this.connecting) void this.connectWebSocket();
+  }
+
+  // Capped exponential backoff: 8s, 16s, 32s, then 60s. Keeps a dead backend
+  // from either going silent forever or hammering /health + /auth/me.
+  private scheduleReconnect() {
+    if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
+    const delay = Math.min(8000 * 2 ** this.reconnectAttempts, 60000);
+    this.reconnectAttempts += 1;
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connectWebSocket();
+    }, delay);
   }
 
   public disconnect() {
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
+    this.connecting = false;
+    this.reconnectAttempts = 0;
     const socket = this.ws;
     this.ws = null;
     if (socket) {
@@ -198,17 +214,22 @@ class WardenApiClient {
     try {
       const token = getToken();
       if (!token) return; // Signed out
+      this.connecting = true;
       const probeRes = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(2000) }).catch(() => null);
       if (!probeRes || !probeRes.ok) {
-        return; // Backend offline
+        this.connecting = false;
+        this.scheduleReconnect(); // Backend offline: retry with backoff, don't go silent
+        return;
       }
 
       const socket = new WebSocket(wsUrl(token));
       this.ws = socket;
+      this.connecting = false;
       let wasConnected = false;
 
       socket.onopen = () => {
         wasConnected = true;
+        this.reconnectAttempts = 0;
         this.telemetry = {
           ...this.telemetry,
           db_pgvector_status: 'ONLINE',
@@ -261,14 +282,14 @@ class WardenApiClient {
           notifyUnauthorized();
           return;
         }
-        if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
-        this.reconnectTimer = window.setTimeout(() => this.connectWebSocket(), 8000);
+        this.scheduleReconnect();
       };
 
       socket.onerror = () => {
         socket.close();
       };
     } catch {
+      this.connecting = false;
       // Fallback mode remains active if WebSocket is unreachable
     }
   }
@@ -852,8 +873,14 @@ class WardenApiClient {
       `/threads/${encodeURIComponent(threadId)}/messages`
     );
     if (Array.isArray(remote) && remote.length > 0) {
-      this.messagesByThread[threadId] = remote;
-      return remote;
+      const seen = new Set<string>();
+      const deduped = remote.filter((m) => {
+        if (!m?.id || seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      });
+      this.messagesByThread[threadId] = deduped;
+      return deduped;
     }
     return [...(this.messagesByThread[threadId] || [])];
   }
@@ -1850,6 +1877,8 @@ class WardenApiClient {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.connecting = false;
+    this.reconnectAttempts = 0;
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.close();

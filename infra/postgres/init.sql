@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS agents (
   max_subagents INTEGER NOT NULL DEFAULT 4,
   active_subagent_count INTEGER NOT NULL DEFAULT 0,
   max_run_duration_ms BIGINT NOT NULL DEFAULT 86400000,
-  current_run_id UUID,
+  current_run_id TEXT,
   clocked_in_at TIMESTAMPTZ,
   total_work_time_ms BIGINT NOT NULL DEFAULT 0,
   total_runs INTEGER NOT NULL DEFAULT 0,
@@ -471,9 +471,17 @@ CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);
 
 -- Scope uniqueness per user (was global single-operator).
 ALTER TABLE project_contexts DROP CONSTRAINT IF EXISTS project_contexts_project_slug_repo_slug_key;
-ALTER TABLE project_contexts ADD CONSTRAINT project_contexts_user_project_repo_key UNIQUE (user_id, project_slug, repo_slug);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'project_contexts_user_project_repo_key') THEN
+    ALTER TABLE project_contexts ADD CONSTRAINT project_contexts_user_project_repo_key UNIQUE (user_id, project_slug, repo_slug);
+  END IF;
+END $$;
 ALTER TABLE contracts DROP CONSTRAINT IF EXISTS contracts_project_slug_feature_slug_key;
-ALTER TABLE contracts ADD CONSTRAINT contracts_user_project_feature_key UNIQUE (user_id, project_slug, feature_slug);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contracts_user_project_feature_key') THEN
+    ALTER TABLE contracts ADD CONSTRAINT contracts_user_project_feature_key UNIQUE (user_id, project_slug, feature_slug);
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 20. demo_workspaces (per-user demo/full provisioning: branch, PR, seed state)
@@ -503,3 +511,16 @@ CREATE TABLE IF NOT EXISTS user_budgets (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ----------------------------------------------------------------------------
+-- Run ids are text (`run_<id>`), not UUIDs. Older databases created
+-- agents.current_run_id as UUID, which rejected every agent status update.
+-- ----------------------------------------------------------------------------
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'agents' AND column_name = 'current_run_id' AND data_type = 'uuid'
+  ) THEN
+    ALTER TABLE agents ALTER COLUMN current_run_id TYPE TEXT USING current_run_id::text;
+  END IF;
+END $$;

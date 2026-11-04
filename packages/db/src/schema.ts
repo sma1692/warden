@@ -616,7 +616,7 @@ export const agents = pgTable('agents', {
   max_run_duration_ms: bigint('max_run_duration_ms', { mode: 'number' })
     .notNull()
     .default(1800000),
-  current_run_id: uuid('current_run_id'),
+  current_run_id: text('current_run_id'),
   clocked_in_at: timestamp('clocked_in_at', { withTimezone: true, mode: 'string' }),
   total_work_time_ms: bigint('total_work_time_ms', { mode: 'number' }).notNull().default(0),
   total_runs: integer('total_runs').notNull().default(0),

@@ -155,7 +155,7 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
       </div>
 
       {/* Compact Body */}
-      <div className="flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto flex flex-col justify-between gap-3">
+      <div className="flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto flex flex-col justify-start gap-3">
         {/* Top Section — 4 Clean 2x2 KPI Boxes */}
         <div className="grid grid-cols-2 gap-2.5 shrink-0">
           {/* KPI 1: Total Tokens Consumed */}
@@ -224,7 +224,7 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
         </div>
 
         {/* Bottom Section — Per-Vertical Token Spend */}
-        <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-3.5 space-y-2.5 shadow-xs flex-1 flex flex-col justify-center">
+        <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-4 space-y-2.5 shadow-xs shrink-0">
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="font-bold text-[var(--surface-text)] flex items-center gap-1.5">
               <ShieldCheck className="h-3.5 w-3.5 text-[var(--surface-accent-gold)]" />

@@ -36,6 +36,7 @@ export const WhatsAppQrLogin: React.FC<WhatsAppQrLoginProps> = ({ onVerified, on
   const [request, setRequest] = useState<LoginRequest | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [notConfigured, setNotConfigured] = useState(false);
   const [expired, setExpired] = useState(false);
   const [now, setNow] = useState(Date.now());
   const onVerifiedRef = useRef(onVerified);
@@ -43,12 +44,18 @@ export const WhatsAppQrLogin: React.FC<WhatsAppQrLoginProps> = ({ onVerified, on
 
   const startRequest = useCallback(async () => {
     setError(null);
+    setNotConfigured(false);
     setExpired(false);
     setRequest(null);
     setQrDataUrl('');
     try {
       const res = await fetch(`${API_BASE}/auth/wa/start`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 503) {
+        // Server has no WhatsApp business number configured: retrying won't help.
+        setNotConfigured(true);
+        return;
+      }
       if (!res.ok || !data.ok) {
         setError(data.error || 'Could not start WhatsApp sign-in.');
         return;
@@ -107,6 +114,34 @@ export const WhatsAppQrLogin: React.FC<WhatsAppQrLoginProps> = ({ onVerified, on
 
   const secondsLeft = request ? Math.max(0, Math.round((Date.parse(request.expires_at) - now) / 1000)) : 0;
   const countdown = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`;
+
+  if (notConfigured) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-xl border border-[#C6A664]/40 bg-[#162030] px-3 py-2 text-xs text-[#F5F0E6]">
+          WhatsApp sign-in isn&apos;t set up on this server yet. Use a 6-digit code instead, or
+          ask your admin to configure the WhatsApp business number.
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onUseCode}
+            className="flex-1 rounded-xl border border-[#C6A664]/50 bg-[#C6A664]/15 py-2.5 text-xs font-semibold text-[#F5F0E6] hover:bg-[#C6A664]/25 cursor-pointer"
+          >
+            Use a 6-digit code
+          </button>
+          <AsyncButton
+            type="button"
+            action={() => startRequest()}
+            spinnerClassName="h-3.5 w-3.5"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#2D3440] bg-[#101216] py-2.5 text-xs font-semibold text-slate-200 hover:border-[#C6A664]/50 cursor-pointer"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Try again
+          </AsyncButton>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (

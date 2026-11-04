@@ -24,7 +24,12 @@ import {
 } from '../models/ModelRouter.js';
 import { HybridMemoryEngine, hybridMemoryEngine } from '../memory/HybridMemoryEngine.js';
 import { capUpwardReply, canReadRawSource, isInsideRoot } from './tierPolicy.js';
-import { buildUserFacingBlock, formatOpenItemsForPrompt } from './userFacingPrompt.js';
+import {
+  buildThreadHistory,
+  buildUserFacingBlock,
+  formatOpenItemsForPrompt,
+  unansweredNote,
+} from './userFacingPrompt.js';
 
 const execAsync = promisify(exec);
 
@@ -409,6 +414,18 @@ export class AgentRunner {
       ? buildUserFacingBlock(openItemsForUser)
       : openItemsForUser;
 
+    // Root chat replies see recent conversation, so they can follow context and
+    // pick up messages that never got answered (e.g. lost to a restart).
+    const threadHistory =
+      isUserFacingReply && params.chatThreadId && !params.parentRunId && !existingRun
+        ? buildThreadHistory(
+            this.store.messagesByThread.get(params.chatThreadId) || [],
+            params.inputPrompt
+          )
+        : { turns: [], unansweredUserMessages: [] as string[] };
+    const liveQueueDigestWithHistory =
+      liveQueueDigest + unansweredNote(threadHistory.unansweredUserMessages);
+
     const isConversationalFastPath =
       (params.triggerType === 'CEO_CHAT' || params.triggerType === 'DIRECT_MENTION') &&
       (params.maxSteps ?? 4) <= 2;
@@ -427,7 +444,7 @@ export class AgentRunner {
             ? `\n\n# PINNED DECISIONS\n` +
               pinned.map((m) => `- [${m.memory_type}]: ${m.content}`).join('\n')
             : '';
-        systemPrompt = `${agent.init_prompt}${pinnedBlock}${liveQueueDigest}`;
+        systemPrompt = `${agent.init_prompt}${pinnedBlock}${liveQueueDigestWithHistory}`;
       } else {
         try {
           const built = await this.memoryEngine.buildAgentSystemPrompt({
@@ -455,14 +472,14 @@ export class AgentRunner {
             ),
           });
           if (typeof built === 'string' && built.length > 0) {
-            systemPrompt = `${built}\n${liveQueueDigest}`;
+            systemPrompt = `${built}\n${liveQueueDigestWithHistory}`;
           }
         } catch {
           // Fallback to deterministic prompt composition
           const archDocs = projectContexts
             .map((c) => `### Repo: ${c.repo_slug} (${c.role})\n${c.architecture_doc_md}`)
             .join('\n\n');
-          systemPrompt = `${agent.init_prompt}\n\n## Project Architecture\n${archDocs}\n${liveQueueDigest}`;
+          systemPrompt = `${agent.init_prompt}\n\n## Project Architecture\n${archDocs}\n${liveQueueDigestWithHistory}`;
         }
       }
     }
@@ -538,6 +555,7 @@ export class AgentRunner {
             toolOutput: m.toolOutput,
           }))
         : [
+            ...threadHistory.turns,
             {
               role: 'user',
               content: params.inputPrompt,

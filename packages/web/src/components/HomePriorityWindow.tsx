@@ -24,6 +24,7 @@ import {
 import type { BacklogItem, ChatThread } from '../types/warden';
 import { DEMO_ORIGIN_THREAD_BY_BACKLOG, spawnThreadPrefix } from '../data/demoLinks';
 import { TrophyAssetPreview } from './TrophyAssetPreview';
+import { ErrorBoundary } from './ErrorBoundary';
 
 export interface PriorityQuestionOption {
   id: string;
@@ -271,8 +272,8 @@ function findMatchingBacklogItem(
 ): BacklogItem | undefined {
   if (!backlogItems || backlogItems.length === 0) return undefined;
   return backlogItems.find((b) => {
-    const t = b.title.toLowerCase();
-    const id = b.id.toLowerCase();
+    const t = (b.title || '').toLowerCase();
+    const id = (b.id || '').toLowerCase();
     if (item.id === 'prio_tech_lobby_bootstrap') {
       return id.includes('lobby_bootstrap') || t.includes('lobby with play');
     }
@@ -312,7 +313,7 @@ interface HomePriorityWindowProps {
   onDecisionRecorded?: (summary: string) => void;
 }
 
-export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
+const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
   activeVertical = 'ALL',
   knobConfig: externalKnobConfig,
   backlogItems,
@@ -922,4 +923,9 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
     </>
   );
 };
+export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = (props) => (
+  <ErrorBoundary section="Needs Action">
+    <HomePriorityWindowView {...props} />
+  </ErrorBoundary>
+);
 export default HomePriorityWindow;
