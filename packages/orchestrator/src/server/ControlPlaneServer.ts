@@ -891,6 +891,22 @@ export class ControlPlaneServer {
         return;
       }
 
+      if (pathname === '/api/telemetry/tokens' && method === 'GET') {
+        if (!requestUserId) {
+          this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
+          return;
+        }
+        try {
+          const range = parsedUrl.searchParams.get('range') || 'today';
+          const { getUserTokenTelemetry } = await import('../budgets/UserBudgets.js');
+          const telemetry = await getUserTokenTelemetry(requestUserId, range);
+          this.sendJson(res, 200, { ok: true, ...telemetry });
+        } catch {
+          this.sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
+        }
+        return;
+      }
+
       // BYOK: the operator's own Meta Muse key. Status responses only ever
       // carry the last-4 hint; the full key is write-only.
       if (pathname === '/api/llm-keys/me' && method === 'GET') {
@@ -1518,6 +1534,42 @@ export class ControlPlaneServer {
             return;
           }
 
+          const lowerContent = String(body.content || '').toLowerCase();
+          if (
+            /\b(standup|stand-up|stand up)\b/i.test(lowerContent) &&
+            /\b(run|start|trigger|begin|do|call|hold|conduct|can you|please|lets|let's)\b/i.test(lowerContent)
+          ) {
+            console.log(`[📋 CHAT STANDUP] Triggering daily standup from chat for user=${requestUserId ?? 'global'}`);
+            const standupResult = await this.standupCoordinator.triggerDailyStandup({
+              userId: requestUserId,
+            });
+            this.broadcastEvent('standup:updated', standupResult.sprint);
+
+            const ceoMessage = this.store.addChatMessage({
+              thread_id: threadId,
+              sender_type: 'CEO',
+              recipient_agent_id: 'warden',
+              content: String(body.content || ''),
+            });
+            const agentReply = this.store.addChatMessage({
+              thread_id: threadId,
+              sender_type: 'AGENT',
+              sender_agent_id: 'warden',
+              recipient_agent_id: 'CEO',
+              content: standupResult.sprint.mom_summary_md,
+              run_id: standupResult.leadRuns[0]?.id ?? null,
+            });
+            this.sendJson(res, 201, {
+              ceoMessage,
+              agentReply,
+              createdRun: standupResult.leadRuns[0] ?? null,
+              delegatedRuns: standupResult.leadRuns,
+              routedMode: 'STANDUP',
+              sprint: standupResult.sprint,
+            });
+            return;
+          }
+
           const routeResult = await this.hierarchyRouter.routeMessage({
             threadId,
             userId: requestUserId ?? undefined,
@@ -1706,17 +1758,34 @@ export class ControlPlaneServer {
       // 6. Sprints & 12:00 PM IST Daily Standup
       // ======================================================================
       if (pathname === '/api/sprints' && method === 'GET') {
-        const list = Array.from(this.store.sprints.values()).sort((a, b) =>
+        const allSprints = Array.from(this.store.sprints.values()).sort((a, b) =>
           b.created_at.localeCompare(a.created_at)
         );
-        this.sendJson(res, 200, list);
+        if (requestUserId) {
+          const userSprints = allSprints.filter((s) => (s.user_id ?? null) === requestUserId);
+          const list =
+            userSprints.length > 0
+              ? userSprints
+              : allSprints.filter((s) => !s.user_id);
+          this.sendJson(res, 200, list);
+          return;
+        }
+        this.sendJson(res, 200, allSprints);
         return;
       }
 
       if (pathname === '/api/sprints/current' && method === 'GET') {
-        const current = Array.from(this.store.sprints.values()).sort((a, b) =>
+        const allSprints = Array.from(this.store.sprints.values()).sort((a, b) =>
           b.created_at.localeCompare(a.created_at)
-        )[0];
+        );
+        let current = allSprints[0];
+        if (requestUserId) {
+          const userSprints = allSprints.filter((s) => (s.user_id ?? null) === requestUserId);
+          current =
+            userSprints[0] ||
+            allSprints.find((s) => !s.user_id) ||
+            undefined!;
+        }
         this.sendJson(res, 200, current || null);
         return;
       }
@@ -1726,6 +1795,7 @@ export class ControlPlaneServer {
         const result = await this.standupCoordinator.triggerDailyStandup({
           dateIst: body.date_ist,
           autoExecute: Boolean(body.auto_execute),
+          userId: requestUserId,
         });
         this.broadcastEvent('standup:updated', result.sprint);
         this.sendJson(res, 201, result);

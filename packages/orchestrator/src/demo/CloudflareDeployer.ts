@@ -15,6 +15,7 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { demoPrebuiltDir } from './DemoFolders.js';
 
 export type DemoDeployStatus =
   | 'NOT_DEPLOYED'
@@ -80,6 +81,15 @@ function resolveDistDir(gameDir: string): string | null {
 
 function buildGameDir(gameDir: string): { distPath: string; fileCount: number } {
   const dir = path.resolve(gameDir);
+  // Prefer the predefined build folder for fast per-user Cloudflare deploys.
+  const localBuild = path.join(dir, 'build');
+  if (fs.existsSync(path.join(localBuild, 'index.html'))) {
+    return { distPath: localBuild, fileCount: countFiles(localBuild) };
+  }
+  const templateBuild = demoPrebuiltDir();
+  if (fs.existsSync(path.join(templateBuild, 'index.html'))) {
+    return { distPath: templateBuild, fileCount: countFiles(templateBuild) };
+  }
   if (!fs.existsSync(dir)) throw new Error(`Demo folder does not exist: ${dir}`);
   const pkgPath = path.join(dir, 'package.json');
   const pkg = fs.existsSync(pkgPath) ? JSON.parse(fs.readFileSync(pkgPath, 'utf8')) : null;
@@ -175,9 +185,11 @@ export function demoProjectName(userId: string, gameId = 'demo-arena'): string {
 export async function deployDemoProject(userId: string, gameDir: string, gameId = 'demo-arena'): Promise<DemoDeployResult> {
   const started = Date.now();
   const projectName = demoProjectName(userId, gameId);
+  console.log(`[🚀 DEMO DEPLOY] Starting deploy for user=${userId} project=${projectName} dir=${gameDir}`);
   const accountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
   const apiToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
   if (!accountId || !apiToken) {
+    console.warn(`[⚠️ DEMO DEPLOY] Skipping Cloudflare upload for ${projectName}: CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is empty in .env. Serving local prebuilt game fallback (/demo-game/index.html).`);
     return {
       ok: false,
       status: 'NOT_CONFIGURED',
@@ -192,18 +204,20 @@ export async function deployDemoProject(userId: string, gameDir: string, gameId 
   }
   const branch = (process.env.CLOUDFLARE_PROD_BRANCH || 'main').trim() || 'main';
   try {
-    console.log(`[DemoDeploy] Building ${gameDir} for ${projectName}...`);
+    console.log(`[🚀 DEMO DEPLOY] Resolving build directory from ${gameDir} for ${projectName}...`);
     const { distPath, fileCount } = buildGameDir(gameDir);
+    console.log(`[🚀 DEMO DEPLOY] Resolved build directory: ${distPath} (${fileCount} files)`);
     await ensurePagesProject(accountId, apiToken, projectName, branch);
-    console.log(`[DemoDeploy] Uploading ${distPath} (${fileCount} files)...`);
+    console.log(`[🚀 DEMO DEPLOY] Uploading ${distPath} (${fileCount} files) via Wrangler to project=${projectName} branch=${branch}...`);
     const { deploymentId, pagesDevUrl } = deployViaWrangler(accountId, apiToken, distPath, projectName, branch);
+    console.log(`[🚀 DEMO DEPLOY] Wrangler upload complete: deploymentId=${deploymentId} pagesDevUrl=${pagesDevUrl}`);
     const baseDomain = (process.env.CLOUDFLARE_BASE_DOMAIN || '').trim();
     let primaryUrl: string | null = pagesDevUrl;
     if (baseDomain) {
       const fqdn = `${projectName}.${baseDomain}`;
       if (await attachCustomDomain(accountId, apiToken, projectName, fqdn)) primaryUrl = `https://${fqdn}`;
     }
-    console.log(`[DemoDeploy] Live at ${primaryUrl}`);
+    console.log(`[🚀 DEMO DEPLOY] Live at ${primaryUrl} (${Date.now() - started}ms)`);
     return {
       ok: true,
       status: 'ACTIVE',
@@ -217,7 +231,7 @@ export async function deployDemoProject(userId: string, gameDir: string, gameId 
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[DemoDeploy] Failed for ${projectName}:`, message);
+    console.error(`[❌ DEMO DEPLOY] Failed for ${projectName}:`, message);
     return {
       ok: false,
       status: 'FAILED',

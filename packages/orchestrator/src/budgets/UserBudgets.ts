@@ -23,6 +23,19 @@ export interface UserBudgetUsage {
   status: UserBudgetStatus;
 }
 
+export interface UserTokenTelemetry {
+  range: 'today' | '7d' | '30d' | 'all';
+  totalTokens: number;
+  totalCostUsd: number;
+  totalRuns: number;
+  cachedHitPct: number;
+  byVertical: {
+    TECH: { tokens: number; costUsd: number; runs: number; sharePct: number };
+    SEO_AEO: { tokens: number; costUsd: number; runs: number; sharePct: number };
+    SOCIAL: { tokens: number; costUsd: number; runs: number; sharePct: number };
+  };
+}
+
 const DATABASE_URL =
   process.env.DATABASE_URL || 'postgresql://warden:warden_secret@localhost:5432/warden';
 
@@ -128,4 +141,146 @@ export async function getOverBudgetUserIds(
     }
   }
   return out;
+}
+
+function classifyVertical(
+  agentId: string | null | undefined,
+  slug: string | null | undefined,
+  department: string | null | undefined
+): 'TECH' | 'SEO_AEO' | 'SOCIAL' {
+  const idSlug = `${agentId || ''} ${slug || ''}`.toLowerCase();
+  const dept = `${department || ''}`.toLowerCase();
+  if (idSlug.includes('seo') || idSlug.includes('aeo') || idSlug.includes('cbo') || dept.includes('seo') || dept.includes('aeo')) {
+    return 'SEO_AEO';
+  }
+  if (
+    idSlug.includes('social') ||
+    idSlug.includes('cmo') ||
+    dept.includes('social') ||
+    dept.includes('marketing')
+  ) {
+    return 'SOCIAL';
+  }
+  return 'TECH';
+}
+
+export async function getUserTokenTelemetry(
+  userId: string,
+  rawRange: string
+): Promise<UserTokenTelemetry> {
+  await ensureReady();
+  const normalized = (rawRange || 'today').toLowerCase();
+  const range: 'today' | '7d' | '30d' | 'all' =
+    normalized === '7d'
+      ? '7d'
+      : normalized === '30d'
+        ? '30d'
+        : normalized === 'all'
+          ? 'all'
+          : 'today';
+
+  // Ensure existing demo users who provisioned before agent_runs seeding have their starter runs
+  try {
+    const wsRes = await pool.query<{ mode: string }>(
+      'SELECT mode FROM demo_workspaces WHERE user_id = $1',
+      [userId]
+    );
+    if (wsRes.rows[0]?.mode === 'demo') {
+      const { seedDemoAgentRuns } = await import('../demo/DemoProvisioning.js');
+      await seedDemoAgentRuns(userId);
+    }
+  } catch {
+    // ignore if demo_workspaces table does not exist yet
+  }
+
+  let timeClause = '';
+  if (range === 'today') {
+    timeClause = 'AND r.started_at >= CURRENT_DATE';
+  } else if (range === '7d') {
+    timeClause = "AND r.started_at >= NOW() - INTERVAL '7 days'";
+  } else if (range === '30d') {
+    timeClause = "AND r.started_at >= NOW() - INTERVAL '30 days'";
+  }
+
+  const res = await pool.query<{
+    agent_id: string;
+    slug: string | null;
+    department: string | null;
+    tokens_in: string | number;
+    tokens_cached: string | number;
+    tokens: string | number;
+    cost: string | number;
+  }>(
+    `SELECT r.agent_id,
+            a.slug,
+            a.department,
+            COALESCE(r.tokens_in, 0) AS tokens_in,
+            COALESCE(r.tokens_cached, 0) AS tokens_cached,
+            COALESCE(r.tokens_in, 0) + COALESCE(r.tokens_cached, 0) + COALESCE(r.tokens_thinking, 0) + COALESCE(r.tokens_out, 0) AS tokens,
+            COALESCE(r.cost_usd, 0) AS cost
+     FROM agent_runs r
+     LEFT JOIN agents a ON a.id = r.agent_id
+     WHERE r.user_id = $1 ${timeClause}`,
+    [userId]
+  );
+
+  const acc = {
+    TECH: { tokens: 0, costUsd: 0, runs: 0 },
+    SEO_AEO: { tokens: 0, costUsd: 0, runs: 0 },
+    SOCIAL: { tokens: 0, costUsd: 0, runs: 0 },
+  };
+
+  let totalCached = 0;
+  let totalPromptInput = 0;
+
+  for (const row of res.rows) {
+    const v = classifyVertical(row.agent_id, row.slug, row.department);
+    const t = Number(row.tokens ?? 0);
+    const c = Number(row.cost ?? 0);
+    const tIn = Number(row.tokens_in ?? 0);
+    const tCached = Number(row.tokens_cached ?? 0);
+    acc[v].tokens += t;
+    acc[v].costUsd += c;
+    acc[v].runs += 1;
+    totalCached += tCached;
+    totalPromptInput += tIn + tCached;
+  }
+
+  const totalTokens = acc.TECH.tokens + acc.SEO_AEO.tokens + acc.SOCIAL.tokens;
+  const totalCostUsd = Number(
+    (acc.TECH.costUsd + acc.SEO_AEO.costUsd + acc.SOCIAL.costUsd).toFixed(6)
+  );
+  const totalRuns = acc.TECH.runs + acc.SEO_AEO.runs + acc.SOCIAL.runs;
+  const cachedHitPct =
+    totalPromptInput > 0 ? Math.min(99, Math.round((totalCached / totalPromptInput) * 100)) : 0;
+
+  const pct = (n: number) => (totalTokens > 0 ? Math.round((n / totalTokens) * 100) : 0);
+
+  return {
+    range,
+    totalTokens,
+    totalCostUsd,
+    totalRuns,
+    cachedHitPct,
+    byVertical: {
+      TECH: {
+        tokens: acc.TECH.tokens,
+        costUsd: Number(acc.TECH.costUsd.toFixed(6)),
+        runs: acc.TECH.runs,
+        sharePct: pct(acc.TECH.tokens),
+      },
+      SEO_AEO: {
+        tokens: acc.SEO_AEO.tokens,
+        costUsd: Number(acc.SEO_AEO.costUsd.toFixed(6)),
+        runs: acc.SEO_AEO.runs,
+        sharePct: pct(acc.SEO_AEO.tokens),
+      },
+      SOCIAL: {
+        tokens: acc.SOCIAL.tokens,
+        costUsd: Number(acc.SOCIAL.costUsd.toFixed(6)),
+        runs: acc.SOCIAL.runs,
+        sharePct: pct(acc.SOCIAL.tokens),
+      },
+    },
+  };
 }

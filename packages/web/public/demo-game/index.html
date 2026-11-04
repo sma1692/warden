@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tic-Tac-Toe Arena</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="game-header">
+      <h1>Tic-Tac-Toe Arena</h1>
+      <p class="subtitle">Single-Player VS Bot / Pass & Play</p>
+    </header>
+
+    <section class="controls-panel">
+      <div class="mode-select">
+        <label for="mode">Game Mode:</label>
+        <select id="mode">
+          <option value="pve" selected>VS AI Bot (Single-Player)</option>
+          <option value="pvp">Local 2-Player (Pass & Play)</option>
+        </select>
+      </div>
+      <div class="scoreboard">
+        <div class="score-card player-x active">
+          <span class="label">Player (X)</span>
+          <span class="score" id="score-x">0</span>
+        </div>
+        <div class="score-card ties">
+          <span class="label">Ties</span>
+          <span class="score" id="score-ties">0</span>
+        </div>
+        <div class="score-card player-o">
+          <span class="label" id="label-o">AI Bot (O)</span>
+          <span class="score" id="score-o">0</span>
+        </div>
+      </div>
+    </section>
+
+    <main class="board-container">
+      <div class="status-banner" id="status-banner">Turn: Player X</div>
+      <div class="board" id="board" role="grid" aria-label="Tic-Tac-Toe Board">
+        <button class="cell" data-index="0" aria-label="Cell 1"></button>
+        <button class="cell" data-index="1" aria-label="Cell 2"></button>
+        <button class="cell" data-index="2" aria-label="Cell 3"></button>
+        <button class="cell" data-index="3" aria-label="Cell 4"></button>
+        <button class="cell" data-index="4" aria-label="Cell 5"></button>
+        <button class="cell" data-index="5" aria-label="Cell 6"></button>
+        <button class="cell" data-index="6" aria-label="Cell 7"></button>
+        <button class="cell" data-index="7" aria-label="Cell 8"></button>
+        <button class="cell" data-index="8" aria-label="Cell 9"></button>
+      </div>
+    </main>
+
+    <footer class="actions">
+      <button id="reset-btn" class="btn btn-secondary">New Round</button>
+      <button id="reset-all-btn" class="btn btn-tertiary">Reset Scores</button>
+    </footer>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -35,7 +35,6 @@ import { AgentInspectorDrawer } from './components/AgentInspectorDrawer';
 import { AgentStudioView } from './components/AgentStudioView';
 import { BacklogAndSprintView } from './components/BacklogAndSprintView';
 import { ChatCenterView } from './components/ChatCenterView';
-import { CopilotHandoffCard } from './components/CopilotHandoffCard';
 import { DemoDeployCard } from './components/DemoDeployCard';
 import {
   loadConsultationKnobConfig,
@@ -43,6 +42,7 @@ import {
   type ConsultationKnobConfig,
   type VerticalScope,
 } from './components/ConsultationKnob';
+import { HomeChatStrip } from './components/HomeChatStrip';
 import { HomePriorityWindow } from './components/HomePriorityWindow';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { ReportsView, type UnifiedReportItem } from './components/ReportsView';
@@ -101,15 +101,6 @@ interface AppNotificationItem {
 }
 
 const INITIAL_NOTIFICATIONS: AppNotificationItem[] = [
-  {
-    id: 'notif-copilot-handoff',
-    title: 'Copilot handoff resolved — zero human pings',
-    body: 'Maya asked her copilot for checkout latency; copilots resolved it with Arjun\u2019s copilot in ~5s.',
-    vertical: 'TECH',
-    timeAgo: 'just now',
-    unread: true,
-    targetTab: 'home',
-  },
   {
     id: 'notif-1',
     title: 'NovaPulse Checkout Sync & Edge Bundle Gate',
@@ -292,6 +283,7 @@ export const App: React.FC<AppProps> = ({
   const [preferredTargetAgentSlug, setPreferredTargetAgentSlug] = useState<string | null>(
     null
   );
+  const [homeChatDraft, setHomeChatDraft] = useState<string | null>(null);
   const [inspectedAgent, setInspectedAgent] = useState<Agent | null>(null);
   const [inspectorSubTab, setInspectorSubTab] = useState<'runs' | 'trace' | 'config'>(
     'runs'
@@ -937,11 +929,15 @@ export const App: React.FC<AppProps> = ({
         </header>
 
         {/* WORKSPACE */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
-          <div className="max-w-7xl mx-auto h-full min-h-0">
+        <main
+          className={`flex-1 min-h-0 overflow-y-auto ${
+            activeTab === 'home' ? 'md:overflow-hidden' : ''
+          } p-4 md:p-6 pb-20 md:pb-6`}
+        >
+          <div className="max-w-7xl mx-auto h-full min-h-0 flex flex-col">
             {budget && budget.cap > 0 && budget.status !== 'OK' && activeTab !== 'settings' && (
               <div
-                className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 text-xs ${
+                className={`mb-4 shrink-0 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 text-xs ${
                   budget.status === 'EXCEEDED'
                     ? 'border-red-400/50 bg-red-400/10 text-red-200'
                     : 'border-amber-400/50 bg-amber-400/10 text-amber-200'
@@ -963,23 +959,35 @@ export const App: React.FC<AppProps> = ({
               </div>
             )}
             {activeTab === 'home' && (
-              <div className="space-y-5 h-full min-h-0">
-              <CopilotHandoffCard />
-              <DemoDeployCard onError={showError} />
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 h-full min-h-0">
-                <HomePriorityWindow
-                  activeVertical={activeVertical}
-                  knobConfig={knobConfig}
-                  onOpenAgentTab={(slug) => handleOpenAgentWindowTab(slug)}
-                  onOpenBacklogsTab={() => setActiveTab('backlogs')}
-                  onDecisionRecorded={(summary) => showToast(summary)}
+              <div className="flex flex-col gap-4 flex-1 h-full min-h-0">
+                <div className="shrink-0">
+                  <DemoDeployCard onError={showError} />
+                </div>
+                <HomeChatStrip
+                  onStartChat={(message) => {
+                    setHomeChatDraft(message);
+                    handleOpenAgentWindowTab('@warden');
+                  }}
                 />
-                <TokenUsageBox
-                  tokensUsed={telemetry.total_tokens_today || 11140}
-                  activeVertical={activeVertical}
-                  onOpenTokenReport={() => setActiveTab('reports')}
-                />
-              </div>
+                <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <HomePriorityWindow
+                    activeVertical={activeVertical}
+                    knobConfig={knobConfig}
+                    backlogItems={backlogItems}
+                    onApproveBacklogItem={async (itemId, summary) => {
+                      await apiClient.moveBacklogItem(itemId, 'DONE', summary);
+                      await refreshAllData();
+                    }}
+                    onOpenAgentTab={(slug) => handleOpenAgentWindowTab(slug)}
+                    onOpenBacklogsTab={() => setActiveTab('backlogs')}
+                    onDecisionRecorded={(summary) => showToast(summary)}
+                  />
+                  <TokenUsageBox
+                    tokensUsed={telemetry.total_tokens_today || 11140}
+                    activeVertical={activeVertical}
+                    onOpenTokenReport={() => setActiveTab('reports')}
+                  />
+                </div>
               </div>
             )}
             {activeTab === 'agents' && (
@@ -1032,12 +1040,12 @@ export const App: React.FC<AppProps> = ({
 
             {activeDynamicTab && activeDynamicTab.kind === 'chat' && (
               <div className="space-y-3 h-full flex flex-col">
-                <div className="flex items-center justify-between rounded-xl border border-[#C6A664]/25 bg-[#0F1824] px-4 py-2.5">
-                  <div className="flex items-center gap-2 text-[#F5F0E6]">
-                    <Bot className="h-4 w-4 text-[#C6A664]" />
+                <div className="flex items-center justify-between rounded-xl border border-[var(--surface-border)] bg-[var(--surface-card)] px-4 py-2.5 shadow-xs">
+                  <div className="flex items-center gap-2 text-[var(--surface-text)]">
+                    <Bot className="h-4 w-4 text-[var(--surface-accent-gold)]" />
                     <span className="text-xs font-bold">Direct Channel: {activeDynamicTab.agentSlug}</span>
                   </div>
-                  <button onClick={() => setActiveTab('agents')} className="text-xs text-[#C6A664] hover:underline cursor-pointer">Back</button>
+                  <button onClick={() => setActiveTab('home')} className="text-xs font-semibold text-[var(--surface-accent-gold)] hover:underline cursor-pointer">← Back to Dashboard</button>
                 </div>
                 <div className="flex-1 min-h-0">
                   <ChatCenterView
@@ -1051,6 +1059,8 @@ export const App: React.FC<AppProps> = ({
                     onThreadCreated={(n) => { setThreads(p => [n, ...p]); setSelectedThreadId(n.id); }}
                     onResolveGate={handleResolveGate}
                     onInspectRunTrace={handleInspectRunTraceFromChat}
+                    initialDraft={homeChatDraft}
+                    onDraftConsumed={() => setHomeChatDraft(null)}
                   />
                 </div>
               </div>

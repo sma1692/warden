@@ -203,12 +203,47 @@ export async function updateOnboarding(
   await ensureReady();
   const user = await getUserById(id);
   if (!user) return null;
-  // A finished onboarding never drops back to IN_PROGRESS from a stray step save.
-  if (user.onboarding.status === 'COMPLETE' && patch.status !== 'COMPLETE' && patch.status !== 'NOT_STARTED') {
+
+  const existingForm = (user.onboarding.form || {}) as Record<string, unknown>;
+  const existingModeRaw =
+    existingForm.mode === 'demo' || existingForm.mode === 'full'
+      ? existingForm.mode
+      : existingForm.chosenMode === 'demo' || existingForm.chosenMode === 'full'
+        ? existingForm.chosenMode
+        : existingForm.demo === true
+          ? 'demo'
+          : null;
+
+  // A finished onboarding never drops back to IN_PROGRESS or NOT_STARTED.
+  if (user.onboarding.status === 'COMPLETE' && patch.status !== 'COMPLETE' && patch.form === undefined) {
     return user;
   }
-  const status = patch.status ?? (patch.step ? 'IN_PROGRESS' : user.onboarding.status);
+  const status: OnboardingStatus =
+    user.onboarding.status === 'COMPLETE'
+      ? 'COMPLETE'
+      : (patch.status ?? (patch.step ? 'IN_PROGRESS' : user.onboarding.status));
   const step = patch.step !== undefined ? patch.step : user.onboarding.step;
+
+  let nextForm: Record<string, unknown> | undefined = patch.form
+    ? { ...existingForm, ...patch.form }
+    : undefined;
+  if (nextForm) {
+    const incomingMode =
+      nextForm.mode === 'demo' || nextForm.mode === 'full'
+        ? nextForm.mode
+        : nextForm.chosenMode === 'demo' || nextForm.chosenMode === 'full'
+          ? nextForm.chosenMode
+          : nextForm.demo === true
+            ? 'demo'
+            : null;
+    const finalMode = existingModeRaw ?? incomingMode;
+    if (finalMode === 'demo' || finalMode === 'full') {
+      nextForm.mode = finalMode;
+      nextForm.chosenMode = finalMode;
+      nextForm.demo = finalMode === 'demo';
+    }
+  }
+
   await pool.query(
     `INSERT INTO onboarding_profiles (user_id, status, step, form, updated_at)
      VALUES ($1, $2, $3, COALESCE($4::jsonb, '{}'::jsonb), NOW())
@@ -217,7 +252,7 @@ export async function updateOnboarding(
        step = EXCLUDED.step,
        form = CASE WHEN $4 IS NULL THEN onboarding_profiles.form ELSE EXCLUDED.form END,
        updated_at = NOW()`,
-    [id, status, step, patch.form !== undefined ? JSON.stringify(patch.form) : null]
+    [id, status, step, nextForm !== undefined ? JSON.stringify(nextForm) : null]
   );
   return (await getUserById(id)) ?? user;
 }

@@ -1,0 +1,241 @@
+:root {
+  --bg-color: #0d1117;
+  --card-bg: #161b22;
+  --card-border: #30363d;
+  --text-main: #f0f6fc;
+  --text-muted: #8b949e;
+  --color-x: #58a6ff;
+  --color-o: #f0883e;
+  --color-win: #238636;
+  --color-win-bg: rgba(35, 134, 54, 0.2);
+  --cell-bg: #21262d;
+  --cell-hover: #292e36;
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+#app {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.game-header {
+  text-align: center;
+}
+
+.game-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+.controls-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.mode-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.mode-select select {
+  background: var(--cell-bg);
+  color: var(--text-main);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.score-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--cell-bg);
+  padding: 0.5rem 0.25rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.score-card.active {
+  border-color: var(--color-x);
+  transform: translateY(-1px);
+}
+
+.score-card.player-o.active {
+  border-color: var(--color-o);
+}
+
+.score-card .label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.score-card .score {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 0.15rem;
+}
+
+.score-card.player-x .score {
+  color: var(--color-x);
+}
+
+.score-card.player-o .score {
+  color: var(--color-o);
+}
+
+.board-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.status-banner {
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  min-height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  background: var(--card-bg);
+  padding: 0.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+
+.cell {
+  aspect-ratio: 1 / 1;
+  background: var(--cell-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--text-main);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  user-select: none;
+}
+
+.cell:hover:not(:disabled) {
+  background: var(--cell-hover);
+  transform: scale(0.98);
+}
+
+.cell:disabled {
+  cursor: default;
+}
+
+.cell.x {
+  color: var(--color-x);
+}
+
+.cell.o {
+  color: var(--color-o);
+}
+
+.cell.winning {
+  background: var(--color-win-bg);
+  border-color: var(--color-win);
+  animation: pulse 1s infinite alternate;
+}
+
+@keyframes pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.03); }
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn {
+  flex: 1;
+  padding: 0.65rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.btn-secondary {
+  background: #238636;
+  color: #fff;
+  border-color: #2ea043;
+}
+
+.btn-secondary:hover {
+  background: #2ea043;
+}
+
+.btn-tertiary {
+  background: var(--cell-bg);
+  color: var(--text-muted);
+}
+
+.btn-tertiary:hover {
+  background: var(--cell-hover);
+  color: var(--text-main);
+}

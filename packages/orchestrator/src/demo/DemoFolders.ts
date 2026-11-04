@@ -27,6 +27,10 @@ export function demoTemplateDir(): string {
   return candidates[0];
 }
 
+export function demoPrebuiltDir(): string {
+  return path.join(demoTemplateDir(), 'build');
+}
+
 export function demoWorkspaceRoot(): string {
   const configured = (process.env.DEMO_WORKSPACE_ROOT || '').trim();
   if (configured) return path.resolve(configured);

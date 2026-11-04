@@ -65,7 +65,7 @@ function renderBlocks(raw: string): React.ReactNode[] {
       blocks.push(
         <blockquote
           key={`block-${keyIdx++}`}
-          className="border-l-2 border-gold-500/70 bg-gold-950/20 px-3 py-1.5 my-2 rounded-r-lg text-slate-300 italic text-[11px] sm:text-xs"
+          className="border-l-2 border-[var(--surface-accent-gold)] bg-[var(--surface-elevated)] px-3 py-1.5 my-2 rounded-r-lg text-[var(--surface-text-secondary)] italic text-[11px] sm:text-xs"
         >
           {quoteLines.map((ql, qIdx) => (
             <p key={qIdx}>{renderInline(ql)}</p>
@@ -78,7 +78,7 @@ function renderBlocks(raw: string): React.ReactNode[] {
     // 4. Headers (#, ##, ###)
     if (line.startsWith('### ')) {
       blocks.push(
-        <h4 key={`block-${keyIdx++}`} className="font-bold text-slate-100 text-sm mt-3 mb-1 flex items-center gap-1.5">
+        <h4 key={`block-${keyIdx++}`} className="font-bold text-[var(--surface-text)] text-sm mt-3 mb-1 flex items-center gap-1.5">
           {renderInline(line.slice(4))}
         </h4>
       );
@@ -87,7 +87,7 @@ function renderBlocks(raw: string): React.ReactNode[] {
     }
     if (line.startsWith('## ')) {
       blocks.push(
-        <h3 key={`block-${keyIdx++}`} className="font-bold text-gold-300 text-base mt-3.5 mb-1.5 border-b border-slate-800 pb-1">
+        <h3 key={`block-${keyIdx++}`} className="font-bold text-[var(--surface-accent-gold)] text-base mt-3.5 mb-1.5 border-b border-[var(--surface-border)] pb-1">
           {renderInline(line.slice(3))}
         </h3>
       );
@@ -96,7 +96,7 @@ function renderBlocks(raw: string): React.ReactNode[] {
     }
     if (line.startsWith('# ')) {
       blocks.push(
-        <h2 key={`block-${keyIdx++}`} className="font-extrabold text-white text-lg mt-4 mb-2 border-b border-gold-500/30 pb-1">
+        <h2 key={`block-${keyIdx++}`} className="font-extrabold text-[var(--surface-text)] text-lg mt-4 mb-2 border-b border-[var(--surface-border)] pb-1">
           {renderInline(line.slice(2))}
         </h2>
       );
@@ -107,7 +107,7 @@ function renderBlocks(raw: string): React.ReactNode[] {
     // 5. Horizontal rule (---)
     if (line.trim() === '---' || line.trim() === '***') {
       blocks.push(
-        <hr key={`block-${keyIdx++}`} className="border-t border-slate-800 my-2.5" />
+        <hr key={`block-${keyIdx++}`} className="border-t border-[var(--surface-border)] my-2.5" />
       );
       i++;
       continue;
@@ -136,7 +136,7 @@ function renderBlocks(raw: string): React.ReactNode[] {
 
       if (isOrdered) {
         blocks.push(
-          <ol key={`block-${keyIdx++}`} className="list-decimal list-inside space-y-1 my-1.5 text-slate-200">
+          <ol key={`block-${keyIdx++}`} className="list-decimal list-inside space-y-1 my-1.5 text-[var(--surface-text)]">
             {listItems.map((item, lIdx) => (
               <li key={lIdx} className="leading-relaxed">
                 {renderInline(item.text)}
@@ -146,10 +146,10 @@ function renderBlocks(raw: string): React.ReactNode[] {
         );
       } else {
         blocks.push(
-          <ul key={`block-${keyIdx++}`} className="space-y-1 my-1.5 text-slate-200">
+          <ul key={`block-${keyIdx++}`} className="space-y-1 my-1.5 text-[var(--surface-text)]">
             {listItems.map((item, lIdx) => (
               <li key={lIdx} className="flex items-start gap-2 leading-relaxed">
-                <span className="text-gold-400 mt-1 shrink-0">•</span>
+                <span className="text-[var(--surface-accent-gold)] mt-1 shrink-0">•</span>
                 <span className="flex-1">{renderInline(item.text)}</span>
               </li>
             ))}
@@ -162,7 +162,7 @@ function renderBlocks(raw: string): React.ReactNode[] {
     // 7. Regular paragraph
     if (line.trim().length > 0) {
       blocks.push(
-        <p key={`block-${keyIdx++}`} className="leading-relaxed text-slate-200">
+        <p key={`block-${keyIdx++}`} className="leading-relaxed text-[var(--surface-text)]">
           {renderInline(line)}
         </p>
       );
@@ -185,7 +185,7 @@ function renderInline(text: string): React.ReactNode[] {
       parts.push(
         <code
           key={`inl-${key++}`}
-          className="rounded bg-navy-900 border border-slate-700/60 px-1.5 py-0.5 text-gold-300 font-mono text-[11px] sm:text-xs"
+          className="rounded bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-1.5 py-0.5 text-[var(--surface-text)] font-mono font-semibold text-[11px] sm:text-xs"
         >
           {codeMatch[1]}
         </code>
@@ -198,7 +198,7 @@ function renderInline(text: string): React.ReactNode[] {
     const boldItalicMatch = remaining.match(/^\*\*\*([^*]+)\*\*\*/);
     if (boldItalicMatch) {
       parts.push(
-        <strong key={`inl-${key++}`} className="font-bold italic text-white">
+        <strong key={`inl-${key++}`} className="font-bold italic text-[var(--surface-text)]">
           {boldItalicMatch[1]}
         </strong>
       );
@@ -210,7 +210,7 @@ function renderInline(text: string): React.ReactNode[] {
     const boldMatch = remaining.match(/^\*\*([^*]+)\*\*/);
     if (boldMatch) {
       parts.push(
-        <strong key={`inl-${key++}`} className="font-semibold text-slate-100">
+        <strong key={`inl-${key++}`} className="font-bold text-[var(--surface-text)]">
           {boldMatch[1]}
         </strong>
       );
@@ -222,7 +222,7 @@ function renderInline(text: string): React.ReactNode[] {
     const italicMatch = remaining.match(/^\*([^*]+)\*/) || remaining.match(/^_([^_]+)_/);
     if (italicMatch) {
       parts.push(
-        <em key={`inl-${key++}`} className="italic text-slate-300">
+        <em key={`inl-${key++}`} className="italic text-[var(--surface-text-secondary)]">
           {italicMatch[1]}
         </em>
       );
@@ -239,7 +239,7 @@ function renderInline(text: string): React.ReactNode[] {
           href={linkMatch[2]}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-gold-400 hover:text-gold-300 underline underline-offset-2 transition"
+          className="text-[var(--surface-accent-gold)] hover:underline underline-offset-2 font-semibold transition"
         >
           {linkMatch[1]}
         </a>

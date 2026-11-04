@@ -456,9 +456,24 @@ export class CredentialPoolManager {
    * ordered by `priorityOrder ASC`.
    */
   public getActiveCredentialsForProvider(provider: ModelProvider): ProviderCredential[] {
+    if (provider === 'meta_muse') {
+      const envKey = process.env.META_MUSE_API_KEY || process.env.META_API_KEY || '';
+      const primary = this.credentials.get('cred-meta-muse-primary');
+      if (primary && !primary.apiKey && envKey) {
+        primary.apiKey = envKey;
+        primary.api_key_encrypted = `${envKey.slice(0, 4)}...${envKey.slice(-4)}`;
+      }
+      const backupKey = process.env.META_MUSE_BACKUP_API_KEY || '';
+      const backup = this.credentials.get('cred-meta-muse-backup');
+      if (backup && !backup.apiKey && backupKey) {
+        backup.apiKey = backupKey;
+        backup.api_key_encrypted = `${backupKey.slice(0, 4)}...${backupKey.slice(-4)}`;
+      }
+    }
     const now = Date.now();
     return this.listCredentials(provider).filter((c) => {
       if (!c.isActive) return false;
+      if (c.provider === 'meta_muse' && !c.apiKey) return false;
       if (c.remainingBudgetUsd <= 0) return false;
       if (c.cooldownUntil) {
         const untilMs = new Date(c.cooldownUntil).getTime();
@@ -1871,6 +1886,9 @@ export class ModelRouter {
             max_tokens: req.maxOutputTokens ?? 4096,
           };
 
+    console.log(
+      `[🌐 MODEL CALL] POST ${endpoint} | model=${modelId} | key=${apiKey.slice(0, 8)}...`
+    );
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -1883,6 +1901,9 @@ export class ModelRouter {
 
     if (!res.ok) {
       const errText = await res.text();
+      console.warn(
+        `[⚠️ MODEL CALL HTTP ${res.status}] ${endpoint} (model=${modelId}): ${errText.slice(0, 220)}`
+      );
       throw new ProviderHttpError(
         'meta_muse',
         res.status,
@@ -2402,26 +2423,27 @@ export class ModelRouter {
     let messageText = '';
     const lowerPrompt = lastUserText.toLowerCase();
 
-    if (lowerPrompt.includes('standup') && lowerPrompt.includes('synthesize')) {
+    if (lowerPrompt.includes('standup')) {
       const techSlugs = getTechProjects().map((p) => p.slug).slice(0, 2);
       const infraSlug = getInfraProjectSlug();
       const allSlugs = [...techSlugs, infraSlug];
       messageText = [
-        `# Daily 12:00 PM IST Standup — Minutes of Meeting (MoM) & Sprint Plan`,
+        `### 📋 Daily Standup Summary — **Tic-Tac-Toe Arena**`,
         ``,
-        `## 1. Executive Summary`,
-        `- **@pm**: Triaged raw inbox items into prioritized \`P0/P1\` backlog specs across ${allSlugs.map((s) => `\`${s}\``).join(', ')}.`,
-        ...techSlugs.map(
-          (s) => `- **@tech_lead:${s}**: Verified client/server contracts and Playwright WebGL readiness for \`${s}\`.`
-        ),
-        `- **@infra_head**: Ready to execute asset sync and static deployment pipelines via \`${infraSlug}\`.`,
+        `**1. Live Status**`,
+        `- **v1 Release**: Deployed and playable via **Play Game** on your dashboard.`,
+        `- **Needs Action (4 Queued Tasks)**:`,
+        `  - **Trophy Asset Batch (\`@cbo\`)**: 6 SVG trophy tiers ready for review.`,
+        `  - **Rematch State-Reset Hotfix (\`@tech_lead\`)**: Fixes board freeze on rapid rematch clicks.`,
+        `  - **15s Launch Clip (\`@social_Clip\`)**: Short-form gameplay trailer ready to post.`,
+        `  - **3 SEO Guide Drafts (\`@seo_aeo_head\`)**: Strategy & rules pages queued for indexing.`,
         ``,
-        `## 2. Locked Daily Sprint Backlog`,
-        ...techSlugs.map(
-          (s, i) =>
-            `- **[${i === 0 ? 'P0' : 'P1'} | ${s}]** ${i === 0 ? 'Ship multiplayer state sync & automated Playwright WebGL smoke test.' : 'Optimize shader bundle & mobile PWA viewport responsiveness.'}`
-        ),
-        `- **[P1 | ${infraSlug}]** Verify multi-cloud asset upload & preview routing.`,
+        `**2. Department Updates (${allSlugs.map((s) => `\`${s}\``).join(', ')})**`,
+        `- **Tech (\`@cto\` & \`@tech_lead\`)**: Client/server contracts verified; Playwright WebGL smoke test passing with 0 console errors.`,
+        `- **Growth & SEO (\`@cmo\` & \`@seo_aeo_head\`)**: \`llms.txt\` and JSON-LD \`VideoGame\` schema prepared.`,
+        `- **Ops & Infra (\`@infra_head\`)**: Cloudflare Pages edge deployment pipeline active.`,
+        ``,
+        `Approve any of the 4 cards in **Needs Action** on the Home dashboard or tell me which task you want executed first.`,
       ].join('\n');
     } else if (lowerPrompt.includes('empty') || lowerPrompt.includes('idle') || lowerPrompt.includes('3 recommended')) {
       messageText = [
@@ -2434,14 +2456,61 @@ export class ModelRouter {
     } else {
       const attachmentNote =
         multimodalCount > 0
-          ? `\n- **Multimodal Attachments Processed**: Analyzed ${multimodalCount} attached media item(s) natively.`
+          ? `\n\n*(Also inspected ${multimodalCount} attached file(s))*`
           : '';
-      messageText = [
-        `### [${agentId} — ${scope}] Execution Summary`,
-        `- **Status**: Processed request using \`${provider}:${modelId}\` with hybrid PostgreSQL + \`pgvector\` memory recall.${attachmentNote}`,
-        `- **Action Taken**: Verified architectural constraints for \`${scope}\` against active sprint and repository context.`,
-        `- **Next Step**: Ready for downstream verification or CEO sign-off.`,
-      ].join('\n');
+
+      if (
+        /^(hi|hello|hey|yo|sup|howdy|good morning|good afternoon|good evening)\b/i.test(lowerPrompt.trim()) ||
+        lowerPrompt.includes('what can you') ||
+        lowerPrompt.includes('who are you') ||
+        lowerPrompt.includes('what are you')
+      ) {
+        messageText = [
+          `Hey! I'm **${agentId}**, Chief of Staff for your indie gaming studio (**Tic-Tac-Toe Arena**). Here is where everything stands right now:`,
+          ``,
+          `- **Live Release**: Your v1 game build is deployed and playable via the **Play Game** button on the Home dashboard.`,
+          `- **Needs Action (4 Queued Tasks)**: Your AI agents prepared 4 tasks awaiting your sign-off — a trophy asset batch (\`@cbo\`), a rematch state-reset hotfix (\`@tech_lead\`), a 15s launch clip (\`@social_Clip\`), and 3 SEO guide drafts (\`@seo_aeo_head\`).`,
+          `- **Studio Roster**: **3 human leads** (Tech, Growth, Ops) working alongside **13 specialized AI agents** across Tech, SEO, and Social.`,
+          ``,
+          `Ask me to run a standup, review any queued task, check token spend, or dispatch a new feature to \`@cto\` or \`@cmo\`.${attachmentNote}`,
+        ].join('\n');
+      } else if (
+        lowerPrompt.includes('token') ||
+        lowerPrompt.includes('cost') ||
+        lowerPrompt.includes('spend') ||
+        lowerPrompt.includes('budget')
+      ) {
+        messageText = [
+          `Here is the latest token & cost breakdown for your studio:`,
+          ``,
+          `- **Efficiency**: Upward context compression keeps executive turns under \`1.5K\` tokens and routes file edits to isolated Tier-2 shards.`,
+          `- **Vertical Tracking**: You can filter live spend across **Tech**, **Marketing**, and **Ops** using the **Today** and **7D** toggles on the Home dashboard.${attachmentNote}`,
+        ].join('\n');
+      } else if (
+        lowerPrompt.includes('backlog') ||
+        lowerPrompt.includes('task') ||
+        lowerPrompt.includes('queue') ||
+        lowerPrompt.includes('needs action') ||
+        lowerPrompt.includes('approve')
+      ) {
+        messageText = [
+          `You currently have **4 tasks** in **Needs Action** waiting for your approval:`,
+          ``,
+          `1. **Approve Trophy Asset Batch** (\`@cbo\`) — 6 SVG trophy tiers for arena progression.`,
+          `2. **Ship Rematch State-Reset Hotfix** (\`@tech_lead\`) — Fixes rapid-click rematch board lock.`,
+          `3. **Publish 15s Launch Clip** (\`@social_Clip\`) — Short-form gameplay teaser.`,
+          `4. **Publish 3 SEO Guide Drafts** (\`@seo_aeo_head\`) — High-intent strategy & rules pages.`,
+          ``,
+          `Click **Approve** on any card on the Home dashboard, or tell me which one you want to modify or prioritize.${attachmentNote}`,
+        ].join('\n');
+      } else {
+        messageText = [
+          `Got it — I've processed your directive for **${scope}**: *"${lastUserText.slice(0, 120)}"*.`,
+          ``,
+          `- **Action**: Routed to \`@cto\` and \`@tech_lead\` against the active **Tic-Tac-Toe Arena** branch.`,
+          `- **Next Step**: Let me know if you want to lock this into the current sprint backlog or run a standup first.${attachmentNote}`,
+        ].join('\n');
+      }
     }
 
     const promptTokenCount = Math.max(32, estimateTokens(systemInstruction + lastUserText));

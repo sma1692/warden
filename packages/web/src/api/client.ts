@@ -97,6 +97,19 @@ export interface DemoDeployState {
   workspace: DemoWorkspaceInfo;
 }
 
+export interface UserTokenTelemetry {
+  range: 'today' | '7d' | '30d' | 'all';
+  totalTokens: number;
+  totalCostUsd: number;
+  totalRuns: number;
+  cachedHitPct: number;
+  byVertical: {
+    TECH: { tokens: number; costUsd: number; runs: number; sharePct: number };
+    SEO_AEO: { tokens: number; costUsd: number; runs: number; sharePct: number };
+    SOCIAL: { tokens: number; costUsd: number; runs: number; sharePct: number };
+  };
+}
+
 class WardenApiClient {
   private agents: Agent[] = [...INITIAL_AGENTS];
   private projectContexts: ProjectContext[] = [...INITIAL_PROJECT_CONTEXTS];
@@ -256,6 +269,14 @@ class WardenApiClient {
       };
     }
     return this.telemetry;
+  }
+
+  public async getTokenTelemetry(
+    range: 'today' | '7d' | '30d' | 'all' = 'today'
+  ): Promise<UserTokenTelemetry | null> {
+    return this.safeFetch<UserTokenTelemetry>(
+      `/telemetry/tokens?range=${encodeURIComponent(range)}`
+    );
   }
 
   public async getAgents(): Promise<Agent[]> {

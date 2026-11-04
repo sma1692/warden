@@ -48,4 +48,6 @@ dist*/
 .state/onboarded.json
 .state/commit-msg.txt
 .state/certs/
+.state/demo-workspaces/
+packages/orchestrator/.state/
 saved-changes.diff

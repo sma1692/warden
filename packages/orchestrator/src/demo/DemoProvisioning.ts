@@ -260,6 +260,155 @@ function shortUserId(userId: string): string {
   return userId.replace(/-/g, '').slice(0, 8);
 }
 
+export async function seedDemoAgentRuns(userId: string): Promise<void> {
+  try {
+    const countRes = await pool.query<{ cnt: string | number }>(
+      'SELECT COUNT(*)::int AS cnt FROM agent_runs WHERE user_id = $1',
+      [userId]
+    );
+    if (Number(countRes.rows[0]?.cnt ?? 0) > 0) return;
+
+    const agentsRes = await pool.query<{ id: string; slug: string; department: string }>(
+      'SELECT id, slug, department FROM agents'
+    );
+    const rows = agentsRes.rows;
+    if (rows.length === 0) return;
+
+    const pickAgent = (candidates: string[], deptFallback?: string): string => {
+      for (const c of candidates) {
+        const exact = rows.find((r) => r.id === c || r.slug === `@${c}`);
+        if (exact) return exact.id;
+        const prefix = rows.find((r) => r.id.startsWith(`${c}:`) || r.slug.startsWith(`@${c}:`));
+        if (prefix) return prefix.id;
+      }
+      if (deptFallback) {
+        const byDept = rows.find((r) => r.department?.toLowerCase() === deptFallback.toLowerCase());
+        if (byDept) return byDept.id;
+      }
+      return rows[0].id;
+    };
+
+    const wardenId = pickAgent(['warden', 'cto']);
+    const techLeadId = pickAgent(['tech_lead', 'cto', 'warden'], 'tech');
+    const frontendDevId = pickAgent(['frontend_dev', 'backend_dev', 'pm', 'cto'], 'tech');
+    const seoAgentId = pickAgent(['seo_aeo_head', 'seo_content_dev', 'aeo_analyst', 'cbo']);
+    const socialAgentId = pickAgent(['social_lead', 'cmo'], 'marketing');
+
+    const seedRuns = [
+      {
+        agent_id: techLeadId,
+        trigger_type: 'DAILY_STANDUP',
+        input_prompt: 'Triage arena crash report & lock end-state guard contract',
+        output_summary: 'Reproduced match-end crash; locked minimal guard + Playwright regression spec.',
+        interval: '25 minutes',
+        duration_ms: 18400,
+        tokens_in: 2100,
+        tokens_cached: 1200,
+        tokens_thinking: 620,
+        tokens_out: 680,
+        cost_usd: 0.0142,
+      },
+      {
+        agent_id: frontendDevId,
+        trigger_type: 'DELEGATION',
+        input_prompt: 'Scaffold trophy ladder sprite atlas & match-end regression guard',
+        output_summary: 'Prepared 12-sprite trophy atlas manifest and verified end-state guard in sandbox.',
+        interval: '25 minutes',
+        duration_ms: 24100,
+        tokens_in: 1450,
+        tokens_cached: 850,
+        tokens_thinking: 410,
+        tokens_out: 510,
+        cost_usd: 0.0098,
+      },
+      {
+        agent_id: seoAgentId,
+        trigger_type: 'DAILY_STANDUP',
+        input_prompt: 'Draft Trophy Launch how-to SEO cluster + FAQ JSON-LD schema',
+        output_summary: 'Shipped 4 semantic how-to guide outlines with structured FAQPage schema.',
+        interval: '25 minutes',
+        duration_ms: 15200,
+        tokens_in: 980,
+        tokens_cached: 520,
+        tokens_thinking: 240,
+        tokens_out: 380,
+        cost_usd: 0.0064,
+      },
+      {
+        agent_id: socialAgentId,
+        trigger_type: 'DAILY_STANDUP',
+        input_prompt: 'Prepare 5 player-flex launch clips & announcement thread',
+        output_summary: 'Cut 5 vertical storyboard scripts + launch thread copy for Reels & Shorts.',
+        interval: '25 minutes',
+        duration_ms: 11800,
+        tokens_in: 540,
+        tokens_cached: 280,
+        tokens_thinking: 140,
+        tokens_out: 220,
+        cost_usd: 0.0036,
+      },
+      {
+        agent_id: wardenId,
+        trigger_type: 'CEO_CHAT',
+        input_prompt: 'Initial workspace architecture index & backlog synthesis',
+        output_summary: 'Indexed Tic-Tac-Toe Arena repository and synthesized P0/P1 launch backlog.',
+        interval: '3 days',
+        duration_ms: 31500,
+        tokens_in: 4800,
+        tokens_cached: 3100,
+        tokens_thinking: 1250,
+        tokens_out: 1480,
+        cost_usd: 0.032,
+      },
+      {
+        agent_id: seoAgentId,
+        trigger_type: 'DAILY_STANDUP',
+        input_prompt: 'Baseline llms.txt, robots.txt & SERP citation benchmark',
+        output_summary: 'Generated baseline llms.txt discovery manifest and AI answer citation audit.',
+        interval: '3 days',
+        duration_ms: 22600,
+        tokens_in: 3100,
+        tokens_cached: 1850,
+        tokens_thinking: 780,
+        tokens_out: 970,
+        cost_usd: 0.02,
+      },
+    ];
+
+    for (const r of seedRuns) {
+      await pool.query(
+        `INSERT INTO agent_runs (
+          id, user_id, agent_id, trigger_type, input_prompt, output_summary,
+          status, qa_passed, started_at, ended_at, active_duration_ms, pause_duration_ms,
+          tokens_in, tokens_cached, tokens_thinking, tokens_out, cost_usd
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          'COMPLETED', TRUE, NOW() - $7::interval, NOW() - $7::interval + ($8 || ' milliseconds')::interval, $8::bigint, 0,
+          $9, $10, $11, $12, $13
+        )`,
+        [
+          crypto.randomUUID(),
+          userId,
+          r.agent_id,
+          r.trigger_type,
+          r.input_prompt,
+          r.output_summary,
+          r.interval,
+          r.duration_ms,
+          r.tokens_in,
+          r.tokens_cached,
+          r.tokens_thinking,
+          r.tokens_out,
+          r.cost_usd,
+        ]
+      );
+    }
+    console.log(`[🚀 DEMO PROVISION] Seeded ${seedRuns.length} realistic agent_runs for user=${userId}`);
+  } catch (err) {
+    console.error('[DemoProvisioning] Failed to seed demo agent_runs:', err);
+  }
+}
+
 async function seedDemoRows(
   userId: string,
   opts: { repoFullName: string | null; branch: string | null }
@@ -341,6 +490,8 @@ async function seedDemoRows(
       project_slug: 'demo-project',
     });
   }
+
+  await seedDemoAgentRuns(userId);
 }
 
 async function seedFullRows(userId: string): Promise<void> {
@@ -367,19 +518,58 @@ async function seedFullRows(userId: string): Promise<void> {
   });
 }
 
+async function deployInitialDemoBuild(
+  userId: string,
+  localDir: string | null
+): Promise<{ deploy_url: string | null; deploy_status: DemoDeployState }> {
+  try {
+    const { demoPrebuiltDir, demoTemplateDir } = await import('./DemoFolders.js');
+    const { deployDemoProject } = await import('./CloudflareDeployer.js');
+    const targetDir = localDir || demoPrebuiltDir() || demoTemplateDir();
+    console.log(`[🚀 DEMO PROVISION] Running initial demo build deploy for user=${userId} targetDir=${targetDir}`);
+    const res = await deployDemoProject(userId, targetDir);
+    if (res.ok && res.primaryUrl) {
+      const out = { deploy_url: res.primaryUrl, deploy_status: 'ACTIVE' as DemoDeployState };
+      console.log(`[🚀 DEMO PROVISION] Initial deploy succeeded: deploy_url=${out.deploy_url} deploy_status=${out.deploy_status}`);
+      return out;
+    }
+    // When Cloudflare creds are not configured locally, point to the local prebuilt game
+    // so the dashboard "Latest release" button still opens the playable v1 game.
+    const fallback = { deploy_url: '/demo-game/index.html', deploy_status: 'ACTIVE' as DemoDeployState };
+    console.log(`[🚀 DEMO PROVISION] Initial deploy using local fallback: deploy_url=${fallback.deploy_url} deploy_status=${fallback.deploy_status} (reason: ${res.status})`);
+    return fallback;
+  } catch (err) {
+    console.error('[DemoProvisioning] Initial demo deploy failed; falling back to local build:', err);
+    return { deploy_url: '/demo-game/index.html', deploy_status: 'ACTIVE' };
+  }
+}
+
 /**
  * Idempotent per-user provisioning. Safe to call on every COMPLETE save;
- * existing workspaces return immediately.
+ * existing workspaces return immediately (after ensuring initial deploy for demo users).
  */
 export async function provisionUser(
   userId: string,
   form: Record<string, unknown> | null | undefined
 ): Promise<DemoWorkspace> {
+  console.log(`[🚀 DEMO PROVISION] Starting provisionUser for user=${userId}`);
   const existing = await getDemoWorkspace(userId).catch(() => null);
-  if (existing) return existing;
+  if (existing) {
+    console.log(`[🚀 DEMO PROVISION] Existing workspace found for user=${userId} mode=${existing.mode} deploy_status=${existing.deploy_status} deploy_url=${existing.deploy_url}`);
+    if (existing.mode === 'demo') {
+      await seedDemoAgentRuns(userId);
+      if (!existing.deploy_url || existing.deploy_status === 'NOT_DEPLOYED') {
+        const deployed = await deployInitialDemoBuild(userId, existing.local_dir);
+        const updated = await recordDemoDeploy(userId, deployed).catch(() => null);
+        return updated || existing;
+      }
+    }
+    return existing;
+  }
 
-  const isDemo = form?.demo === true || form?.mode === 'demo';
+  const isDemo = form?.demo === true || form?.mode === 'demo' || form?.chosenMode === 'demo';
   const mode = isDemo ? 'demo' : 'full';
+  console.log(`[🚀 DEMO PROVISION] Provisioning new workspace for user=${userId} mode=${mode}`);
 
   const { ensureBudget } = await import('../budgets/UserBudgets.js');
   await ensureBudget(userId, mode).catch((err) =>
@@ -388,6 +578,7 @@ export async function provisionUser(
 
   if (!isDemo) {
     await seedFullRows(userId);
+    console.log(`[🚀 DEMO PROVISION] Seeded full-mode DB rows for user=${userId}`);
     return saveWorkspace({
       user_id: userId,
       mode: 'full',
@@ -412,15 +603,21 @@ export async function provisionUser(
 
   // DB seeds first: the workspace is usable even if git is unconfigured.
   await seedDemoRows(userId, { repoFullName: repo || null, branch });
+  console.log(`[🚀 DEMO PROVISION] Seeded demo DB rows (context, welcome thread, backlog, agent_runs) for user=${userId}`);
 
   // Per-user demo folder: best effort, never fails provisioning.
   let localDir: string | null = null;
   try {
     const { ensureDemoFolder } = await import('./DemoFolders.js');
     localDir = ensureDemoFolder(userId).dir;
+    console.log(`[🚀 DEMO PROVISION] Demo folder ready at ${localDir}`);
   } catch (err) {
     console.error('[DemoProvisioning] Demo folder seed failed; DB seeds kept:', err);
   }
+
+  // Deploy the predefined build folder to Cloudflare Pages on their unique subdomain.
+  const initialDeploy = await deployInitialDemoBuild(userId, localDir);
+  console.log(`[🚀 DEMO PROVISION] deployInitialDemoBuild returned deploy_url=${initialDeploy.deploy_url} deploy_status=${initialDeploy.deploy_status}`);
 
   if (!token || !repo) {
     return saveWorkspace({
@@ -434,8 +631,8 @@ export async function provisionUser(
       pr_url: null,
       status: 'NO_GIT_CONFIG',
       local_dir: localDir,
-      deploy_url: null,
-      deploy_status: 'NOT_DEPLOYED',
+      deploy_url: initialDeploy.deploy_url,
+      deploy_status: initialDeploy.deploy_status,
     });
   }
 
@@ -454,8 +651,8 @@ export async function provisionUser(
       pr_url: pr.html_url || null,
       status: 'ACTIVE',
       local_dir: localDir,
-      deploy_url: null,
-      deploy_status: 'NOT_DEPLOYED',
+      deploy_url: initialDeploy.deploy_url,
+      deploy_status: initialDeploy.deploy_status,
     });
   } catch (err) {
     console.error('[DemoProvisioning] Git setup failed; DB seeds kept:', err);
@@ -470,8 +667,8 @@ export async function provisionUser(
       pr_url: null,
       status: 'GIT_FAILED',
       local_dir: localDir,
-      deploy_url: null,
-      deploy_status: 'NOT_DEPLOYED',
+      deploy_url: initialDeploy.deploy_url,
+      deploy_status: initialDeploy.deploy_status,
     });
   }
 }

@@ -419,8 +419,15 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   const [signedIn, setSignedIn] = useState<boolean>(isLive && PERSISTED_STEPS.includes(initialStep));
   const [step, setStep] = useState<OnboardingStepId>(initialStep);
   const [persona, setPersona] = useState<ReturnUserPersona>('FIRST_TIME');
-  // Explore-live-demo: freezes the user on the demo path with a boot loader.
+  // Explore-live-demo: S1 -> S2 (loading + Cloudflare deploy) -> S3 (company guide) -> Dashboard.
+  const [lockedFullMode, setLockedFullMode] = useState<boolean>(
+    () => Boolean(savedForm.chosenMode === 'full' || savedForm.mode === 'full')
+  );
+  const [f1Phase, setF1Phase] = useState<'s1' | 's2' | 's3' | 'tracks'>(() =>
+    savedForm.chosenMode === 'full' || savedForm.mode === 'full' ? 'tracks' : 's1'
+  );
   const [exploreBooting, setExploreBooting] = useState<boolean>(false);
+  const [s2Progress, setS2Progress] = useState<number>(15);
   const [pendingExplore, setPendingExplore] = useState<boolean>(false);
 
   // Live: each step owns a URL (/login, /otp, /onboarding/f1 …) so Back, Forward,
@@ -598,6 +605,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       importSource,
       pastedContext: pastedContext.slice(0, 20000),
       repoUrl,
+      ...(lockedFullMode ? { mode: 'full', chosenMode: 'full', demo: false } : {}),
     }),
     [
       companyName,
@@ -612,6 +620,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       importSource,
       pastedContext,
       repoUrl,
+      lockedFullMode,
     ]
   );
 
@@ -714,7 +723,11 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   const routeAfterOtpVerification = (user?: AuthUser) => {
     setAuthError(null);
     if (user) {
-      const { status, step: savedStep } = user.onboarding;
+      const { status, step: savedStep, form: userForm } = user.onboarding;
+      if (userForm && (userForm.chosenMode === 'full' || userForm.mode === 'full')) {
+        setLockedFullMode(true);
+        setF1Phase('tracks');
+      }
       if (status === 'COMPLETE') {
         onComplete();
         return;
@@ -862,23 +875,34 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     onComplete();
   };
 
-  // Explore-live-demo: freeze on this path, provision the demo workspace
-  // (folder + seeds + branch) behind a loader, then enter the dashboard.
+  // Explore-live-demo: S1 -> S2 (at least ~1.2s while backend provisions + deploys to Cloudflare) -> S3.
   const handleExploreDemo = async () => {
+    setF1Phase('s2');
     setExploreBooting(true);
+    setS2Progress(20);
+    const progressTimer = window.setInterval(() => {
+      setS2Progress((prev) => (prev < 92 ? prev + 18 : prev));
+    }, 240);
     try {
+      const minWait = new Promise((r) => setTimeout(r, 1250));
       if (isLive) {
-        const saved = await saveOnboarding({
-          status: 'COMPLETE',
-          form: { ...formSnapshot, demo: true, mode: 'demo', exploreDemo: true },
-        });
+        const [saved] = await Promise.all([
+          saveOnboarding({
+            status: 'COMPLETE',
+            form: { ...formSnapshot, demo: true, mode: 'demo', exploreDemo: true },
+          }),
+          minWait,
+        ]);
         // The demo runs on seed data, so enter anyway — but say so.
         if (!saved) notifyError('Demo started, but progress could not be saved to the server.');
       } else {
-        await new Promise((r) => setTimeout(r, 1800));
+        await minWait;
       }
+      setS2Progress(100);
     } finally {
-      onComplete();
+      window.clearInterval(progressTimer);
+      setExploreBooting(false);
+      setF1Phase('s3');
     }
   };
 
@@ -1073,7 +1097,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       {/* MAIN ONBOARDING STAGE CONTAINER */}
       <div
         className={
-          step === 'landing'
+          step === 'landing' || (step === 'f1' && f1Phase !== 'tracks')
             ? 'flex-1 flex flex-col'
             : 'flex-1 flex items-center justify-center p-4 sm:p-6'
         }
@@ -1641,128 +1665,349 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
           </div>
         )}
 
-        {/* STEP F1: ONBOARDING TRACK SELECTION (2 Main CTAs + 1 Secondary .md Import CTA) */}
+        {/* STEP F1: S1 (Logo + Live Demo / Full Flow) -> S2 (Loading + Cloudflare Deploy) -> S3 (Company Guide) */}
         {step === 'f1' && (
-          <div className="max-w-4xl w-full space-y-6">
-            {exploreBooting ? (
-              <div className="rounded-3xl border border-[#C6A664]/40 bg-[#101216] p-10 text-center space-y-4">
-                <RefreshCw className="h-8 w-8 text-[#D4B475] animate-spin mx-auto" />
-                <h1 className="text-xl font-black text-white">Spinning up your live demo…</h1>
-                <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  Creating your demo folder, seeding the game project and starter backlog. This takes a few seconds. Please wait.
-                </p>
-              </div>
-            ) : (
-            <>
-            <div className="text-center space-y-2">
-              <span className="rounded-full bg-gold-500/15 border border-gold-500/35 px-3 py-0.5 text-[10px] font-mono text-gold-300">
-                F1 • HOW DO YOU WANT TO START?
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-black text-white">
-                Tell Warden about your company
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
-                Start from a founder brief, mirror your existing team, or jump straight into the live demo. This builds your shared memory.
-              </p>
-            </div>
+          <>
+            {/* S1: Large Logo & WARDEN Section + Catchy Free Live Demo Button + Smaller Full Flow Button */}
+            {f1Phase === 's1' && (
+              <div className="relative flex-1 w-full lg:h-dvh lg:overflow-hidden flex flex-col justify-between max-w-md lg:max-w-6xl mx-auto px-5 py-6 lg:px-10 lg:py-8">
+                <div className="hidden lg:block pointer-events-none absolute -top-28 left-1/4 h-96 w-96 rounded-full bg-[#C6A664]/[0.07] blur-3xl" />
+                <div className="hidden lg:block pointer-events-none absolute bottom-10 right-12 h-96 w-96 rounded-full bg-[#162030]/60 blur-3xl" />
 
-            {/* 2 Primary Track Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* Track 1: Solo Founder */}
-              <div className="rounded-3xl border border-gold-500/40 bg-gradient-to-b from-gold-950/25 to-[#14161A] p-6 flex flex-col justify-between gap-5 shadow-xl">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-xl bg-gold-500/20 border border-gold-500/40 px-2.5 py-1 text-xs font-bold text-gold-300">
-                      Track 1 • Solo Founder (1A → 1B → 1C)
-                    </span>
-                    <Rocket className="h-5 w-5 text-gold-400" />
+                <div className="relative flex-1 flex flex-col lg:grid lg:grid-cols-12 lg:gap-12 lg:items-center min-h-0">
+                  {/* Top Half on Mobile (~48dvh) / Left Column on Desktop: Logo + WARDEN Text */}
+                  <div className="h-[46dvh] lg:h-auto w-full flex flex-col items-center justify-center lg:col-span-6 gap-5">
+                    <div className="relative group flex items-center justify-center">
+                      <div className="absolute -inset-5 rounded-3xl bg-[#C6A664]/15 blur-2xl opacity-80 pointer-events-none" />
+                      <div className="relative aspect-square h-52 w-52 sm:h-64 sm:w-64 lg:h-80 lg:w-80 xl:h-96 xl:w-96 rounded-3xl bg-gradient-to-b from-[#D4B475]/20 via-[#162030] to-[#0B121C] border border-[#C6A664]/45 p-3 shadow-2xl shadow-[#C6A664]/15 flex items-center justify-center overflow-hidden">
+                        <img
+                          src="/warden-logo.png"
+                          alt="WARDEN Strict Overseer Logo"
+                          className="h-full w-full object-cover rounded-2xl"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-center space-y-1.5">
+                      <span className="block font-sans text-3xl sm:text-4xl lg:text-5xl font-black tracking-[0.24em] text-white">
+                        WARDEN
+                      </span>
+                      <span className="block text-xs sm:text-sm font-mono uppercase tracking-[0.22em] text-[#D4B475]">
+                        ONE SHARED BRAIN • EVERY WING
+                      </span>
+                    </div>
                   </div>
-                  <h2 className="text-lg font-bold text-white">
-                    I Am a Solo Founder / New Venture
-                  </h2>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Enter your company brief and select capacities across Tech, SEO/AEO, and Social Media. Warden suggests a complete AI agent hierarchy with a live visual Org Chart and starter backlog.
-                  </p>
-                </div>
 
-                <button
-                  type="button"
-                  onClick={() => setStep('1a')}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 py-3 text-xs transition cursor-pointer"
-                >
-                  <span>Start Solo Founder Setup (1A)</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
+                  {/* Bottom Half on Mobile / Right Column on Desktop: Primary Live Demo Button + Secondary Full Flow Button */}
+                  <div className="flex-1 lg:flex-initial w-full flex flex-col items-center justify-center lg:col-span-6 gap-5">
+                    <div className="w-full max-w-lg lg:max-w-xl rounded-3xl border border-[#C6A664]/40 bg-[#14161A]/95 p-7 sm:p-10 shadow-2xl space-y-7 text-center">
+                      <div className="space-y-3">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#C6A664]/35 bg-[#C6A664]/15 px-3 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
+                          <Sparkles className="h-3 w-3" />
+                          <span>LIVE SIMULATION • 13 AGENTS MID-SPRINT</span>
+                        </span>
+                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-tight">
+                          Step Into a Company That Runs Itself
+                        </h1>
+                        <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+                          Three humans and thirteen AI agents are mid-sprint inside an indie gaming studio. A live build is running and four critical decisions are waiting on your desk.
+                        </p>
+                      </div>
 
-              {/* Track 2: Pre-Existing Team */}
-              <div className="rounded-3xl border border-[#C6A664]/40 bg-gradient-to-b from-[#162030] to-[#0F1824] p-6 flex flex-col justify-between gap-5 shadow-xl">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-xl bg-[#C6A664]/20 border border-[#C6A664]/40 px-2.5 py-1 text-xs font-bold text-[#D4B475]">
-                      Track 2 • Existing Team (2A → 2B → 2C)
-                    </span>
-                    <Users className="h-5 w-5 text-[#D4B475]" />
+                      {/* Primary Catchy Live Demo CTA */}
+                      <button
+                        type="button"
+                        onClick={() => void handleExploreDemo()}
+                        className="w-full rounded-2xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] border border-[#D4B475] shadow-[0_8px_30px_rgba(198,166,100,0.32)] hover:brightness-110 px-6 py-4 transition cursor-pointer flex flex-col items-center justify-center gap-1"
+                      >
+                        <span className="inline-flex items-center gap-2 text-sm sm:text-base font-black tracking-wider uppercase">
+                          <Sparkles className="h-5 w-5" />
+                          <span>Enter the Live War Room</span>
+                          <ArrowRight className="h-4 w-4" />
+                        </span>
+                        <span className="text-[11px] font-mono font-semibold text-[#0B121C]/80">
+                          Take command as CEO • Instant live environment
+                        </span>
+                      </button>
+
+                      {/* Smaller Secondary Button Underneath: Alpha / Community Full Onboarding Flow */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLockedFullMode(true);
+                            if (isLive) {
+                              void saveOnboarding({
+                                status: 'IN_PROGRESS',
+                                step: 'f1',
+                                form: { ...formSnapshot, mode: 'full', chosenMode: 'full', demo: false },
+                              });
+                            }
+                            setF1Phase('tracks');
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#2D3440] bg-[#101216] hover:border-[#C6A664]/50 hover:text-[#D4B475] px-4 py-2.5 text-xs font-semibold text-slate-300 transition cursor-pointer"
+                        >
+                          <span>Join Alpha Community — Onboard My Own Company →</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <h2 className="text-lg font-bold text-white">
-                    We Have an Existing Company &amp; Team
-                  </h2>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Connect your website, repositories, and social channels, then map your current human employees and their active work into paired AI Agent Twins.
-                  </p>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setStep('2a')}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 py-3 text-xs transition cursor-pointer"
-                >
-                  <span>Start Existing Team Setup (2A)</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
               </div>
-            </div>
-
-            {/* Featured: Explore the live demo (freezes onto the demo path) */}
-            <div className="rounded-3xl border border-[#C6A664]/50 bg-gradient-to-r from-[#162030] via-[#14161A] to-[#14161A] p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-xl">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#C6A664]/15 border border-[#C6A664]/40">
-                <Gamepad2 className="h-5 w-5 text-[#D4B475]" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
-                  Fastest way in • your own demo folder
-                </p>
-                <h2 className="text-base font-bold text-white">Explore the live demo</h2>
-                <p className="text-xs text-slate-400">
-                  We spin up your copy of the demo game, seed a starter backlog, and drop you in the dashboard. No setup.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleExploreDemo()}
-                className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] hover:brightness-110 px-5 py-3 text-xs transition cursor-pointer"
-              >
-                <span>Launch demo</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Secondary Option 3: Import Open-Source .md File Structure Bundle */}
-            <div className="flex justify-center pt-1">
-              <button
-                type="button"
-                onClick={() => setStep('3_import')}
-                className="inline-flex items-center gap-2.5 rounded-2xl border border-[#22262E] bg-[#1D2128]/90 hover:border-[#C6A664]/50 hover:bg-[#1D2128] px-5 py-2.5 text-xs font-semibold text-slate-200 hover:text-[#D4B475] transition cursor-pointer"
-              >
-                <Upload className="h-4 w-4 text-[#D4B475]" />
-                <span>
-                  Option 3: Import Open-Source <code className="font-mono text-[#D4B475]">.md</code> File Structure Bundle (<code className="font-mono">AGENTS.md</code> + <code className="font-mono">projects.yaml</code>)
-                </span>
-              </button>
-            </div>
-            </>
             )}
-          </div>
+
+            {/* S2: Loading Screen (>= 1.2s while provisioning & deploying to Cloudflare subdomain) */}
+            {(f1Phase === 's2' || exploreBooting) && (
+              <div className="flex-1 flex flex-col items-center justify-center p-6">
+                <div className="max-w-md w-full rounded-3xl border border-[#C6A664]/40 bg-[#101216] p-8 sm:p-10 text-center space-y-6 shadow-2xl">
+                  <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-b from-[#D4B475]/20 via-[#162030] to-[#0B121C] border border-[#C6A664]/45 p-2 shadow-xl">
+                    <img
+                      src="/warden-logo.png"
+                      alt="WARDEN Logo"
+                      className="h-full w-full object-contain rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#D4B475]">
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      <span>Deploying to Cloudflare Edge</span>
+                    </span>
+                    <h1 className="text-xl sm:text-2xl font-black text-white">
+                      Spinning up your live studio…
+                    </h1>
+                    <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                      Deploying v1 of <strong className="text-slate-200">Tic-Tac-Toe Arena</strong> to your unique subdomain and briefing your AI workforce.
+                    </p>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-[#14161A] overflow-hidden border border-[#C6A664]/30">
+                    <div
+                      className="h-full bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] transition-all duration-300"
+                      style={{ width: `${s2Progress}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* S3: Indie Gaming Company Briefing & Guided Walkthrough Screen -> Begin Button */}
+            {f1Phase === 's3' && !exploreBooting && (
+              <div className="relative flex-1 w-full lg:h-dvh lg:overflow-hidden flex flex-col justify-between max-w-md lg:max-w-6xl mx-auto px-5 py-6 lg:px-10 lg:py-8">
+                <div className="relative flex-1 flex flex-col lg:grid lg:grid-cols-12 lg:gap-10 lg:items-center min-h-0">
+                  {/* Left / Top Column: Studio Identity & High-Level Workforce Structure */}
+                  <div className="w-full lg:col-span-5 space-y-5">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-[#C6A664]/40 bg-[#C6A664]/15 px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
+                      <Gamepad2 className="h-3.5 w-3.5" />
+                      <span>Welcome • Live Demo Briefing</span>
+                    </div>
+                    <div className="space-y-2">
+                      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-tight">
+                        You Run an Indie Gaming Studio
+                      </h1>
+                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        Welcome! In this live demo, you are the CEO of the studio behind <strong className="text-[#D4B475]">Tic-Tac-Toe Arena</strong>. Your v1 build is already deployed and live.
+                      </p>
+                    </div>
+
+                    {/* High-Level Company Structure Stats */}
+                    <div className="grid grid-cols-3 gap-2.5">
+                      <div className="rounded-2xl border border-[#C6A664]/35 bg-[#14161A] p-3.5 text-center">
+                        <span className="block text-xl sm:text-2xl font-black text-[#D4B475]">3</span>
+                        <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-300 mt-0.5">
+                          Real Employees
+                        </span>
+                        <span className="block text-[10px] text-slate-500 mt-0.5">
+                          Tech, Growth, Ops
+                        </span>
+                      </div>
+                      <div className="rounded-2xl border border-[#C6A664]/35 bg-[#14161A] p-3.5 text-center">
+                        <span className="block text-xl sm:text-2xl font-black text-[#D4B475]">13</span>
+                        <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-300 mt-0.5">
+                          AI Agents
+                        </span>
+                        <span className="block text-[10px] text-slate-500 mt-0.5">
+                          Tech • SEO • Social
+                        </span>
+                      </div>
+                      <div className="rounded-2xl border border-[#C6A664]/35 bg-[#14161A] p-3.5 text-center">
+                        <span className="block text-xl sm:text-2xl font-black text-emerald-400">Live</span>
+                        <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-300 mt-0.5">
+                          v1 Deployed
+                        </span>
+                        <span className="block text-[10px] text-slate-500 mt-0.5">
+                          Cloudflare Edge
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right / Bottom Column: Guided Process + Begin Button */}
+                  <div className="w-full lg:col-span-7 mt-5 lg:mt-0">
+                    <div className="rounded-3xl border border-[#C6A664]/40 bg-[#14161A]/95 p-5 sm:p-7 shadow-2xl space-y-5">
+                      <div className="flex items-center justify-between border-b border-[#22262E] pb-3">
+                        <span className="text-xs font-mono uppercase tracking-wider text-[#D4B475]">
+                          THE WARDEN WORKFLOW
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-400">
+                          Powered by Meta
+                        </span>
+                      </div>
+
+                      <div className="space-y-3.5">
+                        <div className="flex items-start gap-3.5 rounded-2xl border border-[#22262E] bg-[#101216] p-3.5">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#C6A664]/20 border border-[#C6A664]/40 text-xs font-mono font-bold text-[#D4B475]">
+                            1
+                          </span>
+                          <div className="space-y-0.5">
+                            <h3 className="text-xs sm:text-sm font-bold text-white">
+                              Employees Command Dedicated AI Agents
+                            </h3>
+                            <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed">
+                              Your 3 human leads each direct specialized AI agents in parallel across code, growth, and ops.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-3.5 rounded-2xl border border-[#22262E] bg-[#101216] p-3.5">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#C6A664]/20 border border-[#C6A664]/40 text-xs font-mono font-bold text-[#D4B475]">
+                            2
+                          </span>
+                          <div className="space-y-0.5">
+                            <h3 className="text-xs sm:text-sm font-bold text-white">
+                              Meta-Powered Orchestration
+                            </h3>
+                            <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed">
+                              Warden coordinates every agent using Meta models and brings only final 1-click approvals to your desk.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-3.5 rounded-2xl border border-[#22262E] bg-[#101216] p-3.5">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#C6A664]/20 border border-[#C6A664]/40 text-xs font-mono font-bold text-[#D4B475]">
+                            3
+                          </span>
+                          <div className="space-y-0.5">
+                            <h3 className="text-xs sm:text-sm font-bold text-white">
+                              One Shared Brain (90% Lower Token Burn)
+                            </h3>
+                            <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed">
+                              Every repo, spec, and decision lives in shared memory — zero context re-pasting.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={onComplete}
+                        className="w-full inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-black tracking-widest uppercase border border-[#D4B475] shadow-[0_6px_28px_rgba(198,166,100,0.32)] hover:brightness-110 py-4 text-sm sm:text-base transition cursor-pointer"
+                      >
+                        <span>Begin</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Full Onboarding Track Selector (when user clicks "Join Alpha Community" on S1) */}
+            {f1Phase === 'tracks' && !exploreBooting && (
+              <div className="max-w-4xl w-full space-y-6">
+                <div className="flex items-center justify-between">
+                  {!lockedFullMode && savedForm.chosenMode !== 'full' && savedForm.mode !== 'full' ? (
+                    <button
+                      type="button"
+                      onClick={() => setF1Phase('s1')}
+                      className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      <span>Back</span>
+                    </button>
+                  ) : (
+                    <div />
+                  )}
+                  <span className="rounded-full bg-gold-500/15 border border-gold-500/35 px-3 py-0.5 text-[10px] font-mono text-gold-300">
+                    FULL ONBOARDING FLOW
+                  </span>
+                </div>
+
+                <div className="text-center space-y-2">
+                  <h1 className="text-2xl sm:text-3xl font-black text-white">
+                    Tell Warden about your company
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
+                    Start from a founder brief, mirror your existing team, or import a markdown bundle.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="rounded-3xl border border-gold-500/40 bg-gradient-to-b from-gold-950/25 to-[#14161A] p-6 flex flex-col justify-between gap-5 shadow-xl">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="rounded-xl bg-gold-500/20 border border-gold-500/40 px-2.5 py-1 text-xs font-bold text-gold-300">
+                          Track 1 • Solo Founder (1A → 1B → 1C)
+                        </span>
+                        <Rocket className="h-5 w-5 text-gold-400" />
+                      </div>
+                      <h2 className="text-lg font-bold text-white">
+                        I Am a Solo Founder / New Venture
+                      </h2>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        Enter your company brief and select capacities across Tech, SEO/AEO, and Social Media. Warden suggests a complete AI agent hierarchy with a live visual Org Chart and starter backlog.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setStep('1a')}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 py-3 text-xs transition cursor-pointer"
+                    >
+                      <span>Start Solo Founder Setup (1A)</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="rounded-3xl border border-[#C6A664]/40 bg-gradient-to-b from-[#162030] to-[#0F1824] p-6 flex flex-col justify-between gap-5 shadow-xl">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="rounded-xl bg-[#C6A664]/20 border border-[#C6A664]/40 px-2.5 py-1 text-xs font-bold text-[#D4B475]">
+                          Track 2 • Existing Team (2A → 2B → 2C)
+                        </span>
+                        <Users className="h-5 w-5 text-[#D4B475]" />
+                      </div>
+                      <h2 className="text-lg font-bold text-white">
+                        We Have an Existing Company &amp; Team
+                      </h2>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        Connect your website, repositories, and social channels, then map your current human employees and their active work into paired AI Agent Twins.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setStep('2a')}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 py-3 text-xs transition cursor-pointer"
+                    >
+                      <span>Start Existing Team Setup (2A)</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setStep('3_import')}
+                    className="inline-flex items-center gap-2.5 rounded-2xl border border-[#22262E] bg-[#1D2128]/90 hover:border-[#C6A664]/50 hover:bg-[#1D2128] px-5 py-2.5 text-xs font-semibold text-slate-200 hover:text-[#D4B475] transition cursor-pointer"
+                  >
+                    <Upload className="h-4 w-4 text-[#D4B475]" />
+                    <span>
+                      Option 3: Import Open-Source <code className="font-mono text-[#D4B475]">.md</code> File Structure Bundle (<code className="font-mono">AGENTS.md</code> + <code className="font-mono">projects.yaml</code>)
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* STEP 1A: SOLO FOUNDER — BRIEF & VERTICAL CAPACITIES */}

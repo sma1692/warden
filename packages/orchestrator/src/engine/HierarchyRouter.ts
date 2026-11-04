@@ -653,8 +653,8 @@ export class HierarchyRouter {
       const hasCodeAction = /(deploy|build|commit|push|refactor|migration|schema|dockerfile|playwright|endpoint|backlog item)/i.test(p);
       if (!hasCodeAction) return true;
     }
-    const hasTicketAction = /(deploy|build|commit|push|git|refactor|backlog|sprint|task|bug|implement|audit)/i.test(p);
-    if (!hasTicketAction && p.length < 50 && (p.includes('?') || p.split(' ').length <= 7)) {
+    const hasTicketAction = /(deploy|build|commit|push|git|refactor|migration|schema|dockerfile|playwright|endpoint|implement|fix bug|create backlog)/i.test(p);
+    if (!hasTicketAction && p.length < 140) {
       return true;
     }
     return false;

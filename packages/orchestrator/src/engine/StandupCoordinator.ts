@@ -366,10 +366,12 @@ export class StandupCoordinator {
     }
 
     // Find all TODO / IN_PROGRESS backlog items for this sprint (or active queue)
+    const sprintUserId = sprint.user_id ?? null;
     const tasksToRun = Array.from(this.store.backlogItems.values()).filter(
       (item) =>
         (item.sprint_id === sprintId || !item.sprint_id) &&
-        (item.stage === 'TODO' || item.stage === 'IN_PROGRESS')
+        (item.stage === 'TODO' || item.stage === 'IN_PROGRESS') &&
+        (sprintUserId === null || (item.user_id ?? null) === sprintUserId)
     );
 
     // Move items to IN_PROGRESS
@@ -385,6 +387,7 @@ export class StandupCoordinator {
       const assignedId =
         task.assigned_agent_id || this.inferExecutorForBacklogItem(task);
       const res = await this.agentRunner.runTask({
+        userId: sprintUserId ?? task.user_id ?? undefined,
         agentIdOrSlug: assignedId,
         inputPrompt: `[Sprint ${sprint.id} — ${task.priority}] ${task.title}\n\n${task.spec_md}`,
         triggerType: 'DAILY_STANDUP',
