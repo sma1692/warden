@@ -12,10 +12,13 @@
  * Env: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, CLOUDFLARE_BASE_DOMAIN,
  * CLOUDFLARE_PAGES_PREFIX (default 'warden'), CLOUDFLARE_PROD_BRANCH.
  */
-import { execSync } from 'node:child_process';
+import { exec, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { demoPrebuiltDir } from './DemoFolders.js';
+
+const execAsync = promisify(exec);
 
 export type DemoDeployStatus =
   | 'NOT_DEPLOYED'
@@ -156,16 +159,46 @@ function deployViaWrangler(accountId: string, apiToken: string, distDir: string,
   return { deploymentId: idMatch ? idMatch[1] : `cf-${Date.now()}`, pagesDevUrl };
 }
 
-async function attachCustomDomain(accountId: string, apiToken: string, projectName: string, fqdn: string): Promise<boolean> {
+export async function attachCustomDomain(accountId: string, apiToken: string, projectName: string, fqdn: string): Promise<boolean> {
+  const defaultKaltiPath = '/Users/shabahatayubi/Documents/kehkasha/misc/aws-kalti/kalti.js';
+  const kaltiPath =
+    process.env.AWS_KALTI_PATH ||
+    (fs.existsSync(defaultKaltiPath)
+      ? defaultKaltiPath
+      : fs.existsSync(path.resolve(process.cwd(), '.state/mirror/aws-kalti/kalti.js'))
+        ? path.resolve(process.cwd(), '.state/mirror/aws-kalti/kalti.js')
+        : defaultKaltiPath);
+
+  let kaltiSuccess = false;
+  try {
+    const cmd = `node ${kaltiPath} cloudflare attach-domain --project ${projectName} --domain ${fqdn} --json`;
+    console.log(`[DemoDeploy] Invoking aws-kalti to bind custom domain & DNS CNAME: ${cmd}`);
+    const { stdout, stderr } = await execAsync(cmd, {
+      env: {
+        ...process.env,
+        CLOUDFLARE_ACCOUNT_ID: accountId,
+        CLOUDFLARE_API_TOKEN: apiToken,
+      },
+      timeout: 120000,
+    });
+    if (stdout) console.log(`[DemoDeploy] aws-kalti output for ${fqdn}:`, stdout.trim());
+    if (stderr) console.warn(`[DemoDeploy] aws-kalti stderr for ${fqdn}:`, stderr.trim());
+    kaltiSuccess = true;
+  } catch (err: any) {
+    console.warn(`[DemoDeploy] aws-kalti attach-domain warning for ${fqdn}:`, err?.message || err);
+  }
+
+  // Idempotently ensure Cloudflare Pages custom domain binding via direct API as well
   try {
     const res = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}/domains`,
       { method: 'POST', headers: cfHeaders(apiToken), body: JSON.stringify({ name: fqdn }) }
     );
-    return res.ok || res.status === 409;
+    const directApiOk = res.ok || res.status === 409;
+    return kaltiSuccess || directApiOk;
   } catch (err) {
-    console.warn(`[DemoDeploy] Custom domain attach failed for ${fqdn}:`, err);
-    return false;
+    console.warn(`[DemoDeploy] Direct Cloudflare custom domain attach failed for ${fqdn}:`, err);
+    return kaltiSuccess;
   }
 }
 
@@ -182,7 +215,12 @@ export function demoProjectName(userId: string, gameId = 'demo-arena'): string {
  * Build + deploy the user's demo folder. Never throws for missing creds:
  * returns NOT_CONFIGURED so the API can report degraded state honestly.
  */
-export async function deployDemoProject(userId: string, gameDir: string, gameId = 'demo-arena'): Promise<DemoDeployResult> {
+export async function deployDemoProject(
+  userId: string,
+  gameDir: string,
+  gameId = 'demo-arena',
+  customDomain?: string
+): Promise<DemoDeployResult> {
   const started = Date.now();
   const projectName = demoProjectName(userId, gameId);
   console.log(`[🚀 DEMO DEPLOY] Starting deploy for user=${userId} project=${projectName} dir=${gameDir}`);
@@ -211,11 +249,32 @@ export async function deployDemoProject(userId: string, gameDir: string, gameId 
     console.log(`[🚀 DEMO DEPLOY] Uploading ${distPath} (${fileCount} files) via Wrangler to project=${projectName} branch=${branch}...`);
     const { deploymentId, pagesDevUrl } = deployViaWrangler(accountId, apiToken, distPath, projectName, branch);
     console.log(`[🚀 DEMO DEPLOY] Wrangler upload complete: deploymentId=${deploymentId} pagesDevUrl=${pagesDevUrl}`);
-    const baseDomain = (process.env.CLOUDFLARE_BASE_DOMAIN || '').trim();
+    const baseDomain = (process.env.CLOUDFLARE_BASE_DOMAIN || process.env.DEMO_BASE_DOMAIN || 'warden.autos').trim();
     let primaryUrl: string | null = pagesDevUrl;
+    const domainsToAttach: string[] = [];
+
+    if (customDomain && customDomain.trim()) {
+      const cleanCustom = customDomain.trim();
+      domainsToAttach.push(cleanCustom.includes('.') ? cleanCustom : `${cleanCustom}.${baseDomain}`);
+    }
+
     if (baseDomain) {
-      const fqdn = `${projectName}.${baseDomain}`;
-      if (await attachCustomDomain(accountId, apiToken, projectName, fqdn)) primaryUrl = `https://${fqdn}`;
+      const defaultFqdn = `${projectName}.${baseDomain}`;
+      if (!domainsToAttach.includes(defaultFqdn)) {
+        domainsToAttach.push(defaultFqdn);
+      }
+      // Also bind clean subdomain format <uuser-game>.<baseDomain> if projectName is prefixed
+      const cleanSubdomain = `u${shortUser(userId)}-${sanitizeSubdomain(gameId, 25)}.${baseDomain}`;
+      if (!domainsToAttach.includes(cleanSubdomain)) {
+        domainsToAttach.push(cleanSubdomain);
+      }
+    }
+
+    for (const fqdn of domainsToAttach) {
+      const attached = await attachCustomDomain(accountId, apiToken, projectName, fqdn);
+      if (attached && (!primaryUrl || primaryUrl === pagesDevUrl)) {
+        primaryUrl = `https://${fqdn}`;
+      }
     }
     console.log(`[🚀 DEMO DEPLOY] Live at ${primaryUrl} (${Date.now() - started}ms)`);
     return {
