@@ -37,7 +37,7 @@ This repo IS Warden, a single standalone project. It ships a control plane API p
 
 ## 5. Removed Multi-Project Tooling
 
-Earlier multi-repo tooling from the private predecessor has been removed from this repo: the external project registry, `.state/mirror` sync-in and sync-out, IDE persona prompts, the CLI standup daemon, and CLI onboarding. The dashboard and control plane own those flows now. Do not reintroduce multi-project support.
+Earlier multi-repo tooling from the private predecessor has been removed from this repo: `.state/mirror` sync-in and sync-out, IDE persona prompts, the CLI standup daemon, and CLI onboarding. The dashboard and control plane own those flows now. Do not reintroduce multi-project support.
 
 ## 6. Working Conventions
 

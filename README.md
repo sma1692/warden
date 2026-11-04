@@ -1,12 +1,14 @@
-# Warden — Autonomous Multi-Agent Command Center & Chief of Staff Framework
+# Warden Automatons — Autonomous Multi-Agent Command Center & Chief of Staff Framework
 
-Warden is an open-source (MIT) multi-agent orchestration framework and executive command center built for founders and engineering leaders. One human operator interacts with a single executive agent, `@warden`. Warden coordinates a corporate hierarchy of specialized agents across engineering, product, infrastructure, security, and growth, delivering compact, decision-ready briefs and verified code changes.
+**Live:** [warden.autos](https://warden.autos)
+
+Warden Automatons (Warden for short) is an open-source (MIT) multi-agent orchestration framework and executive command center built for founders and engineering leaders. One human operator interacts with a single executive agent, `@warden`. Warden coordinates a corporate hierarchy of specialized agents across engineering, product, infrastructure, security, and growth, delivering compact, decision-ready briefs and verified code changes.
 
 The platform ships a Node.js Control Plane API (`@warden/orchestrator`), a real-time React + Vite web dashboard (`@warden/web`), a PostgreSQL + `pgvector` hybrid memory engine (`@warden/db`), an ephemeral container/SSH sandbox manager with automated Playwright visual QA (`@warden/sandbox`), and a jailed local workspace execution daemon (`@warden/client` / `warden-link`).
 
-![Warden landing page](docs/images/landing.png)
+![Warden Automatons landing page](docs/images/landing.png)
 
-![Warden dashboard: Needs Action queue and token consumption](docs/images/dashboard.png)
+![Warden Automatons dashboard: Needs Action queue and token consumption](docs/images/dashboard.png)
 
 The dashboard home shows what is waiting on you (**NEEDS ACTION**), a chat box to brief `@warden`, the latest demo release, and token spend per department. See [docs/PRODUCT_GUIDE.md](docs/PRODUCT_GUIDE.md) for every screen and flow.
 

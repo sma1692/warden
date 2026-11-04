@@ -381,7 +381,7 @@ async function seedDemoRows(
 
   const thread = await dbStore.createChatThread({
     user_id: userId,
-    title: 'Welcome to your Warden demo',
+    title: 'Welcome to your Warden Automatons demo',
     mode: 'WARDEN_EXECUTIVE',
     target_agent_id: 'warden',
     project_scope: 'demo-project',
@@ -410,7 +410,7 @@ async function seedFullRows(userId: string): Promise<void> {
 
   const thread = await dbStore.createChatThread({
     user_id: userId,
-    title: 'Welcome to Warden',
+    title: 'Welcome to Warden Automatons',
     mode: 'WARDEN_EXECUTIVE',
     target_agent_id: 'warden',
     project_scope: 'GLOBAL',

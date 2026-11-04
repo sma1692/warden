@@ -872,7 +872,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   <div className="space-y-3">
                     <div className="hidden lg:inline-flex items-center gap-2 rounded-full border border-[#C6A664]/30 bg-[#14161A]/90 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.2em] text-[#D4B475]">
                       <span className="h-1.5 w-1.5 rounded-full bg-[#D4B475]" />
-                      <span>Sovereign AI Operating System</span>
+                      <span>Warden Automatons</span>
                     </div>
                     <h1 className="text-3xl sm:text-4xl xl:text-5xl font-black tracking-tight text-white leading-[1.1]">
                       Stop pasting context.

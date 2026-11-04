@@ -871,7 +871,7 @@ export const INITIAL_AGENT_RUNS: AgentRun[] = [
     container_id: 'ctr-demo-game-web-402b',
     git_branch: 'agent/frontend-dev/quest3-loot-hud',
     git_commit_sha: '8f42c19',
-    preview_url: 'https://preview-run-dj-402.warden.example.com',
+    preview_url: 'https://preview-run-dj-402.warden.autos',
     qa_passed: true,
     qa_screenshot_url: QA_SCREENSHOT_DEMO_GAME_SVG,
     qa_console_errors: 0,
@@ -931,7 +931,7 @@ export const INITIAL_AGENT_RUNS: AgentRun[] = [
     container_id: 'ctr-demo-game-landing-801',
     git_branch: 'agent/seo-dev/llms-full-jsonld-quest3',
     git_commit_sha: 'c71d88a',
-    preview_url: 'https://preview-seo-801.warden.example.com',
+    preview_url: 'https://preview-seo-801.warden.autos',
     qa_passed: true,
     qa_screenshot_url: QA_SCREENSHOT_SEO_SVG,
     qa_console_errors: 0,
@@ -961,7 +961,7 @@ export const INITIAL_AGENT_RUNS: AgentRun[] = [
     container_id: 'ctr-tl-demo-game-901a',
     git_branch: 'feat/spatial-loot-contract-v2',
     git_commit_sha: 'a12f90e',
-    preview_url: 'https://preview-run-dj-402.warden.example.com',
+    preview_url: 'https://preview-run-dj-402.warden.autos',
     qa_passed: true,
     qa_screenshot_url: QA_SCREENSHOT_DEMO_GAME_SVG,
     qa_console_errors: 0,
@@ -991,7 +991,7 @@ export const INITIAL_AGENT_RUNS: AgentRun[] = [
     container_id: 'ctr-utt-501c',
     git_branch: 'agent/frontend-dev/rematch-wager-ui',
     git_commit_sha: '9b4012d',
-    preview_url: 'https://preview-run-rw-501.warden.example.com',
+    preview_url: 'https://preview-run-rw-501.warden.autos',
     qa_passed: true,
     qa_screenshot_url: QA_SCREENSHOT_DEMO_GAME_SVG,
     qa_console_errors: 0,
@@ -1070,7 +1070,7 @@ export const INITIAL_INFERENCE_STEPS: Record<string, InferenceStep[]> = {
       thinking_text:
         'Running `npm run build` followed by Headless Playwright Chromium with WebGL2 software/GPU rasterizer to verify HTTP 200, DOM mount, 90fps frame budget, and 0 console.error.',
       message_text:
-        'Playwright WebGL QA Gate PASSED (0 console errors, 42 draw calls). Live preview mounted at `https://preview-run-dj-402.warden.example.com`.',
+        'Playwright WebGL QA Gate PASSED (0 console errors, 42 draw calls). Live preview mounted at `https://preview-run-dj-402.warden.autos`.',
       tool_name: 'run_playwright_webgl_qa',
       tool_args_json: {
         cmd: 'npm run build && npx playwright test --config=playwright.webgl.config.ts',
@@ -1088,7 +1088,7 @@ Running 3 tests using 1 worker (Chromium Headless + WebGL2):
   ✓ [webgl-qa] verifies Colyseus LootChestState mock sync & pinch raycast (1.1s)
   ✓ [webgl-qa] captures verification screenshot -> qa-run-dj-402.png (0.4s)
 3 passed (3.3s)`,
-        preview_url: 'https://preview-run-dj-402.warden.example.com',
+        preview_url: 'https://preview-run-dj-402.warden.autos',
       },
       duration_ms: 6_310,
       tokens_in: 41_600,
@@ -1453,7 +1453,7 @@ export const INITIAL_CHAT_MESSAGES: Record<string, ChatMessage[]> = {
       sender_agent_id: '@frontend_dev:demo-game',
       recipient_agent_id: 'CEO',
       content:
-        '**Playwright WebGL QA Gate Passed (`0 console.error`, `90.0 FPS`):** Mounted `SpatialLootChestModal` with XRHand index-thumb pinch raycasting (`<= 18mm`).\n\n- **Live Interactive Preview:** `https://preview-run-dj-402.warden.example.com`\n- **Container:** `ctr-demo-game-web-402b` (`agent/frontend-dev/quest3-loot-hud`)\n- **Backend Sync:** Paired with `@backend_dev:demo-game` Redis atomic claim lock (`18/18` room tests green).',
+        '**Playwright WebGL QA Gate Passed (`0 console.error`, `90.0 FPS`):** Mounted `SpatialLootChestModal` with XRHand index-thumb pinch raycasting (`<= 18mm`).\n\n- **Live Interactive Preview:** `https://preview-run-dj-402.warden.autos`\n- **Container:** `ctr-demo-game-web-402b` (`agent/frontend-dev/quest3-loot-hud`)\n- **Backend Sync:** Paired with `@backend_dev:demo-game` Redis atomic claim lock (`18/18` room tests green).',
       run_id: 'run_fe_dj_402',
       attachments_json: [
         {
@@ -2024,7 +2024,7 @@ export const INITIAL_BACKLOG_ITEMS: BacklogItem[] = [
     assigned_agent_id: '@frontend_dev:demo-game',
     sprint_id: 'spr_2026_10_24',
     target_week: '2026-W43',
-    live_preview_url: 'https://preview-run-dj-402.warden.example.com',
+    live_preview_url: 'https://preview-run-dj-402.warden.autos',
     qa_passed: true,
     created_at: hoursAgo(2),
     completed_at: null,
@@ -2041,7 +2041,7 @@ export const INITIAL_BACKLOG_ITEMS: BacklogItem[] = [
     assigned_agent_id: '@seo_content_dev',
     sprint_id: 'spr_2026_10_24',
     target_week: '2026-W43',
-    live_preview_url: 'https://preview-seo-801.warden.example.com',
+    live_preview_url: 'https://preview-seo-801.warden.autos',
     qa_passed: true,
     created_at: hoursAgo(2),
     completed_at: null,
@@ -2058,7 +2058,7 @@ export const INITIAL_BACKLOG_ITEMS: BacklogItem[] = [
     assigned_agent_id: '@frontend_dev:arcade-hub',
     sprint_id: 'spr_2026_10_24',
     target_week: '2026-W43',
-    live_preview_url: 'https://preview-run-rw-501.warden.example.com',
+    live_preview_url: 'https://preview-run-rw-501.warden.autos',
     qa_passed: true,
     created_at: hoursAgo(5),
     completed_at: null,
@@ -2104,7 +2104,7 @@ export const INITIAL_BACKLOG_ITEMS: BacklogItem[] = [
     assigned_agent_id: '@designer',
     sprint_id: 'spr_2026_10_24',
     target_week: '2026-W43',
-    live_preview_url: 'https://preview-sprites-401.warden.example.com',
+    live_preview_url: 'https://preview-sprites-401.warden.autos',
     qa_passed: false,
     created_at: hoursAgo(1),
     completed_at: null,

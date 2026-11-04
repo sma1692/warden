@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://warden.example.com/sitemap.xml
+Sitemap: https://warden.autos/sitemap.xml

@@ -7,7 +7,7 @@
 # directly to the dynamic host preview port (15000–15999) managed by PreviewRouter,
 # or via the Control Plane Preview Proxy upstream map.
 #
-# Set PREVIEW_BASE_DOMAIN in the Caddy environment (e.g. warden.example.com).
+# Set PREVIEW_BASE_DOMAIN in the Caddy environment (e.g. warden.autos).
 # ==============================================================================
 
 {

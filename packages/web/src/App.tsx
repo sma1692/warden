@@ -804,7 +804,7 @@ export const App: React.FC<AppProps> = ({
             type="button"
             onClick={() => setActiveTab('home')}
             className="flex items-center gap-2.5 shrink-0 group cursor-pointer text-left select-none focus:outline-none"
-            title="WARDEN — Autonomous Workforce OS (Strict Overseer)"
+            title="Warden Automatons — AI workforce command center"
           >
             <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-[#C6A664]/10 dark:bg-[#C6A664]/15 border border-[#C6A664]/30 p-0.5 shadow-xs group-hover:border-[#C6A664] transition">
               <StrictOverseerLogo className="h-6 w-6" />
@@ -815,7 +815,7 @@ export const App: React.FC<AppProps> = ({
                   WARDEN
                 </span>
                 <span className="hidden sm:inline-block rounded px-1.5 py-0.2 text-[9px] font-mono font-bold tracking-wider uppercase bg-[#C6A664]/15 dark:bg-[#C6A664]/20 text-[#C6A664] border border-[#C6A664]/30">
-                  OS
+                  AUTOMATONS
                 </span>
               </div>
             </div>

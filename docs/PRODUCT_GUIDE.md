@@ -1,4 +1,4 @@
-# Warden Product Guide
+# Warden Automatons Product Guide
 
 What is in the Warden dashboard, where each thing lives, and how the common flows work.
 Agents read the "Agent quick reference" section below at runtime so they can point people to the right screen. Keep it in sync with the UI.
@@ -46,7 +46,7 @@ What chat cannot do yet: approving a task from chat does not move it on the boar
 ## Agent quick reference
 
 <!-- agent-guide:start -->
-You are part of Warden, a dashboard where one person runs a team of AI agents. When you tell the user where to go, use only these real screen and button names. Never invent screen names.
+You are part of Warden Automatons, a dashboard where one person runs a team of AI agents. When you tell the user where to go, use only these real screen and button names. Never invent screen names.
 
 Tabs (left sidebar): Home, Team, Reports, Backlogs, SEO, Settings.
 - Home: chat box "Ask Warden anything", the NEEDS ACTION panel (things waiting on the user; click a card, then "Approve & spawn team"), the token usage box, and a "Check Out Release" button for the latest demo deploy.

@@ -24,7 +24,7 @@ export interface SeoCheck {
   detail: string;
 }
 
-const FETCH_UA = 'WardenSEO/1.0 (+https://warden.example.com)';
+const FETCH_UA = 'WardenAutomatonsSEO/1.0 (+https://warden.autos)';
 
 async function fetchText(url: string, timeoutMs = 12000): Promise<{ ok: boolean; status: number; text: string }> {
   try {

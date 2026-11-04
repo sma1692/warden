@@ -132,9 +132,9 @@ export async function sendEmailCode(to: string, code: string): Promise<{ ok: tru
       await expectOk(tlsConn, `RCPT TO:<${to}>`);
       await expectOk(tlsConn, 'DATA');
       const body =
-        `From: ${from}\r\nTo: ${to}\r\nSubject: Your Warden sign-in code\r\n` +
+        `From: ${from}\r\nTo: ${to}\r\nSubject: Your Warden Automatons sign-in code\r\n` +
         `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
-        `Your Warden sign-in code is: ${code}\r\nIt expires in 5 minutes.\r\n`;
+        `Your Warden Automatons sign-in code is: ${code}\r\nIt expires in 5 minutes.\r\n`;
       await tlsConn.send(body + '\r\n.');
       await readReply(tlsConn).then((r) => {
         if (r.code !== 250) throw new Error(`SMTP DATA failed (${r.code})`);
@@ -151,9 +151,9 @@ export async function sendEmailCode(to: string, code: string): Promise<{ ok: tru
     await expectOk(conn, `RCPT TO:<${to}>`);
     await expectOk(conn, 'DATA');
     const body =
-      `From: ${from}\r\nTo: ${to}\r\nSubject: Your Warden sign-in code\r\n` +
+      `From: ${from}\r\nTo: ${to}\r\nSubject: Your Warden Automatons sign-in code\r\n` +
       `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
-      `Your Warden sign-in code is: ${code}\r\nIt expires in 5 minutes.\r\n`;
+      `Your Warden Automatons sign-in code is: ${code}\r\nIt expires in 5 minutes.\r\n`;
     await conn.send(body + '\r\n.');
     const dataReply = await readReply(conn);
     if (dataReply.code !== 250) throw new Error(`SMTP DATA failed (${dataReply.code})`);
