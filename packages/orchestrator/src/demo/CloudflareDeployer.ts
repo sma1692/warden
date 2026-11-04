@@ -153,8 +153,15 @@ function deployViaWrangler(accountId: string, apiToken: string, distDir: string,
     const out = err?.stderr ? String(err.stderr) : String(err?.message || err);
     throw new Error(`Wrangler deploy failed: ${out.slice(0, 2000)}`);
   }
-  const urls = output.match(/https:\/\/[a-zA-Z0-9.-]+\.pages\.dev/g) || [];
-  const pagesDevUrl = urls.find((u) => u === `https://${projectName}.pages.dev`) || urls[urls.length - 1] || `https://${projectName}.pages.dev`;
+  const canonicalUrl = `https://${projectName}.pages.dev/`;
+  const urls = output.match(/https:\/\/[a-zA-Z0-9.-]+\.pages\.dev(?:\/)?/g) || [];
+  // Ensure we return the canonical project URL or preserve the full hostname intact.
+  // Never extract only <hash> to form a dead link https://<hash>.pages.dev/
+  const exactCanonical = urls.find((u) => u.replace(/\/$/, '') === `https://${projectName}.pages.dev`);
+  const fullDeploymentUrl = urls.find((u) => u.replace(/\/$/, '').endsWith(`.${projectName}.pages.dev`));
+  const pagesDevUrl = exactCanonical
+    ? `${exactCanonical.replace(/\/$/, '')}/`
+    : canonicalUrl;
   const idMatch = output.match(/Deployment ID:\s*([a-f0-9-]+)/i);
   return { deploymentId: idMatch ? idMatch[1] : `cf-${Date.now()}`, pagesDevUrl };
 }
@@ -216,7 +223,8 @@ export async function deployDemoProject(
     console.log(`[🚀 DEMO DEPLOY] Uploading ${distPath} (${fileCount} files) via Wrangler to project=${projectName} branch=${branch}...`);
     const { deploymentId, pagesDevUrl } = deployViaWrangler(accountId, apiToken, distPath, projectName, branch);
     console.log(`[🚀 DEMO DEPLOY] Wrangler upload complete: deploymentId=${deploymentId} pagesDevUrl=${pagesDevUrl}`);
-    const primaryUrl = pagesDevUrl || `https://${projectName}.pages.dev`;
+    const canonicalUrl = `https://${projectName}.pages.dev/`;
+    const primaryUrl = pagesDevUrl || canonicalUrl;
     console.log(`[🚀 DEMO DEPLOY] Live at ${primaryUrl} (${Date.now() - started}ms)`);
     return {
       ok: true,

@@ -27,8 +27,7 @@ export function getDemoProject(projectName?: string, deployUrl?: string | null):
   if (deployUrl) {
     try {
       const parsed = new URL(deployUrl.startsWith('http') ? deployUrl : `https://${deployUrl}`);
-      const firstPart = parsed.hostname.split('.')[0];
-      if (firstPart) return firstPart;
+      if (parsed.hostname) return parsed.hostname;
     } catch {
       // Fall through to project name
     }
@@ -40,7 +39,34 @@ export function getDemoProject(projectName?: string, deployUrl?: string | null):
 }
 
 export function formatPagesDevUrl(project: string): string {
-  const clean = project.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase() || 'demo-arena';
+  if (!project || !project.trim()) {
+    return 'https://demo-arena.pages.dev';
+  }
+  const trimmed = project.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    try {
+      const parsed = new URL(trimmed);
+      return `https://${parsed.hostname}`;
+    } catch {
+      // Fall through
+    }
+  }
+  if (trimmed.toLowerCase().endsWith('.pages.dev')) {
+    const cleanHost = trimmed.replace(/^\/+|\/+$/g, '').toLowerCase();
+    return `https://${cleanHost}`;
+  }
+  if (trimmed.includes('.')) {
+    const clean = trimmed
+      .replace(/[^a-zA-Z0-9.-]/g, '-')
+      .replace(/\.+/g, '.')
+      .replace(/^\.+|\.+$/g, '')
+      .toLowerCase();
+    if (clean.endsWith('.pages.dev')) {
+      return `https://${clean}`;
+    }
+    return `https://${clean || 'demo-arena'}.pages.dev`;
+  }
+  const clean = trimmed.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase() || 'demo-arena';
   return `https://${clean}.pages.dev`;
 }
 

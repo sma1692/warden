@@ -49,6 +49,47 @@ export function getDemoMetadata(userId: string): DemoMetadata {
 }
 
 /**
+ * Normalizes a Pages deploy URL to ensure it never becomes a dead <hash>.pages.dev link.
+ * If given a deployment URL like https://<hash>.<projectName>.pages.dev,
+ * it returns the canonical https://<projectName>.pages.dev/ or preserves the full hostname intact.
+ */
+export function normalizeDeployUrl(
+  rawUrl: string | null | undefined,
+  projectName?: string | null
+): string | null {
+  if (!rawUrl) {
+    return projectName ? `https://${projectName}.pages.dev/` : null;
+  }
+
+  const trimmed = rawUrl.trim();
+  try {
+    const parsed = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
+    const host = parsed.hostname.toLowerCase();
+
+    if (host.endsWith('.pages.dev')) {
+      const parts = host.replace(/\.pages\.dev$/, '').split('.').filter(Boolean);
+      if (parts.length > 1) {
+        // Deployment preview URL: <hash>.<projectName>.pages.dev
+        // Return canonical URL for project
+        const proj = projectName || parts[parts.length - 1];
+        return `https://${proj}.pages.dev/`;
+      }
+      if (parts.length === 1) {
+        const single = parts[0];
+        // Dead link check: if single part is a hex hash and projectName is known, heal it
+        if (projectName && single !== projectName && /^[a-f0-9]{7,}$/i.test(single)) {
+          return `https://${projectName}.pages.dev/`;
+        }
+        return `https://${single}.pages.dev/`;
+      }
+    }
+    return trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+/**
  * Called when a new version is deployed.
  * Increments the version number (e.g. v1 -> v2) and sets the update timestamp.
  */
@@ -79,6 +120,33 @@ export function recordDeployment(
     nextVersionNumber = current.versionNumber >= 1 ? current.versionNumber : 1;
   }
 
+  let resolvedProject = details?.projectName !== undefined ? details.projectName : current.projectName;
+  let resolvedSubdomain = details?.subdomain !== undefined ? details.subdomain : current.subdomain;
+  let rawUrl = details?.deployUrl !== undefined ? details.deployUrl : current.deployUrl;
+
+  // Infer project name if missing from deployUrl with multiple parts
+  if (!resolvedProject && rawUrl) {
+    try {
+      const parsed = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
+      if (parsed.hostname.endsWith('.pages.dev')) {
+        const parts = parsed.hostname.replace(/\.pages\.dev$/, '').split('.').filter(Boolean);
+        if (parts.length > 1) {
+          resolvedProject = parts[parts.length - 1];
+        } else if (parts.length === 1 && !/^[a-f0-9]{7,}$/i.test(parts[0])) {
+          resolvedProject = parts[0];
+        }
+      }
+    } catch {}
+  }
+
+  // Normalize URL to prevent dead <hash>.pages.dev links
+  const normalizedUrl = normalizeDeployUrl(rawUrl, resolvedProject);
+
+  // If subdomain was mistakenly set to a dead hash, heal it
+  if (resolvedProject && (!resolvedSubdomain || /^[a-f0-9]{7,}$/i.test(resolvedSubdomain))) {
+    resolvedSubdomain = resolvedProject;
+  }
+
   const now = new Date();
   const updated: DemoMetadata = {
     ...current,
@@ -88,9 +156,9 @@ export function recordDeployment(
     timestamp: now.getTime(),
     lastDeployedAt: now.toISOString(),
     status: details?.status || 'ACTIVE',
-    deployUrl: details?.deployUrl !== undefined ? details.deployUrl : current.deployUrl,
-    subdomain: details?.subdomain !== undefined ? details.subdomain : current.subdomain,
-    projectName: details?.projectName !== undefined ? details.projectName : current.projectName,
+    deployUrl: normalizedUrl,
+    subdomain: resolvedSubdomain,
+    projectName: resolvedProject,
   };
 
   metadataStore.set(userId, updated);

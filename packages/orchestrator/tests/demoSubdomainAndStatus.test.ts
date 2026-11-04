@@ -121,4 +121,35 @@ describe('Demo Subdomain & Demo Status', () => {
     assert.equal(nextMeta.version, 'v2');
     assert.equal(nextMeta.updatedAt, next.updatedAt);
   });
+
+  it('fixes URL parsing bug where second deploy outputs https://<hash>.<projectName>.pages.dev', () => {
+    const userId = 'url-fix-user';
+    const projectName = 'warden-uuser-demo-arena';
+
+    // 1. buildUniqueSubdomain extracts projectName instead of hash
+    const subFromPreview = buildUniqueSubdomain(userId, 'arena', `https://7a8b9c0d.${projectName}.pages.dev`);
+    assert.equal(subFromPreview, projectName);
+
+    // 2. getDemoSubdomainFqdn extracts projectName instead of hash
+    const fqdnFromPreview = getDemoSubdomainFqdn(`https://7a8b9c0d.${projectName}.pages.dev`);
+    assert.equal(fqdnFromPreview, `${projectName}.pages.dev`);
+
+    // 3. recordDeployment normalizes preview URL to canonical https://${projectName}.pages.dev/
+    const deployed = recordDeployment(userId, {
+      deployUrl: `https://7a8b9c0d.${projectName}.pages.dev`,
+      projectName,
+      status: 'ACTIVE',
+    });
+    assert.equal(deployed.deployUrl, `https://${projectName}.pages.dev/`);
+    assert.equal(deployed.projectName, projectName);
+    assert.equal(deployed.subdomain, projectName);
+
+    // 4. recordDeployment heals dead link if https://<hash>.pages.dev was passed with known projectName
+    const deployed2 = recordDeployment(userId, {
+      deployUrl: `https://7a8b9c0d.pages.dev/`,
+      projectName,
+      status: 'ACTIVE',
+    });
+    assert.equal(deployed2.deployUrl, `https://${projectName}.pages.dev/`);
+  });
 });

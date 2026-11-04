@@ -17,7 +17,24 @@ export function buildUniqueSubdomain(
   customSubdomain?: string
 ): string {
   if (customSubdomain && customSubdomain.trim()) {
-    const raw = customSubdomain.trim().replace(new RegExp(`\\.${DEMO_BASE_DOMAIN}$`, 'i'), '');
+    let raw = customSubdomain.trim();
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      try {
+        raw = new URL(raw).hostname;
+      } catch {
+        raw = raw.replace(/^https?:\/\//i, '').split('/')[0];
+      }
+    }
+    raw = raw.split('/')[0].split('?')[0].split('#')[0];
+    const basePattern = new RegExp(`\\.${DEMO_BASE_DOMAIN}$`, 'i');
+    raw = raw.replace(basePattern, '');
+
+    // Prevent bug where <hash>.<projectName> extracts only <hash> to form dead link.
+    // Extract canonical projectName (last segment) if multiple segments are present.
+    if (raw.includes('.')) {
+      const parts = raw.split('.').filter(Boolean);
+      raw = parts[parts.length - 1];
+    }
     return sanitizeSubdomain(raw, 58);
   }
   const cleanUser = userId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'user';
@@ -29,8 +46,25 @@ export function buildUniqueSubdomain(
  * Returns the fully qualified domain name `<unique-subdomain>.pages.dev`
  */
 export function getDemoSubdomainFqdn(subdomain: string, baseDomain = DEMO_BASE_DOMAIN): string {
-  const stripped = subdomain.replace(new RegExp(`\\.${baseDomain}$`, 'i'), '');
-  const cleanSubdomain = sanitizeSubdomain(stripped);
+  let clean = subdomain.trim();
+  if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    try {
+      clean = new URL(clean).hostname;
+    } catch {
+      clean = clean.replace(/^https?:\/\//i, '').split('/')[0];
+    }
+  }
+  clean = clean.split('/')[0].split('?')[0].split('#')[0];
+  const basePattern = new RegExp(`\\.${baseDomain}$`, 'i');
+  clean = clean.replace(basePattern, '');
+
+  // Prevent bug where <hash>.<projectName> extracts only <hash>.
+  // Preserve full hostname or extract canonical project name.
+  if (clean.includes('.')) {
+    const parts = clean.split('.').filter(Boolean);
+    clean = parts[parts.length - 1];
+  }
+  const cleanSubdomain = sanitizeSubdomain(clean);
   return `${cleanSubdomain}.${baseDomain}`;
 }
 
@@ -132,12 +166,32 @@ export async function deployDemoPath(
 
   // Deploy project
   const result = await deployDemoProject(userId, targetDir, gameId);
-  const finalUrl = result.pagesDevUrl || result.primaryUrl || url;
+  const effectiveProject = result.projectName || subdomain;
+  const canonicalUrl = `https://${effectiveProject}.${DEMO_BASE_DOMAIN}/`;
+  let finalUrl = result.pagesDevUrl || result.primaryUrl || canonicalUrl;
+
+  // Prevent dead link bug if finalUrl extracted only <hash> to form https://<hash>.pages.dev/
+  // or if a preview URL https://<hash>.<projectName>.pages.dev was returned.
+  if (finalUrl.includes('.pages.dev')) {
+    try {
+      const parsed = new URL(finalUrl.startsWith('http') ? finalUrl : `https://${finalUrl}`);
+      const parts = parsed.hostname.replace(/\.pages\.dev$/, '').split('.').filter(Boolean);
+      if (parts.length === 1 && /^[a-f0-9]{7,}$/i.test(parts[0]) && parts[0] !== effectiveProject) {
+        // Dead link (<hash>.pages.dev) -> heal to canonical project URL
+        finalUrl = canonicalUrl;
+      } else if (parts.length > 1) {
+        // Preview URL (<hash>.<projectName>.pages.dev) -> return canonical project URL
+        finalUrl = canonicalUrl;
+      }
+    } catch {
+      finalUrl = canonicalUrl;
+    }
+  }
 
   // Record deployment: increments version (e.g. v1 -> v2) and stamps update timestamp
   const metadata = recordDeployment(userId, {
-    subdomain,
-    projectName: subdomain,
+    subdomain: effectiveProject,
+    projectName: effectiveProject,
     deployUrl: finalUrl,
     status: result.status,
   });
@@ -149,10 +203,10 @@ export async function deployDemoPath(
 
   return {
     ok: result.ok,
-    subdomain,
-    fqdn,
+    subdomain: effectiveProject,
+    fqdn: `${effectiveProject}.${DEMO_BASE_DOMAIN}`,
     url: finalUrl,
-    pagesDevUrl: result.pagesDevUrl || finalUrl,
+    pagesDevUrl: finalUrl,
     status: result.status,
     metadata,
     rawDeployResult: result,
