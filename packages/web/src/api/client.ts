@@ -1,5 +1,10 @@
 import { authHeaders, getToken, notifyUnauthorized } from './auth';
 import { API_BASE, wsUrl } from './base';
+import {
+  keyFetch as httpKeyFetch,
+  safeFetch as httpSafeFetch,
+  type HttpHooks,
+} from './http';
 import type {
   Agent,
   AgentMemory,
@@ -27,20 +32,6 @@ import type {
   UserBudget,
 } from '../types/warden';
 import {
-  INITIAL_AGENT_MEMORIES,
-  INITIAL_AGENT_RUNS,
-  INITIAL_AGENTS,
-  INITIAL_APPROVAL_GATES,
-  INITIAL_BACKLOG_ITEMS,
-  INITIAL_CHAT_MESSAGES,
-  INITIAL_CHAT_THREADS,
-  INITIAL_HEALTH_TELEMETRY,
-  INITIAL_INFERENCE_STEPS,
-  INITIAL_PROJECT_CONTEXTS,
-  INITIAL_PROVIDER_CREDENTIALS,
-  INITIAL_SPRINT,
-} from './seedData';
-import {
   DEFAULT_GATE_PROJECT_SLUG,
   PREVIEW_URL_EXAMPLE,
   SEO_GROWTH_SPEC_OPTIONS,
@@ -52,113 +43,96 @@ import {
   flattenSpawnTree,
   spawnThreadPrefix,
 } from '../data/demoLinks';
+import type {
+  DemoDeployState,
+  DemoWorkspaceInfo,
+  DemoWorkspaceState,
+  RunStatusResponse,
+  SeoAuditCheck,
+  SeoAuditReport,
+  SlimRunStatus,
+  ThreadStatusResponse,
+  UserTokenTelemetry,
+  WsEventPayload,
+} from './types';
 
-export type WsEventPayload = {
-  type:
-    | 'TELEMETRY_TICK'
-    | 'AGENT_UPDATED'
-    | 'RUN_UPDATED'
-    | 'STEP_CREATED'
-    | 'BRAIN_STATUS'
-    | 'CHAT_MESSAGE'
-    | 'GATE_CREATED'
-    | 'GATE_RESOLVED'
-    | 'STANDUP_UPDATED'
-    | 'BACKLOG_UPDATED'
-    | 'BUDGET_EXCEEDED';
-  data: unknown;
-};
+// Re-exported so existing `from '../api/client'` type imports keep working.
+export type {
+  DemoDeployState,
+  DemoWorkspaceInfo,
+  DemoWorkspaceState,
+  RunStatusResponse,
+  SeoAuditCheck,
+  SeoAuditReport,
+  SlimRunStatus,
+  ThreadStatusResponse,
+  UserTokenTelemetry,
+  WsEventPayload,
+} from './types';
 
 type Listener = (event: WsEventPayload) => void;
 
-export interface DemoWorkspaceInfo {
-  user_id: string;
-  mode: 'demo' | 'full';
-  branch: string | null;
-  pr_url: string | null;
-  status: string;
-  local_dir: string | null;
-  deploy_url: string | null;
-  deploy_status: string;
-}
-
-export interface DemoWorkspaceState {
-  ok: boolean;
-  workspace: DemoWorkspaceInfo;
-  deploy: { project_name: string; cloudflare_configured: boolean };
-}
-
-export interface DemoDeployState {
-  ok: boolean;
-  result: {
-    ok: boolean;
-    status: string;
-    projectName: string;
-    primaryUrl: string | null;
-    pagesDevUrl: string | null;
-    fileCount: number;
-    totalDurationMs: number;
-    error: string | null;
-  };
-  workspace: DemoWorkspaceInfo;
-}
-
-export interface UserTokenTelemetry {
-  range: 'today' | '7d' | '30d' | 'all';
-  totalTokens: number;
-  totalCostUsd: number;
-  totalRuns: number;
-  cachedHitPct: number;
-  byVertical: {
-    TECH: { tokens: number; costUsd: number; runs: number; sharePct: number };
-    SEO_AEO: { tokens: number; costUsd: number; runs: number; sharePct: number };
-    SOCIAL: { tokens: number; costUsd: number; runs: number; sharePct: number };
-  };
-}
-
-export interface SlimRunStatus {
-  id: string;
-  agent_id: string;
-  agent_slug: string;
-  status: string;
-  output_summary: string | null;
-  started_at: string;
-  ended_at: string | null;
-  error: string | null;
-  child_run_ids: string[];
-}
-
-export interface RunStatusResponse {
-  run: SlimRunStatus;
-  latestStep: InferenceStep | null;
-  replyMessage: ChatMessage | null;
-  waitingForCeo?: boolean;
-  error?: string | null;
-}
-
-export interface ThreadStatusResponse {
-  threadId: string;
-  thread: ChatThread;
-  runningRuns: SlimRunStatus[];
-  latestRun: SlimRunStatus | null;
-  latestStep: InferenceStep | null;
-  lastReply: ChatMessage | null;
-  pendingGates: unknown[];
-}
-
 class WardenApiClient {
-  private agents: Agent[] = [...INITIAL_AGENTS];
-  private projectContexts: ProjectContext[] = [...INITIAL_PROJECT_CONTEXTS];
-  private runs: AgentRun[] = [...INITIAL_AGENT_RUNS];
-  private stepsByRun: Record<string, InferenceStep[]> = { ...INITIAL_INFERENCE_STEPS };
-  private memories: AgentMemory[] = [...INITIAL_AGENT_MEMORIES];
-  private gates: ApprovalGate[] = [...INITIAL_APPROVAL_GATES];
-  private threads: ChatThread[] = [...INITIAL_CHAT_THREADS];
-  private messagesByThread: Record<string, ChatMessage[]> = { ...INITIAL_CHAT_MESSAGES };
-  private sprint: Sprint = { ...INITIAL_SPRINT };
-  private backlog: BacklogItem[] = [...INITIAL_BACKLOG_ITEMS];
-  private telemetry: SystemHealthTelemetry = { ...INITIAL_HEALTH_TELEMETRY };
-  private credentials: ProviderCredential[] = [...INITIAL_PROVIDER_CREDENTIALS];
+  // Caches start empty; fallback seeds load on demand so the seed module
+  // stays out of the initial bundle. safeFetch/keyFetch await ensureSeeds(),
+  // so every network-first getter still falls back to seeds when offline.
+  private agents: Agent[] = [];
+  private projectContexts: ProjectContext[] = [];
+  private runs: AgentRun[] = [];
+  private stepsByRun: Record<string, InferenceStep[]> = {};
+  private memories: AgentMemory[] = [];
+  private gates: ApprovalGate[] = [];
+  private threads: ChatThread[] = [];
+  private messagesByThread: Record<string, ChatMessage[]> = {};
+  private sprint: Sprint = {} as Sprint;
+  private backlog: BacklogItem[] = [];
+  private telemetry: SystemHealthTelemetry = {} as SystemHealthTelemetry;
+  private credentials: ProviderCredential[] = [];
+  private seedsPromise: Promise<void> | null = null;
+
+  constructor() {
+    // Start loading fallback seeds immediately so they are usually ready
+    // before the first fetch falls back to them.
+    void this.ensureSeeds();
+  }
+
+  private ensureSeeds(): Promise<void> {
+    if (!this.seedsPromise) {
+      this.seedsPromise = import('./seedData').then(
+        (seeds) => {
+          // Fill only caches the network hasn't populated yet.
+          if (this.agents.length === 0) this.agents = [...seeds.INITIAL_AGENTS];
+          if (this.projectContexts.length === 0)
+            this.projectContexts = [...seeds.INITIAL_PROJECT_CONTEXTS];
+          if (this.runs.length === 0) this.runs = [...seeds.INITIAL_AGENT_RUNS];
+          if (Object.keys(this.stepsByRun).length === 0)
+            this.stepsByRun = { ...seeds.INITIAL_INFERENCE_STEPS };
+          if (this.memories.length === 0) this.memories = [...seeds.INITIAL_AGENT_MEMORIES];
+          if (this.gates.length === 0) this.gates = [...seeds.INITIAL_APPROVAL_GATES];
+          if (this.threads.length === 0) this.threads = [...seeds.INITIAL_CHAT_THREADS];
+          if (Object.keys(this.messagesByThread).length === 0)
+            this.messagesByThread = { ...seeds.INITIAL_CHAT_MESSAGES };
+          if (!this.sprint?.id) this.sprint = { ...seeds.INITIAL_SPRINT };
+          if (this.backlog.length === 0) this.backlog = [...seeds.INITIAL_BACKLOG_ITEMS];
+          if (!this.telemetry?.db_pgvector_status || Object.keys(this.telemetry).length <= 1) {
+            // Preserve a live ONLINE status if the socket connected first.
+            const liveStatus = this.telemetry?.db_pgvector_status;
+            this.telemetry = {
+              ...seeds.INITIAL_HEALTH_TELEMETRY,
+              ...(liveStatus ? { db_pgvector_status: liveStatus } : {}),
+            };
+          }
+          if (this.credentials.length === 0)
+            this.credentials = [...seeds.INITIAL_PROVIDER_CREDENTIALS];
+        },
+        (err) => {
+          // Seeds are a fallback: never break live fetches if the chunk fails.
+          console.warn('[api] fallback seeds unavailable:', err);
+        }
+      );
+    }
+    return this.seedsPromise;
+  }
 
   private ws: WebSocket | null = null;
   private listeners: Set<Listener> = new Set();
@@ -294,58 +268,19 @@ class WardenApiClient {
     }
   }
 
-  private async safeFetch<T>(
+  private get httpHooks(): HttpHooks {
+    return {
+      emit: (event) => this.emit(event),
+      ensureSeeds: () => this.ensureSeeds(),
+    };
+  }
+
+  private safeFetch<T>(
     path: string,
     init?: RequestInit,
-    timeoutMs: number = 45_000
+    timeoutMs?: number
   ): Promise<T | null> {
-    try {
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-      const res = await fetch(`${API_BASE}${path}`, {
-        ...init,
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders(),
-          ...(init?.headers || {}),
-        },
-        signal: controller.signal,
-      });
-      window.clearTimeout(timeout);
-      if (res.status === 401) {
-        notifyUnauthorized();
-        return null;
-      }
-      if (res.status === 429 || res.status === 402) {
-        const errData = (await res.json().catch(() => null)) as {
-          code?: string;
-          error?: string;
-          budget?: UserBudget;
-        } | null;
-        if (errData?.code === 'TOKEN_CAP_EXCEEDED' || res.status === 402) {
-          this.emit({
-            type: 'BUDGET_EXCEEDED',
-            data: {
-              error:
-                errData?.error ||
-                'Token limit reached! Your chat quota is exhausted — add your Meta Muse key in Settings to continue.',
-              budget: errData?.budget,
-            },
-          });
-          throw new Error(
-            errData?.error ||
-              'Token limit reached! Your chat quota is exhausted — add your Meta Muse key in Settings to continue.'
-          );
-        }
-      }
-      if (!res.ok) return null;
-      return (await res.json()) as T;
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('Token limit reached')) {
-        throw err;
-      }
-      return null;
-    }
+    return httpSafeFetch<T>(this.httpHooks, path, init, timeoutMs);
   }
 
   public async getTelemetry(): Promise<SystemHealthTelemetry> {
@@ -1808,39 +1743,12 @@ class WardenApiClient {
 
   // BYOK + platform budget. Direct fetch (not safeFetch) so form UX can
   // surface the server's reason (invalid key vs unreachable).
-  private async keyFetch<T>(
+  private keyFetch<T>(
     path: string,
     init?: RequestInit,
-    timeoutMs: number = 45_000
+    timeoutMs?: number
   ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
-    try {
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-      const res = await fetch(`${API_BASE}${path}`, {
-        ...init,
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders(),
-          ...(init?.headers || {}),
-        },
-        signal: controller.signal,
-      });
-      window.clearTimeout(timeout);
-      if (res.status === 401) {
-        notifyUnauthorized();
-        return { ok: false, error: 'Not signed in.' };
-      }
-      const data = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        error?: string;
-      } | null;
-      if (!res.ok || !data || data.ok === false) {
-        return { ok: false, error: data?.error || `Request failed (HTTP ${res.status}).` };
-      }
-      return { ok: true, data: data as T };
-    } catch {
-      return { ok: false, error: 'Unable to connect right now. Please try again in a moment.' };
-    }
+    return httpKeyFetch<T>(this.httpHooks, path, init, timeoutMs);
   }
 
   public async getMyBudget(): Promise<UserBudget | null> {
@@ -1870,6 +1778,35 @@ class WardenApiClient {
     });
     if (!res.ok) return res;
     return { ok: true };
+  }
+
+  public async runSeoAudit(
+    url: string
+  ): Promise<
+    | { ok: true; report: SeoAuditReport }
+    | { ok: false; error: string }
+  > {
+    const res = await this.keyFetch<SeoAuditReport>(
+      `/seo/audit?url=${encodeURIComponent(url)}`
+    );
+    if (!res.ok) return res;
+    return { ok: true, report: res.data };
+  }
+
+  public async generateSeoPack(input: {
+    company: string;
+    domain: string;
+    description: string;
+  }): Promise<
+    | { ok: true; pack: { llms_txt: string; jsonld: string } }
+    | { ok: false; error: string }
+  > {
+    const res = await this.keyFetch<{ llms_txt: string; jsonld: string }>('/seo/generate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return res;
+    return { ok: true, pack: res.data };
   }
 
   public destroy() {

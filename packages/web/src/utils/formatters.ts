@@ -34,6 +34,14 @@ export function formatUsd(amount: number): string {
   return `$${num.toFixed(2)}`;
 }
 
+/** Adaptive precision for sub-dollar costs: $0.0042 instead of $0.00. */
+export function formatUsdAdaptive(cost: number): string {
+  if (!cost || cost <= 0) return '$0.00';
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  if (cost < 1) return `$${cost.toFixed(3)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
 export function formatModelBadge(provider: string, modelId: string): string {
   const labelMap: Record<string, string> = {
     meta_muse: 'Meta Muse',

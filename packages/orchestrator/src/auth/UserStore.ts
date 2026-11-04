@@ -82,18 +82,25 @@ export const STATE_DIR =
 const SECRET_FILE = path.join(STATE_DIR, 'auth-secret');
 
 /** AUTH_JWT_SECRET, else a random secret generated once into .state/auth-secret. */
+let cachedFileSecret: string | null = null;
 export function getJwtSecret(): string {
   const fromEnv = process.env.AUTH_JWT_SECRET?.trim();
   if (fromEnv) return fromEnv;
+  // Hot path (every sign/verify): cache the file secret after first read.
+  if (cachedFileSecret) return cachedFileSecret;
   try {
     const existing = fs.readFileSync(SECRET_FILE, 'utf8').trim();
-    if (existing) return existing;
+    if (existing) {
+      cachedFileSecret = existing;
+      return existing;
+    }
   } catch {
     /* first run */
   }
   const secret = crypto.randomBytes(48).toString('base64url');
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.writeFileSync(SECRET_FILE, secret, { mode: 0o600 });
+  cachedFileSecret = secret;
   return secret;
 }
 

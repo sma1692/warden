@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import * as chrono from 'chrono-node';
 import { CronExpressionParser } from 'cron-parser';
+
+// chrono-node is large (~8MB) and only used when parsing reminder text:
+// load it on first use so server boot stays lean.
+type ChronoModule = typeof import('chrono-node');
+let chronoPromise: Promise<ChronoModule> | null = null;
+function loadChrono(): Promise<ChronoModule> {
+  if (!chronoPromise) chronoPromise = import('chrono-node');
+  return chronoPromise;
+}
 
 export type ReminderChannel = 'whatsapp' | 'macos' | 'apple_reminders';
 export type ReminderStatus = 'PENDING' | 'FIRED' | 'CANCELLED' | 'FAILED';
@@ -282,11 +290,11 @@ function removeOnce(haystack: string, needle: string): string {
  *  - "in 20 minutes check deploy"
  * into `{ text, dueAt, recurrence }`. Returns null when no time could be found.
  */
-export function parseReminderText(
+export async function parseReminderText(
   input: string,
   now: Date = new Date(),
   tz: string = getReminderTimezone()
-): ParsedReminder | null {
+): Promise<ParsedReminder | null> {
   const original = (input || '').trim();
   if (!original) return null;
 
@@ -301,6 +309,7 @@ export function parseReminderText(
     if (!cron && recurrence.dateFields) {
       let hour = recurrence.defaultHour ?? 9;
       let minute = 0;
+      const chrono = await loadChrono();
       const results = chrono.parse(body, refOptions, { forwardDate: true });
       const timed = results.find((r) => r.start.isCertain('hour'));
       if (timed) {
@@ -323,6 +332,7 @@ export function parseReminderText(
     return { text, dueAt, recurrence: cron };
   }
 
+  const chrono = await loadChrono();
   const results = chrono.parse(body, refOptions, { forwardDate: true });
   const result = results[0];
   if (!result) return null;
@@ -477,7 +487,7 @@ export async function createReminderFromText(
   options?: { channels?: ReminderChannel[] | null; createdVia?: ReminderCreatedVia; now?: Date }
 ): Promise<ReminderRecord> {
   const tz = getReminderTimezone();
-  const parsed = parseReminderText(text, options?.now ?? new Date(), tz);
+  const parsed = await parseReminderText(text, options?.now ?? new Date(), tz);
   if (!parsed) {
     throw new ReminderValidationError(
       `Could not find a time in "${text}". Try "tomorrow 6pm call Alex" or "every weekday at 9am standup prep".`

@@ -488,24 +488,44 @@ export class ControlPlaneServer {
   }
 
   private async readJsonBody<T = Record<string, any>>(
-    req: IncomingMessage
+    req: IncomingMessage,
+    maxBytes: number = 5 * 1024 * 1024
   ): Promise<T> {
     return new Promise((resolve) => {
       const chunks: Buffer[] = [];
-      req.on('data', (chunk: Buffer) => chunks.push(chunk));
+      let received = 0;
+      let settled = false;
+      const done = (value: T) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      req.on('data', (chunk: Buffer) => {
+        if (settled) return;
+        received += chunk.length;
+        if (received > maxBytes) {
+          // Oversized: drain and treat like an empty body instead of buffering unboundedly.
+          req.removeAllListeners('data');
+          req.removeAllListeners('end');
+          req.resume();
+          done({} as T);
+          return;
+        }
+        chunks.push(chunk);
+      });
       req.on('end', () => {
         if (chunks.length === 0) {
-          resolve({} as T);
+          done({} as T);
           return;
         }
         try {
           const raw = Buffer.concat(chunks).toString('utf8');
-          resolve(JSON.parse(raw) as T);
+          done(JSON.parse(raw) as T);
         } catch {
-          resolve({} as T);
+          done({} as T);
         }
       });
-      req.on('error', () => resolve({} as T));
+      req.on('error', () => done({} as T));
     });
   }
 
@@ -885,8 +905,15 @@ export class ControlPlaneServer {
         if (mediaFile && fs.existsSync(mediaFile.filePath)) {
           res.statusCode = 200;
           res.setHeader('Content-Type', mediaFile.mimeType);
+          res.setHeader('Content-Length', mediaFile.sizeBytes);
           res.setHeader('Cache-Control', 'public, max-age=3600');
-          res.end(fs.readFileSync(mediaFile.filePath));
+          // Stream instead of buffering the whole file in memory.
+          const stream = fs.createReadStream(mediaFile.filePath);
+          stream.on('error', () => {
+            if (!res.headersSent) res.statusCode = 500;
+            res.end();
+          });
+          stream.pipe(res);
           return;
         }
 

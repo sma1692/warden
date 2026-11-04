@@ -32,15 +32,7 @@
     "db:ingest": "npm --workspace=@warden/db run ingest",
     "db:sync": "node scripts/sync-md-db.ts",
     "sync": "node scripts/sync-md-db.ts",
-    "sandbox:build-image": "docker build -f infra/docker/Dockerfile.workspace -t warden-workspace:latest .",
-    "standup": "node scripts/warden-muse.mjs standup",
-    "standup:auto": "node scripts/warden-muse.mjs standup --auto-execute",
-    "daemon": "node scripts/warden-muse.mjs daemon",
-    "daemon:8h": "node scripts/warden-muse.mjs daemon --interval=8h",
-    "chat": "node scripts/warden-muse.mjs chat",
-    "ask": "node scripts/warden-muse.mjs ask",
-    "build:kit": "node scripts/build-kit.mjs",
-    "onboard": "node scripts/onboard.mjs"
+    "sandbox:build-image": "docker build -f infra/docker/Dockerfile.workspace -t warden-workspace:latest ."
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

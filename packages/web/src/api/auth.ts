@@ -1,6 +1,7 @@
 // JWT session for the signed-in operator. The token comes from POST /api/auth/otp/verify
 // and is sent as `Authorization: Bearer` on every /api call.
 import { API_BASE } from './base';
+import { StorageKeys, readStorage, removeStorage, writeStorage } from '../utils/storage';
 
 export type OnboardingStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE';
 
@@ -17,28 +18,20 @@ export interface AuthUser {
   };
 }
 
-const TOKEN_KEY = 'warden.auth.token';
 let memoryToken: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;
 
 export function getToken(): string | null {
   if (memoryToken) return memoryToken;
-  try {
-    memoryToken = window.localStorage.getItem(TOKEN_KEY);
-  } catch {
-    /* storage blocked */
-  }
+  memoryToken = readStorage(StorageKeys.authToken);
   return memoryToken;
 }
 
 export function setToken(token: string | null): void {
   memoryToken = token;
-  try {
-    if (token) window.localStorage.setItem(TOKEN_KEY, token);
-    else window.localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    /* storage blocked: token lives for this page only */
-  }
+  // Storage blocked: the token lives for this page only.
+  if (token) writeStorage(StorageKeys.authToken, token);
+  else removeStorage(StorageKeys.authToken);
 }
 
 /** Called once by the app shell; fires when any API call returns 401. */
@@ -99,4 +92,36 @@ export async function saveOnboarding(patch: {
 export async function signOut(): Promise<void> {
   await authRequest('logout', { method: 'POST' });
   setToken(null);
+}
+
+export interface WhatsAppLoginRequest {
+  id: string;
+  code: string;
+  message: string;
+  wa_link: string;
+  business_number: string;
+  expires_at: string;
+}
+
+export interface WhatsAppLoginStatus {
+  status: 'PENDING' | 'VERIFIED' | 'EXPIRED';
+  token?: string;
+  is_new_user?: boolean;
+  user?: AuthUser;
+}
+
+/** Starts a click-to-chat WhatsApp sign-in; 503 means the server has no business number. */
+export function startWhatsAppSignIn(): Promise<{
+  ok: boolean;
+  status: number;
+  data: WhatsAppLoginRequest & { error?: string };
+}> {
+  return authRequest<WhatsAppLoginRequest>('wa/start', { method: 'POST' });
+}
+
+/** Polls a pending WhatsApp sign-in until the webhook verifies the sender. */
+export function checkWhatsAppSignIn(
+  id: string
+): Promise<{ ok: boolean; status: number; data: WhatsAppLoginStatus & { error?: string } }> {
+  return authRequest<WhatsAppLoginStatus>(`wa/status?id=${encodeURIComponent(id)}`);
 }

@@ -246,6 +246,8 @@ export class DatabaseStore {
     };
   }
 
+  private snapshotTimer: NodeJS.Timeout | null = null;
+
   public saveSnapshot(): void {
     this.state.updated_at = new Date().toISOString();
     const dir = path.dirname(this.snapshotPath);
@@ -255,6 +257,38 @@ export class DatabaseStore {
     const tmpPath = `${this.snapshotPath}.tmp.${process.pid}`;
     fs.writeFileSync(tmpPath, JSON.stringify(this.state, null, 2), 'utf8');
     fs.renameSync(tmpPath, this.snapshotPath);
+  }
+
+  /**
+   * Debounced snapshot write (trailing 1s). Mutation hot paths funnel here so
+   * a burst of writes (tool calls, chat messages) costs one disk flush instead
+   * of one full-file rewrite per mutation. Reads always hit memory, so the
+   * only cost is a ~1s crash-consistency window on the fallback file.
+   */
+  public saveSnapshotSoon(): void {
+    if (this.snapshotTimer) return;
+    this.snapshotTimer = setTimeout(() => {
+      this.snapshotTimer = null;
+      try {
+        this.saveSnapshot();
+      } catch {
+        /* fallback file must never break live writes */
+      }
+    }, 1000);
+    this.snapshotTimer.unref?.();
+  }
+
+  /** Flushes any pending debounced snapshot write immediately. */
+  public flushSnapshot(): void {
+    if (this.snapshotTimer) {
+      clearTimeout(this.snapshotTimer);
+      this.snapshotTimer = null;
+    }
+    try {
+      this.saveSnapshot();
+    } catch {
+      /* fallback file must never break shutdown */
+    }
   }
 
   public reloadSnapshotFromDisk(): void {
@@ -293,6 +327,7 @@ export class DatabaseStore {
   }
 
   public async close(): Promise<void> {
+    this.flushSnapshot();
     await this.pg.close();
   }
 
@@ -320,7 +355,7 @@ export class DatabaseStore {
       code_chunks: [],
       contracts: [],
     };
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
   }
 
   public async seedAgents(seeds: AgentRow[] = SEED_AGENTS): Promise<AgentRow[]> {
@@ -923,7 +958,7 @@ export class DatabaseStore {
     } else {
       this.state.agents.push(merged);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -1225,7 +1260,7 @@ export class DatabaseStore {
     } else {
       this.state.project_contexts.push(merged);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -1396,7 +1431,7 @@ export class DatabaseStore {
     } else {
       this.state.agent_memories.push(row);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -1442,7 +1477,7 @@ export class DatabaseStore {
     const before = this.state.agent_memories.length;
     this.state.agent_memories = this.state.agent_memories.filter((m) => m.id !== id);
     const changed = this.state.agent_memories.length !== before;
-    if (changed) this.saveSnapshot();
+    if (changed) this.saveSnapshotSoon();
     if (this.pg.isConnected()) {
       await this.pg.query('DELETE FROM agent_memories WHERE id = $1', [id]);
     }
@@ -1670,7 +1705,7 @@ export class DatabaseStore {
         last_heartbeat_at: now,
       });
     } else {
-      this.saveSnapshot();
+      this.saveSnapshotSoon();
     }
 
     if (this.pg.isConnected()) {
@@ -1762,7 +1797,7 @@ export class DatabaseStore {
       id,
     };
     this.state.agent_runs[idx] = updated;
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.startAgentRun(updated);
@@ -1899,7 +1934,7 @@ export class DatabaseStore {
     };
 
     this.state.inference_steps.push(step);
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -2028,7 +2063,7 @@ export class DatabaseStore {
     } else {
       this.state.chat_threads.push(thread);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -2151,7 +2186,7 @@ export class DatabaseStore {
     if (threadIdx >= 0) {
       this.state.chat_threads[threadIdx].updated_at = now;
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -2294,7 +2329,7 @@ export class DatabaseStore {
     } else {
       this.state.sprints.push(sprint);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -2472,7 +2507,7 @@ export class DatabaseStore {
     } else {
       this.state.backlog_items.push(item);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -2559,7 +2594,7 @@ export class DatabaseStore {
     const before = this.state.backlog_items.length;
     this.state.backlog_items = this.state.backlog_items.filter((b) => b.id !== id);
     const changed = this.state.backlog_items.length !== before;
-    if (changed) this.saveSnapshot();
+    if (changed) this.saveSnapshotSoon();
     if (this.pg.isConnected()) {
       await this.pg.query('DELETE FROM backlog_items WHERE id = $1', [id]);
     }
@@ -2655,7 +2690,7 @@ export class DatabaseStore {
     } else {
       this.state.approval_gates.push(gate);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -2786,7 +2821,7 @@ export class DatabaseStore {
     } else {
       this.state.code_chunks.push(chunk);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -3141,7 +3176,7 @@ export class DatabaseStore {
     } else {
       this.state.provider_credentials.push(merged);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(
@@ -3199,7 +3234,7 @@ export class DatabaseStore {
       (c) => c.id !== id
     );
     const changed = this.state.provider_credentials.length !== before;
-    if (changed) this.saveSnapshot();
+    if (changed) this.saveSnapshotSoon();
     if (this.pg.isConnected()) {
       await this.pg.query('DELETE FROM provider_credentials WHERE id = $1', [id]);
     }
@@ -3382,7 +3417,7 @@ export class DatabaseStore {
         updatedAgents += 1;
       }
     } else {
-      this.saveSnapshot();
+      this.saveSnapshotSoon();
     }
 
     return {
@@ -3494,7 +3529,7 @@ export class DatabaseStore {
     } else {
       this.state.contracts.push(row);
     }
-    this.saveSnapshot();
+    this.saveSnapshotSoon();
 
     if (this.pg.isConnected()) {
       await this.pg.query(

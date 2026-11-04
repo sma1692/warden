@@ -1,7 +1,14 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import App from './App';
-import { AuthOnboardingFlow, type OnboardingStepId } from './components/AuthOnboardingFlow';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import type { OnboardingStepId } from './components/AuthOnboardingFlow';
 import { apiClient } from './api/client';
+
+// Route-split: signed-out visitors never download the dashboard and vice versa.
+const App = lazy(() => import('./App'));
+const AuthOnboardingFlow = lazy(() =>
+  import('./components/AuthOnboardingFlow').then((m) => ({ default: m.AuthOnboardingFlow }))
+);
+
+const RouteFallback: React.FC = () => <div className="h-screen bg-[#090A0C]" aria-busy="true" />;
 import { fetchMe, onUnauthorized, signOut, type AuthUser } from './api/auth';
 import {
   appTabForPath,
@@ -93,22 +100,28 @@ export const Root: React.FC = () => {
   }, []);
 
   if (session.state === 'checking') {
-    return <div className="h-screen bg-[#090A0C]" aria-busy="true" />;
+    return <RouteFallback />;
   }
 
   if (session.state === 'ready') {
-    return <App onSignOut={handleSignOut} initialTab={session.initialTab} />;
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <App onSignOut={handleSignOut} initialTab={session.initialTab} />
+      </Suspense>
+    );
   }
 
   return (
-    <AuthOnboardingFlow
-      // Remount on sign-out so the flow restarts from the entry step.
-      key={session.state}
-      mode="live"
-      initialStep={session.state === 'onboarding' ? session.step : signedOutStep()}
-      initialForm={session.state === 'onboarding' ? session.form : null}
-      onComplete={handleComplete}
-    />
+    <Suspense fallback={<RouteFallback />}>
+      <AuthOnboardingFlow
+        // Remount on sign-out so the flow restarts from the entry step.
+        key={session.state}
+        mode="live"
+        initialStep={session.state === 'onboarding' ? session.step : signedOutStep()}
+        initialForm={session.state === 'onboarding' ? session.form : null}
+        onComplete={handleComplete}
+      />
+    </Suspense>
   );
 };
 

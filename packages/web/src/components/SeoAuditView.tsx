@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { API_BASE } from '../api/base';
+import { apiClient, type SeoAuditCheck, type SeoAuditReport } from '../api/client';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,18 +15,8 @@ import {
 import type { BacklogStage, PriorityLevel } from '../types/warden';
 import { AsyncButton } from './AsyncButton';
 
-interface SeoCheck {
-  id: string;
-  label: string;
-  status: 'pass' | 'warn' | 'fail';
-  detail: string;
-}
-
-interface AuditReport {
-  url: string;
-  score: number;
-  checks: SeoCheck[];
-}
+type SeoCheck = SeoAuditCheck;
+type AuditReport = SeoAuditReport;
 
 interface SeoAuditViewProps {
   onCreateBacklogItem: (payload: {
@@ -79,15 +69,14 @@ export const SeoAuditView: React.FC<SeoAuditViewProps> = ({
     setAuditing(true);
     setAuditError(null);
     try {
-      const res = await fetch(`${API_BASE}/seo/audit?url=${encodeURIComponent(target)}`);
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.ok) {
-        fail(data?.error || 'Audit failed. Please try again.');
+      const result = await apiClient.runSeoAudit(target);
+      if (!result.ok) {
+        fail(result.error);
         return;
       }
-      setReport({ url: data.url, score: data.score, checks: data.checks });
+      setReport(result.report);
       try {
-        const host = new URL(data.url).hostname.replace(/^www\./, '');
+        const host = new URL(result.report.url).hostname.replace(/^www\./, '');
         if (!company) setCompany(host.split('.')[0] || '');
       } catch {
         // keep company field as-is
@@ -138,16 +127,11 @@ export const SeoAuditView: React.FC<SeoAuditViewProps> = ({
           return targetUrl;
         }
       })();
-      const res = await fetch(`${API_BASE}/seo/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company, domain, description: brief }),
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.ok) {
-        setPack({ llms_txt: data.llms_txt, jsonld: data.jsonld });
+      const result = await apiClient.generateSeoPack({ company, domain, description: brief });
+      if (result.ok) {
+        setPack(result.pack);
       } else {
-        fail(data?.error || 'Pack generation failed. Please try again.');
+        fail(result.error);
       }
     } catch {
       fail('Unable to connect right now. Please try again in a moment.');

@@ -50,7 +50,7 @@ import { TokenBreakdownBar } from './TokenBreakdownBar';
 import type { VerticalScope } from './ConsultationKnob';
 import { AsyncButton, useAsyncState } from './AsyncButton';
 
-export type AgentVertical = 'TECH' | 'SEO_AEO' | 'SOCIAL';
+export type AgentVertical = Exclude<VerticalScope, 'ALL'>;
 
 export interface EnrichedRosterAgent {
   agent: Agent;

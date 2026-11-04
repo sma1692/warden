@@ -124,8 +124,8 @@ warden/
 │   └── client/                       # warden-link local workspace execution daemon
 └── scripts/
     ├── build.mjs                     # Workspace build orchestrator
-    ├── token-report.mjs              # Session token and cost telemetry analyzer
-    └── token-firewall.mjs            # Static token budget and file-access verifier
+    ├── remind.mjs                    # Reminders API CLI
+    └── token-report.mjs              # Session token and cost telemetry analyzer
 ```
 
 ---

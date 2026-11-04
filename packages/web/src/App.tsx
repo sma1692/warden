@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
@@ -22,7 +22,9 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { apiClient } from './api/client';
+import { apiClient, type WsEventPayload } from './api/client';
+
+type WsEventType = WsEventPayload['type'];
 import {
   APP_TABS,
   appTabForPath,
@@ -31,11 +33,21 @@ import {
   onLocationChange,
   pathForAppTab,
 } from './router';
-import { AgentInspectorDrawer } from './components/AgentInspectorDrawer';
-import { AgentStudioView } from './components/AgentStudioView';
-import { BacklogAndSprintView } from './components/BacklogAndSprintView';
-import { ChatCenterView } from './components/ChatCenterView';
 import { DemoDeployCard } from './components/DemoDeployCard';
+
+// Tab views load on demand so the home dashboard paints without them.
+const AgentInspectorDrawer = lazy(() =>
+  import('./components/AgentInspectorDrawer').then((m) => ({ default: m.AgentInspectorDrawer }))
+);
+const AgentStudioView = lazy(() =>
+  import('./components/AgentStudioView').then((m) => ({ default: m.AgentStudioView }))
+);
+const BacklogAndSprintView = lazy(() =>
+  import('./components/BacklogAndSprintView').then((m) => ({ default: m.BacklogAndSprintView }))
+);
+const ChatCenterView = lazy(() =>
+  import('./components/ChatCenterView').then((m) => ({ default: m.ChatCenterView }))
+);
 import {
   loadConsultationKnobConfig,
   saveConsultationKnobConfig,
@@ -45,10 +57,22 @@ import {
 import { HomeChatStrip } from './components/HomeChatStrip';
 import { HomePriorityWindow } from './components/HomePriorityWindow';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
-import { ReportsView, type UnifiedReportItem } from './components/ReportsView';
-import { SeoAuditView } from './components/SeoAuditView';
-import { SettingsView } from './components/SettingsView';
+import type { UnifiedReportItem } from './data/reportsCatalog';
 import { TokenUsageBox } from './components/TokenUsageBox';
+
+const ReportsView = lazy(() =>
+  import('./components/ReportsView').then((m) => ({ default: m.ReportsView }))
+);
+const SeoAuditView = lazy(() =>
+  import('./components/SeoAuditView').then((m) => ({ default: m.SeoAuditView }))
+);
+const SettingsView = lazy(() =>
+  import('./components/SettingsView').then((m) => ({ default: m.SettingsView }))
+);
+
+const TabFallback: React.FC = () => (
+  <div className="flex-1 min-h-64 animate-pulse rounded-2xl bg-[var(--surface-panel)]" aria-busy="true" />
+);
 import type {
   Agent,
   AgentStepRouting,
@@ -68,17 +92,8 @@ import type {
   SystemHealthTelemetry,
   UserBudget,
 } from './types/warden';
-import {
-  INITIAL_AGENTS,
-  INITIAL_APPROVAL_GATES,
-  INITIAL_BACKLOG_ITEMS,
-  INITIAL_CHAT_THREADS,
-  INITIAL_HEALTH_TELEMETRY,
-  INITIAL_PROJECT_CONTEXTS,
-  INITIAL_PROVIDER_CREDENTIALS,
-  INITIAL_SPRINT,
-} from './api/seedData';
 import { PRODUCT_PROJECTS } from './data/workspaceProfile';
+import { useTheme } from './hooks/useTheme';
 
 export type PrimaryTabId = 'home' | 'agents' | 'reports' | 'backlogs' | 'seo' | 'settings';
 
@@ -140,7 +155,7 @@ const INITIAL_NOTIFICATIONS: AppNotificationItem[] = [
   },
 ];
 
-export type ThemeMode = 'light' | 'dark';
+export type { ThemeMode } from './hooks/useTheme';
 
 export const StrictOverseerLogo: React.FC<{
   className?: string;
@@ -148,7 +163,7 @@ export const StrictOverseerLogo: React.FC<{
   return (
     <div className={`relative shrink-0 flex items-center justify-center ${className}`}>
       <img
-        src="/warden-logo.png"
+        src="/warden-logo.webp" decoding="async"
         alt="Warden Strict Overseer Logo Reference"
         className="h-full w-full object-contain rounded-lg"
         onError={(e) => {
@@ -175,33 +190,7 @@ export const App: React.FC<AppProps> = ({
   initialTab,
   syncUrl = true,
 }) => {
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('warden_surface_theme');
-      if (saved === 'light' || saved === 'dark') {
-        return saved;
-      }
-    }
-    return 'light';
-  });
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-      root.classList.remove('light');
-      root.setAttribute('data-theme', 'dark');
-    } else {
-      root.classList.add('light');
-      root.classList.remove('dark');
-      root.setAttribute('data-theme', 'light');
-    }
-    localStorage.setItem('warden_surface_theme', theme);
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    if (metaThemeColor) {
-      metaThemeColor.setAttribute('content', theme === 'dark' ? '#0B121C' : '#F7F3E8');
-    }
-  }, [theme]);
+  const [theme, setTheme] = useTheme();
 
   const toggleTheme = () => {
     setTheme((prev) => {
@@ -259,27 +248,22 @@ export const App: React.FC<AppProps> = ({
   const [notifOpen, setNotifOpen] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
-  // Core data state
-  const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
-  const [projectContexts, setProjectContexts] = useState<ProjectContext[]>(
-    INITIAL_PROJECT_CONTEXTS
-  );
-  const [threads, setThreads] = useState<ChatThread[]>(INITIAL_CHAT_THREADS);
-  const [gates, setGates] = useState<ApprovalGate[]>(INITIAL_APPROVAL_GATES);
-  const [sprint, setSprint] = useState<Sprint>(INITIAL_SPRINT);
-  const [backlogItems, setBacklogItems] = useState<BacklogItem[]>(INITIAL_BACKLOG_ITEMS);
+  // Core data state. Starts empty; refreshAllData fills it on mount from the
+  // API (or fallback seeds when offline), so seeds stay out of this chunk.
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [projectContexts, setProjectContexts] = useState<ProjectContext[]>([]);
+  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [gates, setGates] = useState<ApprovalGate[]>([]);
+  const [sprint, setSprint] = useState<Sprint>({} as Sprint);
+  const [backlogItems, setBacklogItems] = useState<BacklogItem[]>([]);
   const [telemetry, setTelemetry] = useState<SystemHealthTelemetry>(
-    INITIAL_HEALTH_TELEMETRY
+    {} as SystemHealthTelemetry
   );
-  const [credentials, setCredentials] = useState<ProviderCredential[]>(
-    INITIAL_PROVIDER_CREDENTIALS
-  );
+  const [credentials, setCredentials] = useState<ProviderCredential[]>([]);
   const [budget, setBudget] = useState<UserBudget | null>(null);
 
   // Chat Center selection & Agent Inspector state
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
-    INITIAL_CHAT_THREADS[0]?.id || null
-  );
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [highlightedGateId, setHighlightedGateId] = useState<string | null>(null);
   const [preferredTargetAgentSlug, setPreferredTargetAgentSlug] = useState<string | null>(
     null
@@ -361,13 +345,58 @@ export const App: React.FC<AppProps> = ({
     setCredentials(loadedCredentials);
   }, []);
 
+  // Typed refresh: each WS event refreshes only the slice it affects,
+  // instead of all 8 fetches. Bursts (tick + steps + run updates arriving
+  // together) coalesce into one refresh per slice per 250ms window.
+  const refreshSlice = useCallback(async (type: WsEventType) => {
+    switch (type) {
+      case 'TELEMETRY_TICK':
+        setTelemetry(await apiClient.getTelemetry());
+        break;
+      case 'AGENT_UPDATED':
+      case 'RUN_UPDATED':
+      case 'STEP_CREATED':
+      case 'BRAIN_STATUS':
+        setAgents(await apiClient.getAgents());
+        break;
+      case 'CHAT_MESSAGE':
+        setThreads(await apiClient.getChatThreads());
+        break;
+      case 'GATE_CREATED':
+      case 'GATE_RESOLVED':
+        setGates(await apiClient.getApprovalGates());
+        break;
+      case 'STANDUP_UPDATED':
+        setSprint(await apiClient.getSprint());
+        setBacklogItems(await apiClient.getBacklogItems());
+        break;
+      case 'BACKLOG_UPDATED':
+        setBacklogItems(await apiClient.getBacklogItems());
+        break;
+      case 'BUDGET_EXCEEDED':
+        break; // budget is refreshed by the notifier subscription below
+    }
+  }, []);
+
   useEffect(() => {
     void refreshAllData();
-    const unsubscribe = apiClient.subscribe(() => {
-      void refreshAllData();
+    const pending = new Set<WsEventType>();
+    let timer: number | null = null;
+    const flush = () => {
+      timer = null;
+      const types = [...pending];
+      pending.clear();
+      for (const t of types) void refreshSlice(t);
+    };
+    const unsubscribe = apiClient.subscribe((evt) => {
+      pending.add(evt.type);
+      if (!timer) timer = window.setTimeout(flush, 250);
     });
-    return unsubscribe;
-  }, [refreshAllData]);
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [refreshAllData, refreshSlice]);
 
   const unreadNotifCount = useMemo(
     () => notifications.filter((n) => n.unread).length,
@@ -376,71 +405,51 @@ export const App: React.FC<AppProps> = ({
 
 
 
+  // Single find-or-push for dynamic window tabs (functional update avoids
+  // the stale-closure read the three callers used to duplicate).
+  const openDynamicTab = (tab: DynamicWindowTab) => {
+    setDynamicTabs((prev) => (prev.some((t) => t.id === tab.id) ? prev : [...prev, tab]));
+    setActiveTab(tab.id);
+  };
+
+  const chatTabForSlug = (slug: string): DynamicWindowTab => ({
+    id: `win-agent-${slug.replace('@', '')}`,
+    title: slug,
+    kind: 'chat',
+    vertical: activeVertical,
+    agentSlug: slug,
+  });
+
+  const normalizeSlug = (slug: string) => (slug.startsWith('@') ? slug : `@${slug}`);
+
   const handleOpenAgentWindowTab = (agentOrSlug: Agent | string) => {
-    const slug = typeof agentOrSlug === 'string' ? agentOrSlug : agentOrSlug.slug;
-    const normalizedSlug = slug.startsWith('@') ? slug : `@${slug}`;
-    const tabId = `win-agent-${normalizedSlug.replace('@', '')}`;
-    const existing = dynamicTabs.find((t) => t.id === tabId);
-    if (!existing) {
-      setDynamicTabs((prev) => [
-        ...prev,
-        {
-          id: tabId,
-          title: normalizedSlug,
-          kind: 'chat',
-          vertical: activeVertical,
-          agentSlug: normalizedSlug,
-        },
-      ]);
-    }
+    const normalizedSlug = normalizeSlug(
+      typeof agentOrSlug === 'string' ? agentOrSlug : agentOrSlug.slug
+    );
+    openDynamicTab(chatTabForSlug(normalizedSlug));
     setPreferredTargetAgentSlug(normalizedSlug);
     const matchingThread = threads.find((t) => t.target_agent_id === normalizedSlug);
     if (matchingThread) {
       setSelectedThreadId(matchingThread.id);
     }
-    setActiveTab(tabId);
   };
 
   const handleOpenReportWindowTab = (report: UnifiedReportItem) => {
-    const tabId = `win-report-${report.id}`;
-    const existing = dynamicTabs.find((t) => t.id === tabId);
-    if (!existing) {
-      setDynamicTabs((prev) => [
-        ...prev,
-        {
-          id: tabId,
-          title: report.title.slice(0, 24) + (report.title.length > 24 ? '…' : ''),
-          kind: 'report',
-          vertical: report.vertical,
-          report,
-        },
-      ]);
-    }
-    setActiveTab(tabId);
+    openDynamicTab({
+      id: `win-report-${report.id}`,
+      title: report.title.slice(0, 24) + (report.title.length > 24 ? '…' : ''),
+      kind: 'report',
+      vertical: report.vertical,
+      report,
+    });
   };
 
   const handleOpenThreadByObject = (thread: ChatThread) => {
-    const slug = thread.target_agent_id.startsWith('@')
-      ? thread.target_agent_id
-      : `@${thread.target_agent_id}`;
-    const tabId = `win-agent-${slug.replace('@', '')}`;
-    const existing = dynamicTabs.find((t) => t.id === tabId);
-    if (!existing) {
-      setDynamicTabs((prev) => [
-        ...prev,
-        {
-          id: tabId,
-          title: slug,
-          kind: 'chat',
-          vertical: activeVertical,
-          agentSlug: slug,
-        },
-      ]);
-    }
+    const slug = normalizeSlug(thread.target_agent_id);
+    openDynamicTab(chatTabForSlug(slug));
     setPreferredTargetAgentSlug(slug);
     setSelectedThreadId(thread.id);
     setHighlightedGateId(null);
-    setActiveTab(tabId);
   };
 
   const handleOpenThread = (threadId: string) => {
@@ -1116,6 +1125,7 @@ export const App: React.FC<AppProps> = ({
               </div>
             )}
             {activeTab === 'agents' && (
+              <Suspense fallback={<TabFallback />}>
               <AgentStudioView
                 agents={agents}
                 projectContexts={projectContexts}
@@ -1129,8 +1139,10 @@ export const App: React.FC<AppProps> = ({
                 onAddCredential={handleAddCredential}
                 onRotateCredentialFailover={handleRotateCredentialFailover}
               />
+              </Suspense>
             )}
             {activeTab === 'reports' && (
+              <Suspense fallback={<TabFallback />}>
               <ReportsView
                 activeVertical={activeVertical}
                 backlogItems={backlogItems}
@@ -1140,8 +1152,10 @@ export const App: React.FC<AppProps> = ({
                 onOpenChatWithAgent={(slug) => handleOpenAgentWindowTab(slug)}
                 onOpenReportWindowTab={(report) => handleOpenReportWindowTab(report)}
               />
+              </Suspense>
             )}
             {activeTab === 'backlogs' && (
+              <Suspense fallback={<TabFallback />}>
               <BacklogAndSprintView
                 activeVertical={activeVertical}
                 sprint={sprint}
@@ -1160,15 +1174,22 @@ export const App: React.FC<AppProps> = ({
                 onResolveIntervention={handleResolveIntervention}
                 onRunPmTriage={handleRunPmTriage}
               />
+              </Suspense>
             )}
             {activeTab === 'seo' && (
+              <Suspense fallback={<TabFallback />}>
               <SeoAuditView
                 onCreateBacklogItem={handleCreateBacklogItem}
                 onNotify={(summary) => showToast(summary)}
                 onError={showError}
               />
+              </Suspense>
             )}
-            {activeTab === 'settings' && <SettingsView />}
+            {activeTab === 'settings' && (
+              <Suspense fallback={<TabFallback />}>
+                <SettingsView />
+              </Suspense>
+            )}
 
             {activeDynamicTab && activeDynamicTab.kind === 'chat' && (
               <div className="space-y-3 h-full flex flex-col">
@@ -1180,6 +1201,7 @@ export const App: React.FC<AppProps> = ({
                   <button onClick={() => setActiveTab('home')} className="text-xs font-semibold text-[var(--surface-accent-gold)] hover:underline cursor-pointer">← Back to Dashboard</button>
                 </div>
                 <div className="flex-1 min-h-0">
+                  <Suspense fallback={<TabFallback />}>
                   <ChatCenterView
                     agents={agents}
                     threads={threads}
@@ -1196,6 +1218,7 @@ export const App: React.FC<AppProps> = ({
                     backlogItems={backlogItems}
                     onOpenBacklogItem={handleOpenBacklogItem}
                   />
+                  </Suspense>
                 </div>
               </div>
             )}
@@ -1217,17 +1240,21 @@ export const App: React.FC<AppProps> = ({
         </main>
       </div>
 
-      <AgentInspectorDrawer
-        agent={inspectedAgent}
-        initialSubTab={inspectorSubTab}
-        initialRunId={inspectorRunId}
-        onClose={() => setInspectedAgent(null)}
-        onAgentUpdated={(updated) => {
-          setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-          setInspectedAgent(updated);
-          showToast(`Saved configuration for ${updated.slug}`);
-        }}
-      />
+      {inspectedAgent && (
+        <Suspense fallback={null}>
+          <AgentInspectorDrawer
+            agent={inspectedAgent}
+            initialSubTab={inspectorSubTab}
+            initialRunId={inspectorRunId}
+            onClose={() => setInspectedAgent(null)}
+            onAgentUpdated={(updated) => {
+              setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+              setInspectedAgent(updated);
+              showToast(`Saved configuration for ${updated.slug}`);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* MOBILE BOTTOM NAVIGATION */}
       <nav className="fixed bottom-0 inset-x-0 z-30 flex md:hidden items-center justify-around border-t border-[#C6A664]/30 dark:border-[#C6A664]/20 bg-[#FCF9F2]/95 dark:bg-[#0B121C]/95 py-2 backdrop-blur-md">

@@ -58,8 +58,54 @@ const printLanUrls: Plugin = {
   },
 };
 
+const injectApiPreconnect: Plugin = {
+  name: 'warden-inject-api-preconnect',
+  transformIndexHtml(html) {
+    // Stag/prod bake an absolute API origin: warm it while the bundle parses.
+    // Local builds stay same-origin, so no tag is injected there.
+    const origin = (process.env.VITE_API_URL || '').replace(/\/+$/, '');
+    if (!origin || !/^https?:\/\//.test(origin)) return html;
+    return html.replace(
+      '</head>',
+      `    <link rel="preconnect" href="${origin}" crossorigin />\n  </head>`
+    );
+  },
+};
+
 export default defineConfig(({ command }) => ({
-  plugins: [react(), tailwindcss(), printLanUrls],
+  plugins: [react(), tailwindcss(), printLanUrls, injectApiPreconnect],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (
+              id.includes('/react-dom/') ||
+              id.includes('/react/') ||
+              id.includes('/scheduler/')
+            ) {
+              return 'vendor-react';
+            }
+            if (id.includes('lucide-react')) return 'vendor-icons';
+            return 'vendor-misc';
+          }
+          // Shared by the shell, onboarding, and every lazy tab: keep it in
+          // one chunk so Rollup doesn't fuse it into whichever view it sees first.
+          if (
+            id.includes('/src/api/client') ||
+            id.includes('/src/api/auth') ||
+            id.includes('/src/api/base') ||
+            id.includes('/src/types/') ||
+            id.includes('/src/utils/') ||
+            id.includes('/src/router')
+          ) {
+            return 'api-shared';
+          }
+          return undefined;
+        },
+      },
+    },
+  },
   define:
     command === 'serve'
       ? {

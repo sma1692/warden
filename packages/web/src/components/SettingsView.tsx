@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CreditCard, Gauge, Loader2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import type { UserBudget } from '../types/warden';
+import { formatUsd } from '../utils/formatters';
 import { LlmKeyForm } from './LlmKeyForm';
 
 function fmt(n: number): string {
@@ -90,7 +91,7 @@ export const SettingsView: React.FC = () => {
             </div>
             <p className="text-[11px] text-[var(--surface-text-secondary)]">
               {budget.remaining !== null ? `${fmt(budget.remaining)} tokens left` : 'Unlimited'} ·{' '}
-              {budget.mode} plan · ${budget.costUsd.toFixed(2)} platform spend. Add your own key
+              {budget.mode} plan · {formatUsd(budget.costUsd)} platform spend. Add your own key
               below to run uncapped on your Meta credit.
             </p>
           </div>

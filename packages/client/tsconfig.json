@@ -11,6 +11,7 @@
     "resolveJsonModule": true,
     "declaration": true,
     "noEmit": true,
+    "incremental": true,
     "outDir": "./dist",
     "rootDir": "./src",
     "types": ["node"]

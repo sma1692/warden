@@ -11,6 +11,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { apiClient, type UserTokenTelemetry } from '../api/client';
+import { formatUsdAdaptive } from '../utils/formatters';
 import type { VerticalScope } from './ConsultationKnob';
 
 interface TokenUsageBoxProps {
@@ -26,12 +27,7 @@ const FILTER_OPTIONS: { label: string; key: UserTokenTelemetry['range'] }[] = [
   { label: 'All', key: 'all' },
 ];
 
-function formatUsd(cost: number): string {
-  if (!cost || cost <= 0) return '$0.00';
-  if (cost < 0.01) return `$${cost.toFixed(4)}`;
-  if (cost < 1) return `$${cost.toFixed(3)}`;
-  return `$${cost.toFixed(2)}`;
-}
+
 
 export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
   activeVertical = 'ALL',
@@ -52,8 +48,16 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
 
   useEffect(() => {
     void fetchTokenData();
-    const unsubscribe = apiClient.subscribe(() => {
-      void fetchTokenData();
+    // Token totals only move on telemetry ticks, run activity, and budget events.
+    const unsubscribe = apiClient.subscribe((evt) => {
+      if (
+        evt.type === 'TELEMETRY_TICK' ||
+        evt.type === 'RUN_UPDATED' ||
+        evt.type === 'STEP_CREATED' ||
+        evt.type === 'BUDGET_EXCEEDED'
+      ) {
+        void fetchTokenData();
+      }
     });
     return unsubscribe;
   }, [fetchTokenData]);
@@ -182,7 +186,7 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
             </div>
             <div className="mt-1 flex items-baseline gap-1.5">
               <span className="text-base sm:text-lg font-black font-mono text-[var(--surface-accent-gold)]">
-                {formatUsd(totalCostUsd)}
+                {formatUsdAdaptive(totalCostUsd)}
               </span>
               <span className="text-[10px] font-mono text-[var(--surface-text-secondary)]">
                 USD
@@ -245,7 +249,7 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
 
                   <div className="flex items-center gap-2 font-mono text-[11px]">
                     <span className="text-[var(--surface-text-secondary)]">
-                      {v.tokens.toLocaleString()} tok • {formatUsd(v.costUsd)} ({v.runs} run{v.runs === 1 ? '' : 's'})
+                      {v.tokens.toLocaleString()} tok • {formatUsdAdaptive(v.costUsd)} ({v.runs} run{v.runs === 1 ? '' : 's'})
                     </span>
                     <span className="text-[var(--surface-accent-gold)] font-bold w-9 text-right">
                       {v.sharePct}%

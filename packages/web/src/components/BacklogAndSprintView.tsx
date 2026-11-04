@@ -32,7 +32,8 @@ import type {
   Sprint,
 } from '../types/warden';
 import { DEMO_ORIGIN_THREAD_BY_BACKLOG, spawnThreadPrefix } from '../data/demoLinks';
-import { UNIFIED_REPORTS_CATALOG } from './ReportsView';
+import { useFollowedVertical } from '../hooks/useVerticalFilter';
+import { UNIFIED_REPORTS_CATALOG } from '../data/reportsCatalog';
 import type { VerticalScope } from './ConsultationKnob';
 import { AsyncButton, useAsyncState } from './AsyncButton';
 import { SpriteTaskPreview } from './SpriteTaskPreview';
@@ -328,7 +329,7 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
   onResolveIntervention,
   onRunPmTriage,
 }) => {
-  const [localVertical, setLocalVertical] = useState<VerticalScope>(activeVertical);
+  const [localVertical, setLocalVertical] = useFollowedVertical(activeVertical);
   const [projectFilter, setProjectFilter] = useState<string>('ALL');
   const [priorityFilter, setPriorityFilter] = useState<'ALL' | PriorityLevel>('ALL');
   const [stageFilter, setStageFilter] = useState<'ALL' | BacklogStage>('ALL');
@@ -349,10 +350,6 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
   const [newPriority, setNewPriority] = useState<PriorityLevel>('P0');
   const [newProject, setNewProject] = useState<string>(PRIMARY_PROJECT.slug);
   const [newAssignee, setNewAssignee] = useState<string>('@pm');
-
-  useEffect(() => {
-    setLocalVertical(activeVertical);
-  }, [activeVertical]);
 
   useEffect(() => {
     if (focusedItemId) {

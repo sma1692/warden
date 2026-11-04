@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { StorageKeys, readStorageJson, writeStorageJson } from '../utils/storage';
 import {
   CheckCircle2,
   Cpu,
@@ -21,8 +22,6 @@ export interface ConsultationKnobConfig {
   updatedAt: string;
 }
 
-const STORAGE_KEY = 'warden_consultation_knob_v1';
-
 export const DEFAULT_CONSULTATION_CONFIG: ConsultationKnobConfig = {
   globalLevel: 2,
   perVerticalLevel: {
@@ -41,9 +40,8 @@ export const DEFAULT_CONSULTATION_CONFIG: ConsultationKnobConfig = {
 export function loadConsultationKnobConfig(): ConsultationKnobConfig {
   if (typeof window === 'undefined') return DEFAULT_CONSULTATION_CONFIG;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_CONSULTATION_CONFIG;
-    const parsed = JSON.parse(raw) as Partial<ConsultationKnobConfig>;
+    const parsed = readStorageJson<Partial<ConsultationKnobConfig>>(StorageKeys.consultationKnob);
+    if (!parsed) return DEFAULT_CONSULTATION_CONFIG;
     return {
       globalLevel: (parsed.globalLevel as ConsultationLevel) || 2,
       perVerticalLevel: {
@@ -66,7 +64,7 @@ export function loadConsultationKnobConfig(): ConsultationKnobConfig {
 export function saveConsultationKnobConfig(config: ConsultationKnobConfig): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    writeStorageJson(StorageKeys.consultationKnob, config);
     window.dispatchEvent(
       new CustomEvent('warden:consultation-knob-change', { detail: config })
     );

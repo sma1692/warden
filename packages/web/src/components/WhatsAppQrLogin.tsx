@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import QRCode from 'qrcode';
 import { MessageSquare, RefreshCw } from 'lucide-react';
-import type { AuthUser } from '../api/auth';
-import { API_BASE } from '../api/base';
+import {
+  checkWhatsAppSignIn,
+  startWhatsAppSignIn,
+  type AuthUser,
+  type WhatsAppLoginRequest,
+} from '../api/auth';
 import { AsyncButton } from './AsyncButton';
 
 export interface WhatsAppSignInResult {
@@ -16,14 +19,7 @@ interface WhatsAppQrLoginProps {
   onUseCode: () => void;
 }
 
-interface LoginRequest {
-  id: string;
-  code: string;
-  message: string;
-  wa_link: string;
-  business_number: string;
-  expires_at: string;
-}
+type LoginRequest = WhatsAppLoginRequest;
 
 const POLL_MS = 2000;
 
@@ -49,18 +45,19 @@ export const WhatsAppQrLogin: React.FC<WhatsAppQrLoginProps> = ({ onVerified, on
     setRequest(null);
     setQrDataUrl('');
     try {
-      const res = await fetch(`${API_BASE}/auth/wa/start`, { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 503) {
+      const { ok, status, data } = await startWhatsAppSignIn();
+      if (status === 503) {
         // Server has no WhatsApp business number configured: retrying won't help.
         setNotConfigured(true);
         return;
       }
-      if (!res.ok || !data.ok) {
+      if (!ok) {
         setError(data.error || 'Could not start WhatsApp sign-in.');
         return;
       }
       setRequest(data);
+      // Loaded on demand: the QR library stays out of the initial bundle.
+      const { default: QRCode } = await import('qrcode');
       setQrDataUrl(
         await QRCode.toDataURL(data.wa_link, { margin: 1, width: 440, errorCorrectionLevel: 'M' })
       );
@@ -81,13 +78,12 @@ export const WhatsAppQrLogin: React.FC<WhatsAppQrLoginProps> = ({ onVerified, on
     const check = async () => {
       if (stopped) return;
       try {
-        const res = await fetch(`${API_BASE}/auth/wa/status?id=${encodeURIComponent(request.id)}`);
-        const data = await res.json().catch(() => ({}));
+        const { status, data } = await checkWhatsAppSignIn(request.id);
         if (stopped) return;
         if (data.status === 'VERIFIED') {
           stopped = true;
           onVerifiedRef.current(data as WhatsAppSignInResult);
-        } else if (data.status === 'EXPIRED' || res.status === 410) {
+        } else if (data.status === 'EXPIRED' || status === 410) {
           setExpired(true);
         }
       } catch {
