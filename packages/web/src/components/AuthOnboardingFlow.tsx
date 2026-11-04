@@ -831,18 +831,20 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                 {/* Bottom Half: Text + Subtext + Start Button */}
                 <div className="flex-1 lg:flex-initial flex flex-col items-center lg:items-start justify-evenly lg:justify-start text-center lg:text-left pt-4 lg:pt-0 pb-2 lg:pb-0 gap-4 lg:gap-6">
                   <div className="space-y-3">
-                    <div className="hidden lg:inline-flex items-center gap-2 rounded-full border border-[#C6A664]/30 bg-[#14161A]/90 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.2em] text-[#D4B475]">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#D4B475]" />
-                      <span>Warden Automatons</span>
+                    <div className="inline-flex items-center gap-2.5 rounded-2xl border border-[#C6A664]/45 bg-[#14161A]/95 px-4 py-2 shadow-[0_0_24px_rgba(198,166,100,0.16)]">
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#D4B475] shadow-[0_0_8px_#D4B475]" />
+                      <span className="text-lg sm:text-xl xl:text-2xl font-black uppercase tracking-[0.16em] text-transparent bg-clip-text bg-gradient-to-r from-[#F5F0E6] via-[#D4B475] to-[#C6A664]">
+                        Warden Automatons
+                      </span>
                     </div>
-                    <h1 className="text-3xl sm:text-4xl xl:text-5xl font-black tracking-tight text-white leading-[1.1]">
-                      Stop pasting context.
+                    <h1 className="text-xl sm:text-2xl xl:text-3xl font-extrabold tracking-tight text-white leading-snug">
+                      Your Company Brain.
                       <span className="block mt-1 text-transparent bg-clip-text bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#F5F0E6]">
-                        Warden remembers.
+                        Copilot Agents for Every Employee.
                       </span>
                     </h1>
-                    <p className="text-xs sm:text-sm lg:text-base text-slate-300 max-w-xs sm:max-w-md mx-auto lg:mx-0 leading-relaxed line-clamp-2">
-                      Your persistent company brain that coordinates every project and decision at a fraction of the token cost.
+                    <p className="text-xs sm:text-sm lg:text-base text-slate-300 max-w-xs sm:max-w-md mx-auto lg:mx-0 leading-relaxed">
+                      One persistent brain that pairs your team with autonomous agents across engineering, growth, and ops at a fraction of the token cost.
                     </p>
                   </div>
 

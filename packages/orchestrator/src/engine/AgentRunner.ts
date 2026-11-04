@@ -1290,7 +1290,20 @@ export class AgentRunner {
     return resumedResult;
   }
 
-  private resolveRepoWorkspaceRoot(repoSlug: string): string {
+  private resolveRepoWorkspaceRoot(repoSlug: string, userId?: string | null): string {
+    if (userId) {
+      const cleanUser = userId.replace(/[^a-zA-Z0-9_-]/g, '');
+      const demoDir = path.join(this.store.wardenRoot, 'user-demos', `u-${cleanUser}`);
+      if (
+        fs.existsSync(demoDir) &&
+        (repoSlug === 'demo-project' ||
+          repoSlug === 'demo-arena' ||
+          repoSlug.includes('demo') ||
+          !repoSlug)
+      ) {
+        return demoDir;
+      }
+    }
     const mirrorPath = path.join(
       this.store.wardenRoot,
       '.state',
@@ -1998,7 +2011,20 @@ export class AgentRunner {
     }
 
     // Handle `read_file`, `write_file`, `edit_file`, `run_command` against the repository mirror / sandbox
-    const repoRoot = this.resolveRepoWorkspaceRoot(primaryRepo);
+    const repoRoot = this.resolveRepoWorkspaceRoot(primaryRepo, run.user_id ?? null);
+    const isDemoUserWorkspace = repoRoot.includes(`${path.sep}user-demos${path.sep}u-`);
+    const syncDemoBuildFile = (relFilePath: string, fullContent: string) => {
+      if (!isDemoUserWorkspace) return;
+      try {
+        const buildTarget = path.resolve(repoRoot, 'build', relFilePath);
+        if (buildTarget.startsWith(path.resolve(repoRoot, 'build'))) {
+          fs.mkdirSync(path.dirname(buildTarget), { recursive: true });
+          fs.writeFileSync(buildTarget, fullContent, 'utf8');
+        }
+      } catch {
+        // Non-fatal build sync
+      }
+    };
     const isModifying = tc.name === 'write_file' || tc.name === 'edit_file';
     let toolOutputJson: Record<string, unknown> = {
       ok: true,
@@ -2011,7 +2037,7 @@ export class AgentRunner {
       if (tc.name === 'read_file') {
         const relPath = String(args.path || 'README.md').replace(/^\/+/, '');
         const resolved = path.resolve(repoRoot, relPath);
-        if (!canReadRawSource(agent.slug || agent.id, relPath)) {
+        if (!isDemoUserWorkspace && !canReadRawSource(agent.slug || agent.id, relPath)) {
           // Tier firewall: Root, Level 0, and Level 1 agents never ingest raw source.
           toolOutputJson = {
             ok: false,
@@ -2053,6 +2079,8 @@ export class AgentRunner {
           baseName === 'pnpm-lock.yaml' ||
           baseName === 'yarn.lock';
         const isAllowedWorkspacePrefix =
+          isDemoUserWorkspace ||
+          resolved.includes(`${path.sep}user-demos${path.sep}u-`) ||
           resolved.includes(`${path.sep}.state${path.sep}demo-workspaces${path.sep}`) ||
           resolved.includes(`${path.sep}.state${path.sep}mirror${path.sep}`) ||
           normalizedRel.startsWith('contracts/') ||
@@ -2073,6 +2101,7 @@ export class AgentRunner {
         if (isSafeWriteTarget) {
           fs.mkdirSync(path.dirname(resolved), { recursive: true });
           fs.writeFileSync(resolved, content, 'utf8');
+          syncDemoBuildFile(normalizedRel, content);
         }
         toolOutputJson = isSafeWriteTarget
           ? {
@@ -2094,6 +2123,7 @@ export class AgentRunner {
           : `Refused write to \`${relPath}\`: outside allowed workspace paths.`;
       } else if (tc.name === 'edit_file') {
         const relPath = String(args.path || '').replace(/^\/+/, '');
+        const normalizedRel = relPath.replace(/\\/g, '/');
         const targetStr = String(args.target ?? '');
         const replacementStr = String(args.replacement ?? '');
         const resolved = path.resolve(repoRoot, relPath);
@@ -2109,6 +2139,7 @@ export class AgentRunner {
           if (existingContent.includes(targetStr)) {
             const updatedContent = existingContent.split(targetStr).join(replacementStr);
             fs.writeFileSync(resolved, updatedContent, 'utf8');
+            syncDemoBuildFile(normalizedRel, updatedContent);
             replacedOnDisk = true;
           }
         }
