@@ -80,6 +80,7 @@ const EVENT_TO_WEB_TYPE: Record<string, string> = {
   'credential:rotated': 'CREDENTIAL_ROTATED',
   'credential:deleted': 'CREDENTIAL_DELETED',
   'sync.completed': 'SYNC_COMPLETED',
+  'budget:exceeded': 'BUDGET_EXCEEDED',
 };
 
 /**
@@ -715,6 +716,43 @@ export class ControlPlaneServer {
         ended_at: new Date().toISOString(),
       });
     }
+  }
+
+  /**
+   * Enforces the per-operator token budget before dispatching any agent call.
+   * Returns true if the request was rejected with HTTP 429 (`TOKEN_CAP_EXCEEDED`).
+   */
+  private async rejectIfOverTokenBudget(
+    res: ServerResponse,
+    userId: string | null,
+    threadId?: string | null
+  ): Promise<boolean> {
+    if (!userId) return false;
+    try {
+      const { checkUserAgentBudget } = await import('../budgets/UserBudgets.js');
+      const check = await checkUserAgentBudget(userId);
+      if (!check.allowed) {
+        const errorMsg =
+          check.errorMessage ||
+          `Token limit reached (${check.usage.used.toLocaleString()} / ${check.usage.cap.toLocaleString()} tokens). Add your Meta Muse key in Settings to continue.`;
+        this.broadcastEvent('budget:exceeded', {
+          userId,
+          threadId: threadId ?? null,
+          error: errorMsg,
+          budget: check.usage,
+        });
+        this.sendJson(res, 429, {
+          ok: false,
+          code: 'TOKEN_CAP_EXCEEDED',
+          error: errorMsg,
+          budget: check.usage,
+        });
+        return true;
+      }
+    } catch {
+      // Fail open if DB is unreachable in local dev
+    }
+    return false;
   }
 
   private async handleRequest(
@@ -1562,6 +1600,9 @@ export class ControlPlaneServer {
             this.sendJson(res, 404, { error: `Thread ${threadId} not found` });
             return;
           }
+          if (await this.rejectIfOverTokenBudget(res, requestUserId, threadId)) {
+            return;
+          }
           const rawAttachments: any[] =
             body.attachments || body.attachments_json || [];
           const processedAttachments: MediaAttachment[] = [];
@@ -1990,6 +2031,9 @@ export class ControlPlaneServer {
       }
 
       if (pathname === '/api/standup/trigger' && method === 'POST') {
+        if (await this.rejectIfOverTokenBudget(res, requestUserId)) {
+          return;
+        }
         const body = await this.readJsonBody(req);
         const result = await this.standupCoordinator.triggerDailyStandup({
           dateIst: body.date_ist,
@@ -2054,6 +2098,9 @@ export class ControlPlaneServer {
         /^\/api\/sprints\/([^/]+)\/approve$/
       );
       if (sprintApproveMatch && method === 'POST') {
+        if (await this.rejectIfOverTokenBudget(res, requestUserId)) {
+          return;
+        }
         const sprintId = decodeURIComponent(sprintApproveMatch[1]);
         const body = await this.readJsonBody(req);
         const targetSprint = this.store.sprints.get(sprintId);

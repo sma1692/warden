@@ -24,6 +24,7 @@ import {
 } from '../models/ModelRouter.js';
 import { HybridMemoryEngine, hybridMemoryEngine } from '../memory/HybridMemoryEngine.js';
 import { capUpwardReply, canReadRawSource, isInsideRoot } from './tierPolicy.js';
+import { buildUserFacingBlock, formatOpenItemsForPrompt } from './userFacingPrompt.js';
 
 const execAsync = promisify(exec);
 
@@ -320,6 +321,12 @@ export class AgentRunner {
               options_json: { choices: ['ADD_OWN_KEY', 'TERMINATE_RUN'] },
               telegram_notified_at: new Date().toISOString(),
             });
+            this.store.broadcast('budget:exceeded', {
+              userId: params.userId,
+              threadId: run.chat_thread_id,
+              error: promptText,
+              budget: usage,
+            });
             return {
               run: paused,
               agent,
@@ -385,25 +392,22 @@ export class AgentRunner {
         g.status === 'PENDING' &&
         (!params.userId || (g.user_id ?? null) === params.userId)
     );
-    const liveQueueDigest = [
-      ``,
-      `# LIVE STUDIO QUEUE & NEEDS-ACTION SNAPSHOT`,
-      `- **Needs Action / CEO Sign-Off (${needsCeoItems.length} item(s))**:`,
-      ...(needsCeoItems.length > 0
-        ? needsCeoItems.map(
-            (b) =>
-              `  - \`[${b.priority}] ${b.title}\` (id=\`${b.id}\`, stage=\`${b.stage}\`, owner=\`${b.assigned_agent_id || b.pm_owner_id || '@warden'}\`): ${b.intervention_prompt || b.spec_md.slice(0, 180).replace(/\s+/g, ' ')}`
-          )
-        : [`  - None currently queued.`]),
-      ...(pendingGatesForUser.length > 0
-        ? [
-            `- **Pending Approval Gates (${pendingGatesForUser.length})**:`,
-            ...pendingGatesForUser.map(
-              (g) => `  - \`${g.gate_type}\` (${g.agent_id}): ${g.prompt_text.slice(0, 180)}`
-            ),
-          ]
-        : []),
-    ].join('\n');
+    const isUserFacingReply =
+      params.triggerType === 'CEO_CHAT' || params.triggerType === 'DIRECT_MENTION';
+    const openItemsForUser = formatOpenItemsForPrompt(
+      needsCeoItems.map((b) => ({
+        id: b.id,
+        title: b.title,
+        priority: b.priority,
+        summary: b.intervention_prompt || b.spec_md,
+      })),
+      pendingGatesForUser
+    );
+    // User-facing agents get the product guide + reply style; internal agents
+    // only get the compact open-items list.
+    const liveQueueDigest = isUserFacingReply
+      ? buildUserFacingBlock(openItemsForUser)
+      : openItemsForUser;
 
     const isConversationalFastPath =
       (params.triggerType === 'CEO_CHAT' || params.triggerType === 'DIRECT_MENTION') &&

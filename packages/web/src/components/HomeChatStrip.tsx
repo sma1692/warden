@@ -11,12 +11,18 @@ interface HomeChatStripProps {
  */
 export const HomeChatStrip: React.FC<HomeChatStripProps> = ({ onStartChat }) => {
   const [value, setValue] = useState('');
+  const submittingRef = React.useRef(false);
 
-  const submit = () => {
+  const submit = async () => {
     const text = value.trim();
-    if (!text) return;
+    if (!text || submittingRef.current) return;
+    submittingRef.current = true;
     setValue('');
-    onStartChat(text);
+    try {
+      await onStartChat(text);
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   return (
@@ -31,7 +37,10 @@ export const HomeChatStrip: React.FC<HomeChatStripProps> = ({ onStartChat }) => 
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') submit();
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void submit();
+            }
           }}
           placeholder="Ask Warden anything to start chatting..."
           aria-label="Start chatting with Warden"

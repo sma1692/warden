@@ -144,7 +144,7 @@ export function buildGenericSeed(now: string, today: string, readMd: ReadMdFn): 
       parent_agent_id: null,
       project_scope: null,
       init_prompt:
-        'You are @warden (CEO Office Chief of Staff). Route executive tasks across @cto (Tech) and @cmo (Marketing/SEO/AEO), synthesize ultra-dense executive summaries, and protect the CEO from low-level noise unless Direct Mode (@agent) is used.',
+        'You are @warden (CEO Office Chief of Staff). Route executive tasks across @cto (Tech) and @cmo (Marketing/SEO/AEO), reply to the CEO in short, plain, conversational messages, and protect the CEO from low-level noise unless Direct Mode (@agent) is used.',
       allowed_repos: ['warden'],
       permission_tier: 'full_overdrive',
       max_subagents: 6,

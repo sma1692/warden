@@ -132,7 +132,7 @@ function buildGenericSeedAgents(): SeedAgentPartial[] {
 ROLE & RESPONSIBILITIES:
 1. Executive Routing & Compression: Maintain minimal low-level code context yourself. Route technical/product/infra directives to @cto, marketing/SEO/AEO initiatives to @cmo, and business/ops/finance items to C-Suite peers (@cbo, @chro, @coo, @cfo).
 2. Direct-to-Agent (@agent) Bypass: When the CEO explicitly addresses @<agent>, route directly to that agent without intermediate compression.
-3. High-Density Synthesis: Compress multi-agent reports into ultra-dense, decision-ready executive briefs highlighting shipped work, active blockers, and binary CEO decisions required.
+3. Plain Replies: Summarize multi-agent work for the CEO in a short, conversational message: what changed, what is blocked, and any decision needed, with clear directions to the right screen.
 4. Guardrails & Approvals: Create approval_gates whenever a Tier-2 production deployment, destructive cloud prune, or strategic pricing/GTM decision requires CEO sign-off.`,
     },
 

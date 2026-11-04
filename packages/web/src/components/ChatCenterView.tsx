@@ -111,6 +111,8 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
   const [attachments, setAttachments] = useState<MediaAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(false);
+  const consumedDraftRef = useRef<string | null>(null);
   const [expandedThoughts, setExpandedThoughts] = useState<Record<string, boolean>>({});
   const [runStepsMap, setRunStepsMap] = useState<Record<string, InferenceStep[]>>({});
   const [liveBrainStatus, setLiveBrainStatus] = useState<BrainStatusEvent | null>(null);
@@ -140,6 +142,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
   const finishPendingRun = useCallback(async (threadId: string, runId: string | null) => {
     pendingRunRef.current = null;
     setPendingRun(null);
+    isSendingRef.current = false;
     setIsSending(false);
     setLiveBrainStatus(null);
     const loaded = await apiClient.getChatMessages(threadId);
@@ -271,6 +274,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
     pendingRunRef.current = null;
     setPendingRun(null);
     setPolledStep(null);
+    isSendingRef.current = false;
     setIsSending(false);
     setLiveBrainStatus(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -370,6 +374,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
         };
         pendingRunRef.current = resumed;
         setPendingRun(resumed);
+        isSendingRef.current = true;
         setIsSending(true);
         if (tStatus.latestStep) setPolledStep(tStatus.latestStep);
       } else if (tStatus.lastReply) {
@@ -449,6 +454,8 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
       textToSend: string,
       filesToSend: MediaAttachment[] = []
     ) => {
+      if (isSendingRef.current) return;
+      isSendingRef.current = true;
       setIsSending(true);
       const tempCeoId = `msg_temp_ceo_${Date.now()}`;
       const optimisticCeoMsg: ChatMessage = {
@@ -490,26 +497,30 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
         if (res.agentReply) {
           // Synchronous reply (offline fallback path): render immediately.
           const reply = res.agentReply;
-          setMessages((prev) => [
-            ...prev.filter((m) => m.id !== tempCeoId),
-            res.ceoMessage,
-            reply,
-          ]);
+          setMessages((prev) => {
+            const cleaned = prev.filter(
+              (m) => m.id !== tempCeoId && m.id !== res.ceoMessage.id && m.id !== reply.id
+            );
+            return [...cleaned, res.ceoMessage, reply];
+          });
           if (reply.run_id) {
             const steps = await apiClient.getInferenceSteps(reply.run_id);
             if (steps && steps.length > 0) {
               setRunStepsMap((prev) => ({ ...prev, [reply.run_id!]: steps }));
             }
           }
+          isSendingRef.current = false;
           setIsSending(false);
           setLiveBrainStatus(null);
         } else if (res.runId) {
           // Async dispatch (HTTP 202): CEO message is stored; the agent reply
           // lands via WebSocket push or the polling loop. Keep the indicator up.
-          setMessages((prev) => [
-            ...prev.filter((m) => m.id !== tempCeoId),
-            res.ceoMessage,
-          ]);
+          setMessages((prev) => {
+            const cleaned = prev.filter(
+              (m) => m.id !== tempCeoId && m.id !== res.ceoMessage.id
+            );
+            return [...cleaned, res.ceoMessage];
+          });
           const pending = {
             runId: res.runId,
             agentSlug: res.agentSlug || agentSlug,
@@ -518,10 +529,13 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
           pendingRunRef.current = pending;
           setPendingRun(pending);
         } else {
-          setMessages((prev) => [
-            ...prev.filter((m) => m.id !== tempCeoId),
-            res.ceoMessage,
-          ]);
+          setMessages((prev) => {
+            const cleaned = prev.filter(
+              (m) => m.id !== tempCeoId && m.id !== res.ceoMessage.id
+            );
+            return [...cleaned, res.ceoMessage];
+          });
+          isSendingRef.current = false;
           setIsSending(false);
           setLiveBrainStatus(null);
         }
@@ -529,6 +543,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
         setMessages((prev) => prev.filter((m) => m.id !== tempCeoId));
         pendingRunRef.current = null;
         setPendingRun(null);
+        isSendingRef.current = false;
         setIsSending(false);
         setLiveBrainStatus(null);
       }
@@ -537,18 +552,29 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
   );
 
   useEffect(() => {
-    if (initialDraft && activeThread && !isSending) {
-      const textToSend = initialDraft.trim();
-      onDraftConsumed?.();
-      if (textToSend) {
-        void sendMessageToThread(activeThread.id, targetAgentSlug, textToSend, []);
-      }
+    if (!initialDraft) {
+      consumedDraftRef.current = null;
+      return;
     }
-  }, [initialDraft, activeThread, isSending, onDraftConsumed, sendMessageToThread, targetAgentSlug]);
+    if (!activeThread || isSendingRef.current) return;
+    const draftKey = `${activeThread.id}::${initialDraft}`;
+    if (consumedDraftRef.current === draftKey) return;
+    consumedDraftRef.current = draftKey;
+    const textToSend = initialDraft.trim();
+    onDraftConsumed?.();
+    if (textToSend) {
+      void sendMessageToThread(activeThread.id, targetAgentSlug, textToSend, []);
+    }
+  }, [initialDraft, activeThread, onDraftConsumed, sendMessageToThread, targetAgentSlug]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!inputText.trim() && attachments.length === 0) || !activeThread || isSending) {
+    if (
+      (!inputText.trim() && attachments.length === 0) ||
+      !activeThread ||
+      isSending ||
+      isSendingRef.current
+    ) {
       return;
     }
     const textToSend =

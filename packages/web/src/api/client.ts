@@ -64,7 +64,8 @@ export type WsEventPayload = {
     | 'GATE_CREATED'
     | 'GATE_RESOLVED'
     | 'STANDUP_UPDATED'
-    | 'BACKLOG_UPDATED';
+    | 'BACKLOG_UPDATED'
+    | 'BUDGET_EXCEEDED';
   data: unknown;
 };
 
@@ -294,9 +295,34 @@ class WardenApiClient {
         notifyUnauthorized();
         return null;
       }
+      if (res.status === 429 || res.status === 402) {
+        const errData = (await res.json().catch(() => null)) as {
+          code?: string;
+          error?: string;
+          budget?: UserBudget;
+        } | null;
+        if (errData?.code === 'TOKEN_CAP_EXCEEDED' || res.status === 402) {
+          this.emit({
+            type: 'BUDGET_EXCEEDED',
+            data: {
+              error:
+                errData?.error ||
+                'Token limit reached! Your chat quota is exhausted — add your Meta Muse key in Settings to continue.',
+              budget: errData?.budget,
+            },
+          });
+          throw new Error(
+            errData?.error ||
+              'Token limit reached! Your chat quota is exhausted — add your Meta Muse key in Settings to continue.'
+          );
+        }
+      }
       if (!res.ok) return null;
       return (await res.json()) as T;
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('Token limit reached')) {
+        throw err;
+      }
       return null;
     }
   }

@@ -667,6 +667,20 @@ export class OrchestratorStore {
    * Team view never shows phantom workers.
    */
   public async reconcileAgentStatuses(): Promise<string[]> {
+    const nowIso = new Date().toISOString();
+    // Any run still marked RUNNING or VERIFYING_QA on boot was interrupted by a process restart.
+    for (const run of this.runs.values()) {
+      if (run.status === 'RUNNING' || run.status === 'VERIFYING_QA') {
+        this.updateRun(run.id, {
+          status: 'FAILED',
+          output_summary:
+            run.output_summary ||
+            'Interrupted by server restart before completion. Resend your message to continue.',
+          ended_at: nowIso,
+        });
+      }
+    }
+
     const liveRunIds = new Set<string>();
     for (const run of this.runs.values()) {
       if (
@@ -814,8 +828,61 @@ export class OrchestratorStore {
       this.backlogItems.set(item.id, { ...item, project_slug: item.project_slug || 'general' });
     }
 
+    // Hydrate runs and inference steps so thread history, brain traces, and boot reconciliation survive restarts
+    const runs: AgentRunRecord[] = pool
+      ? (
+          await pool.query(
+            `SELECT * FROM agent_runs ${userClause} ORDER BY started_at ASC`,
+            userParams
+          )
+        ).rows.map(isoRow)
+      : await dbStore.listAgentRuns({ userId });
+    for (const r of runs) {
+      const ag = this.getAgent(r.agent_id);
+      this.runs.set(r.id, {
+        ...r,
+        agent_slug: r.agent_slug || ag?.slug || `@${r.agent_id}`,
+        spawns_count: Number((r as any).spawns_count ?? 0),
+        tokens_in: Number(r.tokens_in ?? 0),
+        tokens_cached: Number(r.tokens_cached ?? 0),
+        tokens_thinking: Number(r.tokens_thinking ?? 0),
+        tokens_out: Number(r.tokens_out ?? 0),
+        cost_usd: Number(r.cost_usd ?? 0),
+      });
+      if (!this.stepsByRun.has(r.id)) {
+        this.stepsByRun.set(r.id, []);
+      }
+    }
+
+    const steps: InferenceStepRecord[] = pool
+      ? (
+          await pool.query(
+            `SELECT * FROM inference_steps ${userClause} ORDER BY step_index ASC`,
+            userParams
+          )
+        ).rows.map(isoRow)
+      : (
+          await Promise.all(
+            runs.map((r) => dbStore.listInferenceSteps(r.id, userId))
+          )
+        ).flat();
+    for (const s of steps) {
+      const list = this.stepsByRun.get(s.run_id) || [];
+      if (!list.some((existing) => existing.id === s.id)) {
+        list.push({
+          ...s,
+          tokens_in: Number(s.tokens_in ?? 0),
+          tokens_cached: Number(s.tokens_cached ?? 0),
+          tokens_thinking: Number(s.tokens_thinking ?? 0),
+          tokens_out: Number(s.tokens_out ?? 0),
+          cost_usd: Number((s as any).cost_usd ?? 0),
+        });
+        this.stepsByRun.set(s.run_id, list);
+      }
+    }
+
     console.log(
-      `[OrchestratorStore] Hydrated from DB: ${threads.length} threads, ${items.length} backlog items`
+      `[OrchestratorStore] Hydrated from DB: ${threads.length} threads, ${messages.length} messages, ${runs.length} runs, ${items.length} backlog items`
     );
   }
 
@@ -2469,13 +2536,19 @@ export class OrchestratorStore {
         if (!(await dbStore.getChatThread(thread.id))) {
           await dbStore.createChatThread({ ...thread });
         }
-        // chat_messages has FKs on agents/agent_runs; runs are not persisted and 'CEO' is not an agent row
-        const knownAgent = (id: string | null) => (id && this.dbAgentIds.has(id) ? id : null);
+        // chat_messages has FKs on agents/agent_runs; ensure agent/run exist or fall back cleanly
+        const knownAgent = (id: string | null) => {
+          if (!id) return null;
+          const clean = id.replace(/^@/, '');
+          return this.dbAgentIds.has(clean) ? clean : this.dbAgentIds.has(id) ? id : null;
+        };
+        const validRunId =
+          msg.run_id && (await dbStore.getAgentRun(msg.run_id)) ? msg.run_id : null;
         await dbStore.appendChatMessage({
           ...msg,
           sender_agent_id: knownAgent(msg.sender_agent_id),
           recipient_agent_id: knownAgent(msg.recipient_agent_id),
-          run_id: null,
+          run_id: validRunId,
         });
       });
     }

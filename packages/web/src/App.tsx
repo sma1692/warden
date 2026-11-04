@@ -466,6 +466,34 @@ export const App: React.FC<AppProps> = ({
 
   useEffect(() => {
     const unsubscribe = apiClient.subscribe((evt) => {
+      if (evt.type === 'BUDGET_EXCEEDED') {
+        const payload = (evt.data || {}) as { error?: string; budget?: UserBudget };
+        if (payload.budget) {
+          setBudget(payload.budget);
+        } else {
+          void apiClient.getMyBudget().then((b) => {
+            if (b) setBudget(b);
+          });
+        }
+        showError(
+          payload.error ||
+            'Token limit reached! Your chat quota is exhausted — add your Meta Muse key in Settings to continue.'
+        );
+        return;
+      }
+      if (evt.type === 'GATE_CREATED' && evt.data) {
+        const gate = evt.data as ApprovalGate;
+        if (gate.gate_type === 'TOKEN_CAP_EXCEEDED') {
+          void apiClient.getMyBudget().then((b) => {
+            if (b) setBudget(b);
+          });
+          showError(
+            gate.prompt_text ||
+              'Token limit reached! Your chat quota is exhausted — add your Meta Muse key in Settings to continue.'
+          );
+        }
+        return;
+      }
       if (evt.type !== 'CHAT_MESSAGE' || !evt.data) return;
       const msg = evt.data as ChatMessage;
       if (msg.sender_type !== 'AGENT' || !msg.thread_id || !msg.id) return;
@@ -481,7 +509,7 @@ export const App: React.FC<AppProps> = ({
       });
     });
     return unsubscribe;
-  }, [showToast]);
+  }, [showToast, showError]);
 
   const handleCloseDynamicTab = (tabId: string, e: React.MouseEvent) => {
     e.stopPropagation();

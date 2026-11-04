@@ -143,6 +143,39 @@ export async function getOverBudgetUserIds(
   return out;
 }
 
+export interface BudgetGateCheckResult {
+  allowed: boolean;
+  usage: UserBudgetUsage;
+  byokActive: boolean;
+  errorMessage?: string;
+}
+
+/**
+ * Pre-flight token check enforced before every agent call/dispatch:
+ * - Reads live token usage (`SUM(tokens_in + tokens_cached + tokens_thinking + tokens_out)`) vs `user_budgets.token_cap`.
+ * - Checks if the user has configured their own BYOK Meta Muse key (`hasUserLlmKey`).
+ * - Returns `allowed: false` with a clear toaster message when `status === 'EXCEEDED'` and no BYOK key is set.
+ */
+export async function checkUserAgentBudget(
+  userId: string
+): Promise<BudgetGateCheckResult> {
+  const usage = await getUserUsage(userId);
+  if (usage.status !== 'EXCEEDED') {
+    return { allowed: true, usage, byokActive: false };
+  }
+  const { hasUserLlmKey } = await import('../llmkeys/UserLlmKeys.js');
+  const byokActive = await hasUserLlmKey(userId).catch(() => false);
+  if (byokActive) {
+    return { allowed: true, usage, byokActive: true };
+  }
+  return {
+    allowed: false,
+    usage,
+    byokActive: false,
+    errorMessage: `Token limit reached (${usage.used.toLocaleString()} / ${usage.cap.toLocaleString()} tokens used). Your chat quota is exhausted — add your own Meta Muse key in Settings to continue.`,
+  };
+}
+
 function classifyVertical(
   agentId: string | null | undefined,
   slug: string | null | undefined,
