@@ -16,7 +16,6 @@ import {
   Lock,
   Mail,
   MessageSquare,
-  Phone,
   Plus,
   RefreshCw,
   Rocket,
@@ -31,8 +30,6 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { CountryCodePicker } from './CountryCodePicker';
-import { COUNTRIES, detectCountryIso, findCountry } from '../data/countries';
 import {
   INITIAL_BACKLOG_DRAFTS,
   INITIAL_HUMAN_ROSTER,
@@ -42,7 +39,6 @@ import {
   type SuggestedAgentNode,
 } from '../data/onboardingPresets';
 import { authRequest, saveOnboarding, setToken, type AuthUser } from '../api/auth';
-import { WhatsAppQrLogin, type WhatsAppSignInResult } from './WhatsAppQrLogin';
 import { AsyncButton, ToastHost, useToasts, type ActionOutcome } from './AsyncButton';
 import {
   authStepForPath,
@@ -186,25 +182,17 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   // Step 0: Loader state
   const [loadProgress, setLoadProgress] = useState<number>(0);
 
-  // Step 2 & 2.1: Login & OTP state (Hardcoded test OTP 123123 across WhatsApp & Email)
+  // Step 2 & 2.1: Login & Email OTP state (Hardcoded test OTP 123123 in Demo Mode)
   const TEST_OTP_CODE = '123123';
   const TEST_OTP_DIGITS = ['1', '2', '3', '1', '2', '3'];
-  const [authChannel, setAuthChannel] = useState<'WHATSAPP' | 'EMAIL'>('WHATSAPP');
-  const [detectedIso] = useState<string>(() => detectCountryIso());
-  const [countryIso, setCountryIso] = useState<string>(detectedIso);
-  const [localNumber, setLocalNumber] = useState<string>('');
-  const dialCode = findCountry(countryIso)?.dial ?? '1';
-  const whatsappNumber = `+${dialCode} ${localNumber.trim()}`;
   const [emailAddress, setEmailAddress] = useState<string>('');
   const [otpDigits, setOtpDigits] = useState<string[]>(['1', '2', '3', '1', '2', '3']);
   const [authError, setAuthError] = useState<string | null>(null);
   // Inline authError is for client-side validation; API failures toast.
   const { toasts, notifyError, dismiss: dismissToast } = useToasts();
-  // Product Mode sends a real code (WhatsApp via /api/auth/otp/*, Email via /api/auth/email/*); Demo Mode keeps the 123123 preset.
+  // Product Mode sends a real code via /api/auth/email/*; Demo Mode keeps the 123123 preset.
   const liveOtp = !demoMode;
   // Button spinners are owned by AsyncButton while each API call settles.
-  // Live WhatsApp sign-in defaults to click-to-chat (QR); the 6-digit code is the fallback.
-  const [loginMethod, setLoginMethod] = useState<'qr' | 'code'>('qr');
   const [resendAt, setResendAt] = useState<number>(0);
   const [nowTick, setNowTick] = useState<number>(Date.now());
   const resendInSec = Math.max(0, Math.ceil((resendAt - nowTick) / 1000));
@@ -411,28 +399,6 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     };
   }, [step]);
 
-  // E.164 caps the full number at 15 digits; national parts are rarely under 6.
-  const isPhoneValid = useMemo(() => {
-    const digits = localNumber.replace(/\D/g, '');
-    return digits.length >= 6 && digits.length + dialCode.length <= 15;
-  }, [localNumber, dialCode]);
-
-  // A pasted "+44 7700..." switches the country instead of doubling the code.
-  const handleLocalNumberChange = (raw: string) => {
-    if (raw.trim().startsWith('+')) {
-      const digits = raw.replace(/\D/g, '');
-      const match = COUNTRIES.filter((c) => digits.startsWith(c.dial)).sort(
-        (a, b) => b.dial.length - a.dial.length || (a.iso === countryIso ? -1 : 1)
-      )[0];
-      if (match) {
-        if (match.dial !== dialCode) setCountryIso(match.iso);
-        setLocalNumber(digits.slice(match.dial.length));
-        return;
-      }
-    }
-    setLocalNumber(raw.replace(/[^\d\s-]/g, ''));
-  };
-
   const isEmailValid = useMemo(
     () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress.trim()),
     [emailAddress]
@@ -471,16 +437,14 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   };
 
   const postAuth = async (path: string, body: Record<string, string>) => {
-    const prefix = authChannel === 'EMAIL' ? 'email' : 'otp';
-    const { ok, data } = await authRequest(`${prefix}/${path}`, { method: 'POST', body });
+    const { ok, data } = await authRequest(`email/${path}`, { method: 'POST', body });
     return { ok, data };
   };
 
   const sendLiveOtp = async (): Promise<{ ok: boolean; error?: string }> => {
-    const { ok, data } =
-      authChannel === 'EMAIL'
-        ? await postAuth('request', { email: emailAddress.trim().toLowerCase() })
-        : await postAuth('request', { phone: whatsappNumber });
+    const { ok, data } = await postAuth('request', {
+      email: emailAddress.trim().toLowerCase(),
+    });
     if (!ok) {
       if (data.retry_after_sec) setResendAt(Date.now() + data.retry_after_sec * 1000);
       return { ok: false, error: data.error || 'Could not send the code.' };
@@ -491,11 +455,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   };
 
   const handleProceedToOtp = async (): Promise<ActionOutcome> => {
-    if (authChannel === 'WHATSAPP' && !isPhoneValid) {
-      setAuthError('Enter a valid WhatsApp phone number with country code.');
-      return;
-    }
-    if (authChannel === 'EMAIL' && !isEmailValid) {
+    if (!isEmailValid) {
       setAuthError('Enter a valid email address.');
       return;
     }
@@ -512,7 +472,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
 
   const handleResendOtp = async (): Promise<ActionOutcome> => {
     setAuthError(null);
-    if (authChannel === 'EMAIL' && !isEmailValid) {
+    if (!isEmailValid) {
       setAuthError('Enter a valid email address.');
       return;
     }
@@ -539,8 +499,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     routeAfterOtpVerification();
   };
 
-  // Both sign-in paths (QR click-to-chat and 6-digit code) end here with the server's JWT.
-  const completeSignIn = (data: WhatsAppSignInResult) => {
+  const completeSignIn = (data: { token: string; user: AuthUser }) => {
     setToken(data.token);
     if (isLive) {
       setSignedIn(true);
@@ -553,13 +512,13 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     const code = otpDigits.join('');
     if (liveOtp) {
       if (code.length !== 6) {
-        setAuthError(authChannel === 'EMAIL' ? 'Enter the 6-digit code from your email.' : 'Enter the 6-digit code from WhatsApp.');
+        setAuthError('Enter the 6-digit code from your email.');
         return;
       }
-      const { ok, data } =
-        authChannel === 'EMAIL'
-          ? await postAuth('verify', { email: emailAddress.trim().toLowerCase(), code })
-          : await postAuth('verify', { phone: whatsappNumber, code });
+      const { ok, data } = await postAuth('verify', {
+        email: emailAddress.trim().toLowerCase(),
+        code,
+      });
       if (!ok) {
         const left = typeof data.attempts_left === 'number' && data.attempts_left > 0 ? ` ${data.attempts_left} attempts left.` : '';
         return { ok: false, error: `${data.error || 'Verification failed.'}${left}` };
@@ -568,7 +527,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       return;
     }
     if (code !== TEST_OTP_CODE) {
-      setAuthError('Invalid OTP. Use test OTP 123123 while live WhatsApp/Email providers are in sandbox mode.');
+      setAuthError('Invalid OTP. Use test OTP 123123 while in demo mode.');
       return;
     }
     routeAfterOtpVerification();
@@ -1103,7 +1062,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
           </div>
         )}
 
-        {/* STEP 2: LOGIN MODAL (WhatsApp Default + Email Tab) */}
+        {/* STEP 2: LOGIN MODAL (Email OTP) */}
         {step === 'login' && (
           <div className="max-w-md w-full rounded-3xl border border-[#22262E] bg-[#14161A] p-6 sm:p-7 shadow-2xl space-y-5">
             <div className="flex items-center justify-between">
@@ -1124,103 +1083,36 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               </button>
             </div>
 
-            {/* Channel Tabs: WhatsApp (Default) vs Email */}
-            <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-[#101216] border border-[#22262E] p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthChannel('WHATSAPP');
-                  setAuthError(null);
-                }}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
-                  authChannel === 'WHATSAPP'
-                    ? 'bg-[#C6A664]/20 text-[#D4B475] border border-[#C6A664]/40'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Phone className="h-3.5 w-3.5" />
-                <span>WhatsApp (Default)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthChannel('EMAIL');
-                  setAuthError(null);
-                }}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
-                  authChannel === 'EMAIL'
-                    ? 'bg-gold-500/20 text-gold-200 border border-gold-500/40'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Mail className="h-3.5 w-3.5" />
-                <span>Work Email</span>
-              </button>
+            <div className="space-y-2">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                <Mail className="h-3.5 w-3.5 text-[#D4B475]" />
+                <span>Founder / Executive Email</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  autoComplete="email"
+                  autoFocus
+                  value={emailAddress}
+                  onChange={(e) => setEmailAddress(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      void handleProceedToOtp();
+                    }
+                  }}
+                  placeholder="ceo@example.com"
+                  className={`w-full rounded-xl border bg-[#101216] px-3.5 py-2.5 text-sm font-mono text-slate-100 focus:outline-none ${
+                    isEmailValid ? 'border-[#C6A664]/50' : 'border-[#2D3440]'
+                  }`}
+                />
+                {isEmailValid && (
+                  <CheckCircle2 className="h-4 w-4 text-[#D4B475] absolute right-3 top-1/2 -translate-y-1/2" />
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                We will dispatch a 6-digit verification code to your email.
+              </p>
             </div>
-
-            {liveOtp && loginMethod === 'qr' && authChannel === 'WHATSAPP' ? (
-              <WhatsAppQrLogin
-                onVerified={completeSignIn}
-                onUseCode={() => {
-                  setAuthError(null);
-                  setLoginMethod('code');
-                }}
-              />
-            ) : (
-            <>
-            {authChannel === 'WHATSAPP' ? (
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-300">
-                  WhatsApp Number (Instant 6-Digit Code + Gate Alerts)
-                </label>
-                <div className="flex items-stretch gap-2">
-                  <CountryCodePicker value={countryIso} onChange={setCountryIso} detectedIso={detectedIso} />
-                  <div className="relative flex-1 min-w-0">
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel-national"
-                    value={localNumber}
-                    onChange={(e) => handleLocalNumberChange(e.target.value)}
-                    placeholder="98765 43210"
-                    aria-label="WhatsApp number"
-                    className={`w-full rounded-xl border bg-[#101216] px-3.5 py-2.5 text-sm font-mono text-slate-100 focus:outline-none ${
-                      isPhoneValid ? 'border-[#C6A664]/50' : 'border-[#2D3440]'
-                    }`}
-                  />
-                  {isPhoneValid && (
-                    <CheckCircle2 className="h-4 w-4 text-[#D4B475] absolute right-3 top-1/2 -translate-y-1/2" />
-                  )}
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  Used for 1-tap OTP sign-in and urgent `[NEEDS_CEO]` standup notifications.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-300">
-                  Founder / Executive Email
-                </label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    value={emailAddress}
-                    onChange={(e) => setEmailAddress(e.target.value)}
-                    placeholder="ceo@example.com"
-                    className={`w-full rounded-xl border bg-[#101216] px-3.5 py-2.5 text-sm font-mono text-slate-100 focus:outline-none ${
-                      isEmailValid ? 'border-[#C6A664]/50' : 'border-[#2D3440]'
-                    }`}
-                  />
-                  {isEmailValid && (
-                    <CheckCircle2 className="h-4 w-4 text-[#D4B475] absolute right-3 top-1/2 -translate-y-1/2" />
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  We will dispatch a 6-digit verification code and daily standup digest.
-                </p>
-              </div>
-            )}
 
             {/* Prominent Hardcoded Test OTP Helper Badge + 1-Click Bypass */}
             {!liveOtp && (
@@ -1248,26 +1140,9 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               onError={notifyError}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 py-3 text-xs transition cursor-pointer"
             >
-              <span>
-                {`Send 6-Digit Code via ${authChannel === 'WHATSAPP' ? 'WhatsApp' : 'Email'}`}
-              </span>
+              <span>Send 6-Digit Code via Email</span>
               <ArrowRight className="h-4 w-4" />
             </AsyncButton>
-
-            {liveOtp && (
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthError(null);
-                  setLoginMethod('qr');
-                }}
-                className="w-full text-center text-[11px] text-slate-400 hover:text-white underline-offset-2 hover:underline cursor-pointer"
-              >
-                Sign in with a WhatsApp message instead (QR)
-              </button>
-            )}
-            </>
-            )}
           </div>
         )}
 
@@ -1296,7 +1171,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               <p className="text-xs text-slate-300">
                 Sent to{' '}
                 <span className="font-mono text-gold-300 font-semibold">
-                  {authChannel === 'WHATSAPP' ? whatsappNumber : emailAddress}
+                  {emailAddress}
                 </span>
               </p>
               {liveOtp ? (
