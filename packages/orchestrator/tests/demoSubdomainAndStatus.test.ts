@@ -21,33 +21,33 @@ describe('Demo Subdomain & Demo Status', () => {
     resetDemoMetadata();
   });
 
-  it('builds unique subdomain adhering to <unique-subdomain>.pages.dev', () => {
+  it('builds unique subdomain adhering to <unique-subdomain>.warden.autos', () => {
     const userId = 'user-12345678-abcd';
     const subdomain = buildUniqueSubdomain(userId, 'demo-arena');
     assert.ok(subdomain.startsWith('uuser1234'));
     assert.ok(subdomain.includes('arena'));
 
     const fqdn = getDemoSubdomainFqdn(subdomain);
-    assert.equal(fqdn, `${subdomain}.pages.dev`);
+    assert.equal(fqdn, `${subdomain}.warden.autos`);
 
     const url = getDemoSubdomainUrl(subdomain);
-    assert.equal(url, `https://${subdomain}.pages.dev`);
+    assert.equal(url, `https://${subdomain}.warden.autos`);
 
     const resolved = resolveDemoSubdomain(userId);
     assert.equal(resolved.subdomain, subdomain);
-    assert.equal(resolved.fqdn, `${subdomain}.pages.dev`);
-    assert.equal(resolved.url, `https://${subdomain}.pages.dev`);
+    assert.equal(resolved.fqdn, `${subdomain}.warden.autos`);
+    assert.equal(resolved.url, `https://${subdomain}.warden.autos`);
   });
 
-  it('handles custom subdomains while enforcing .pages.dev', () => {
+  it('handles custom subdomains while enforcing .warden.autos', () => {
     const custom = 'my-custom-game';
     const fqdn = getDemoSubdomainFqdn(custom);
-    assert.equal(fqdn, 'my-custom-game.pages.dev');
+    assert.equal(fqdn, 'my-custom-game.warden.autos');
 
-    const resolved = resolveDemoSubdomain('any-user', 'arena', 'my-custom-game.pages.dev');
+    const resolved = resolveDemoSubdomain('any-user', 'arena', 'my-custom-game.warden.autos');
     assert.equal(resolved.subdomain, 'my-custom-game');
-    assert.equal(resolved.fqdn, 'my-custom-game.pages.dev');
-    assert.equal(resolved.url, 'https://my-custom-game.pages.dev');
+    assert.equal(resolved.fqdn, 'my-custom-game.warden.autos');
+    assert.equal(resolved.url, 'https://my-custom-game.warden.autos');
   });
 
   it('spawns demo path with unique subdomain', async () => {
@@ -55,8 +55,8 @@ describe('Demo Subdomain & Demo Status', () => {
     const res = await spawnDemoPath(userId, { gameId: 'arena' });
     assert.equal(res.ok, true);
     assert.ok(res.subdomain.length > 0);
-    assert.equal(res.fqdn, `${res.subdomain}.pages.dev`);
-    assert.equal(res.url, `https://${res.subdomain}.pages.dev`);
+    assert.equal(res.fqdn, `${res.subdomain}.warden.autos`);
+    assert.equal(res.url, `https://${res.subdomain}.warden.autos`);
     assert.ok(res.localDir.includes(userId));
     assert.equal(res.metadata.version, 'v1');
     assert.equal(res.metadata.versionNumber, 1);
@@ -130,9 +130,13 @@ describe('Demo Subdomain & Demo Status', () => {
     const subFromPreview = buildUniqueSubdomain(userId, 'arena', `https://7a8b9c0d.${projectName}.pages.dev`);
     assert.equal(subFromPreview, projectName);
 
-    // 2. getDemoSubdomainFqdn extracts projectName instead of hash
+    // 2. getDemoSubdomainFqdn extracts projectName instead of hash and enforces baseDomain (.warden.autos)
     const fqdnFromPreview = getDemoSubdomainFqdn(`https://7a8b9c0d.${projectName}.pages.dev`);
-    assert.equal(fqdnFromPreview, `${projectName}.pages.dev`);
+    assert.equal(fqdnFromPreview, `${projectName}.warden.autos`);
+
+    // Can also explicitly request .pages.dev baseDomain
+    const fqdnPagesDev = getDemoSubdomainFqdn(`https://7a8b9c0d.${projectName}.pages.dev`, 'pages.dev');
+    assert.equal(fqdnPagesDev, `${projectName}.pages.dev`);
 
     // 3. recordDeployment normalizes preview URL to canonical https://${projectName}.pages.dev/
     const deployed = recordDeployment(userId, {

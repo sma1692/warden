@@ -58,13 +58,30 @@ export function normalizeDeployUrl(
   projectName?: string | null
 ): string | null {
   if (!rawUrl) {
-    return projectName ? `https://${projectName}.pages.dev/` : null;
+    return projectName ? `https://${projectName}.warden.autos` : null;
   }
 
   const trimmed = rawUrl.trim();
   try {
     const parsed = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
     const host = parsed.hostname.toLowerCase();
+
+    if (host.endsWith('.warden.autos')) {
+      const parts = host.replace(/\.warden\.autos$/, '').split('.').filter(Boolean);
+      if (parts.length > 1) {
+        // Deployment preview or hash URL: <hash>.<projectName>.warden.autos
+        const proj = projectName || parts[parts.length - 1];
+        return `https://${proj}.warden.autos`;
+      }
+      if (parts.length === 1) {
+        const single = parts[0];
+        if (projectName && single !== projectName && /^[a-f0-9]{7,}$/i.test(single)) {
+          return `https://${projectName}.warden.autos`;
+        }
+        return `https://${single}.warden.autos`;
+      }
+      return trimmed;
+    }
 
     if (host.endsWith('.pages.dev')) {
       const parts = host.replace(/\.pages\.dev$/, '').split('.').filter(Boolean);
@@ -128,7 +145,14 @@ export function recordDeployment(
   if (!resolvedProject && rawUrl) {
     try {
       const parsed = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
-      if (parsed.hostname.endsWith('.pages.dev')) {
+      if (parsed.hostname.endsWith('.warden.autos')) {
+        const parts = parsed.hostname.replace(/\.warden\.autos$/, '').split('.').filter(Boolean);
+        if (parts.length > 1) {
+          resolvedProject = parts[parts.length - 1];
+        } else if (parts.length === 1 && !/^[a-f0-9]{7,}$/i.test(parts[0])) {
+          resolvedProject = parts[0];
+        }
+      } else if (parsed.hostname.endsWith('.pages.dev')) {
         const parts = parsed.hostname.replace(/\.pages\.dev$/, '').split('.').filter(Boolean);
         if (parts.length > 1) {
           resolvedProject = parts[parts.length - 1];

@@ -167,13 +167,30 @@ function deployViaWrangler(accountId: string, apiToken: string, distDir: string,
 }
 
 export async function attachCustomDomain(
-  _accountId: string,
-  _apiToken: string,
-  _projectName: string,
-  _fqdn: string
+  accountId: string,
+  apiToken: string,
+  projectName: string,
+  fqdn: string
 ): Promise<boolean> {
-  // Bypassed: custom domain attachment removed in favor of direct *.pages.dev URLs
-  return true;
+  const base = 'https://api.cloudflare.com/client/v4';
+  try {
+    const res = await fetch(`${base}/accounts/${accountId}/pages/projects/${projectName}/domains`, {
+      method: 'POST',
+      headers: cfHeaders(apiToken),
+      body: JSON.stringify({ name: fqdn }),
+    });
+    if (res.ok || res.status === 409) {
+      return true;
+    }
+    const data = (await res.json().catch(() => null)) as any;
+    console.warn(
+      `[⚠️ DEMO DEPLOY] Custom domain attachment returned ${res.status}: ${JSON.stringify(data?.errors || res.statusText)}`
+    );
+    return false;
+  } catch (err: any) {
+    console.warn(`[⚠️ DEMO DEPLOY] Failed to attach custom domain ${fqdn}: ${err?.message || err}`);
+    return false;
+  }
 }
 
 export function cloudflareConfigured(): boolean {
@@ -223,15 +240,26 @@ export async function deployDemoProject(
     console.log(`[🚀 DEMO DEPLOY] Uploading ${distPath} (${fileCount} files) via Wrangler to project=${projectName} branch=${branch}...`);
     const { deploymentId, pagesDevUrl } = deployViaWrangler(accountId, apiToken, distPath, projectName, branch);
     console.log(`[🚀 DEMO DEPLOY] Wrangler upload complete: deploymentId=${deploymentId} pagesDevUrl=${pagesDevUrl}`);
-    const canonicalUrl = `https://${projectName}.pages.dev/`;
-    const primaryUrl = pagesDevUrl || canonicalUrl;
+
+    const baseDomain = (process.env.CLOUDFLARE_BASE_DOMAIN || process.env.DEMO_BASE_DOMAIN || 'warden.autos').trim() || 'warden.autos';
+    let fqdn: string;
+    if (customDomain && customDomain.trim()) {
+      const clean = customDomain.trim().replace(/^https?:\/\//i, '').split('/')[0];
+      fqdn = clean.includes('.') ? clean : `${clean}.${baseDomain}`;
+    } else {
+      fqdn = `${projectName}.${baseDomain}`;
+    }
+
+    console.log(`[🚀 DEMO DEPLOY] Attaching custom domain ${fqdn} to project ${projectName} (aws-kalti)...`);
+    await attachCustomDomain(accountId, apiToken, projectName, fqdn);
+    const primaryUrl = `https://${fqdn}`;
     console.log(`[🚀 DEMO DEPLOY] Live at ${primaryUrl} (${Date.now() - started}ms)`);
     return {
       ok: true,
       status: 'ACTIVE',
       projectName,
       primaryUrl,
-      pagesDevUrl: primaryUrl,
+      pagesDevUrl,
       deploymentId,
       fileCount,
       totalDurationMs: Date.now() - started,

@@ -23,55 +23,68 @@ export interface DemoDeployMeta {
 const STORAGE_KEY = 'warden_demo_deploy_info';
 const CHANNEL_NAME = 'warden_demo_deploy_channel';
 
-export function getDemoProject(projectName?: string, deployUrl?: string | null): string {
+export function getDemoSubdomain(projectName?: string, deployUrl?: string | null): string {
   if (deployUrl) {
     try {
       const parsed = new URL(deployUrl.startsWith('http') ? deployUrl : `https://${deployUrl}`);
-      if (parsed.hostname) return parsed.hostname;
+      if (parsed.hostname) {
+        let host = parsed.hostname.toLowerCase();
+        host = host.replace(/\.(warden\.autos|pages\.dev)$/i, '');
+        if (host.includes('.')) {
+          const parts = host.split('.').filter(Boolean);
+          host = parts[parts.length - 1];
+        }
+        return host.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
+      }
     } catch {
       // Fall through to project name
     }
   }
   if (projectName) {
-    return projectName.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
+    return projectName.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'demo-arena';
   }
   return 'demo-arena';
 }
 
-export function formatPagesDevUrl(project: string): string {
-  if (!project || !project.trim()) {
-    return 'https://demo-arena.pages.dev';
+export function formatSubdomainUrl(subdomain: string): string {
+  if (!subdomain || !subdomain.trim()) {
+    return 'https://demo-arena.warden.autos';
   }
-  const trimmed = project.trim();
+  const trimmed = subdomain.trim();
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     try {
       const parsed = new URL(trimmed);
-      return `https://${parsed.hostname}`;
+      let host = parsed.hostname.toLowerCase();
+      if (host.endsWith('.warden.autos')) {
+        return `https://${host}`;
+      }
+      host = host.replace(/\.(pages\.dev)$/i, '');
+      if (host.includes('.')) {
+        const parts = host.split('.').filter(Boolean);
+        host = parts[parts.length - 1];
+      }
+      const cleanSub = host.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
+      return `https://${cleanSub}.warden.autos`;
     } catch {
       // Fall through
     }
   }
-  if (trimmed.toLowerCase().endsWith('.pages.dev')) {
+  if (trimmed.toLowerCase().endsWith('.warden.autos')) {
     const cleanHost = trimmed.replace(/^\/+|\/+$/g, '').toLowerCase();
     return `https://${cleanHost}`;
   }
-  if (trimmed.includes('.')) {
-    const clean = trimmed
-      .replace(/[^a-zA-Z0-9.-]/g, '-')
-      .replace(/\.+/g, '.')
-      .replace(/^\.+|\.+$/g, '')
-      .toLowerCase();
-    if (clean.endsWith('.pages.dev')) {
-      return `https://${clean}`;
-    }
-    return `https://${clean || 'demo-arena'}.pages.dev`;
+  let clean = trimmed.toLowerCase();
+  clean = clean.replace(/\.(pages\.dev)$/i, '');
+  if (clean.includes('.')) {
+    const parts = clean.split('.').filter(Boolean);
+    clean = parts[parts.length - 1];
   }
-  const clean = trimmed.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase() || 'demo-arena';
-  return `https://${clean}.pages.dev`;
+  clean = clean.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'demo-arena';
+  return `https://${clean}.warden.autos`;
 }
 
-export const getDemoSubdomain = getDemoProject;
-export const formatSubdomainUrl = formatPagesDevUrl;
+export const getDemoProject = getDemoSubdomain;
+export const formatPagesDevUrl = formatSubdomainUrl;
 
 export const DemoDashboardView: React.FC<{
   onError?: (message: string) => void;
@@ -97,7 +110,7 @@ export const DemoDashboardView: React.FC<{
       updatedAt: now.toISOString(),
       formattedTimestamp: now.toLocaleString(),
       subdomain: 'demo-arena',
-      url: 'https://demo-arena.pages.dev',
+      url: 'https://demo-arena.warden.autos',
     };
   });
 
@@ -223,9 +236,9 @@ export const DemoDashboardView: React.FC<{
               </span>
             </div>
 
-            {/* Prominently display the https://<project>.pages.dev URL */}
+            {/* Prominently display the https://<subdomain>.warden.autos URL */}
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-400 font-mono">Pages URL:</span>
+              <span className="text-xs text-slate-400 font-mono">Demo URL:</span>
               <a
                 href={liveUrl}
                 target="_blank"
@@ -239,7 +252,7 @@ export const DemoDashboardView: React.FC<{
             </div>
 
             <p className="mt-0.5 text-xs text-slate-400">
-              Cloudflare Pages deployment. Last updated: {deployMeta.formattedTimestamp}
+              Live automated preview deployment. Last updated: {deployMeta.formattedTimestamp}
             </p>
           </div>
         </div>

@@ -5,11 +5,11 @@ import { getDemoMetadata, recordDeployment, type DemoMetadata } from '../../hand
 import { getDemoWorkspace, recordDemoDeploy } from '../../demo/DemoProvisioning.js';
 
 export const DEMO_BASE_DOMAIN =
-  (process.env.DEMO_BASE_DOMAIN || 'pages.dev').trim();
+  (process.env.DEMO_BASE_DOMAIN || 'warden.autos').trim();
 
 /**
  * Builds a clean, unique DNS-compliant subdomain label.
- * Logic ensures format `<unique-subdomain>.pages.dev`.
+ * Logic ensures format `<unique-subdomain>.warden.autos`.
  */
 export function buildUniqueSubdomain(
   userId: string,
@@ -26,6 +26,7 @@ export function buildUniqueSubdomain(
       }
     }
     raw = raw.split('/')[0].split('?')[0].split('#')[0];
+    raw = raw.replace(/\.(warden\.autos|pages\.dev)$/i, '');
     const basePattern = new RegExp(`\\.${DEMO_BASE_DOMAIN}$`, 'i');
     raw = raw.replace(basePattern, '');
 
@@ -43,7 +44,7 @@ export function buildUniqueSubdomain(
 }
 
 /**
- * Returns the fully qualified domain name `<unique-subdomain>.pages.dev`
+ * Returns the fully qualified domain name `<unique-subdomain>.warden.autos`
  */
 export function getDemoSubdomainFqdn(subdomain: string, baseDomain = DEMO_BASE_DOMAIN): string {
   let clean = subdomain.trim();
@@ -55,6 +56,7 @@ export function getDemoSubdomainFqdn(subdomain: string, baseDomain = DEMO_BASE_D
     }
   }
   clean = clean.split('/')[0].split('?')[0].split('#')[0];
+  clean = clean.replace(/\.(warden\.autos|pages\.dev)$/i, '');
   const basePattern = new RegExp(`\\.${baseDomain}$`, 'i');
   clean = clean.replace(basePattern, '');
 
@@ -69,7 +71,7 @@ export function getDemoSubdomainFqdn(subdomain: string, baseDomain = DEMO_BASE_D
 }
 
 /**
- * Returns the full HTTPS URL `https://<unique-subdomain>.pages.dev`
+ * Returns the full HTTPS URL `https://<unique-subdomain>.warden.autos`
  */
 export function getDemoSubdomainUrl(subdomain: string, baseDomain = DEMO_BASE_DOMAIN): string {
   return `https://${getDemoSubdomainFqdn(subdomain, baseDomain)}`;
@@ -77,7 +79,7 @@ export function getDemoSubdomainUrl(subdomain: string, baseDomain = DEMO_BASE_DO
 
 /**
  * Resolves the unique subdomain details for a user and game:
- * returns `<unique-subdomain>`, `<unique-subdomain>.pages.dev`, and HTTPS URL.
+ * returns `<unique-subdomain>`, `<unique-subdomain>.warden.autos`, and HTTPS URL.
  */
 export function resolveDemoSubdomain(
   userId: string,
@@ -146,7 +148,7 @@ export interface DeployDemoPathResult {
 }
 
 /**
- * Deploys the demo path to Cloudflare and returns the `.pages.dev` URL.
+ * Deploys the demo path to Cloudflare and returns the `.warden.autos` URL.
  * Automatically increments the version number (v1, v2, ...) and records the update timestamp.
  */
 export async function deployDemoPath(
@@ -164,33 +166,20 @@ export async function deployDemoPath(
   // Mark deploy in progress
   await recordDemoDeploy(userId, { deploy_url: null, deploy_status: 'DEPLOYING' }).catch(() => null);
 
-  // Deploy project
-  const result = await deployDemoProject(userId, targetDir, gameId);
+  // Deploy project with custom domain specified
+  const result = await deployDemoProject(userId, targetDir, gameId, subdomain);
   const effectiveProject = result.projectName || subdomain;
-  const canonicalUrl = `https://${effectiveProject}.${DEMO_BASE_DOMAIN}/`;
-  let finalUrl = result.pagesDevUrl || result.primaryUrl || canonicalUrl;
+  const canonicalUrl = `https://${subdomain}.${DEMO_BASE_DOMAIN}`;
+  let finalUrl = result.primaryUrl || canonicalUrl;
 
-  // Prevent dead link bug if finalUrl extracted only <hash> to form https://<hash>.pages.dev/
-  // or if a preview URL https://<hash>.<projectName>.pages.dev was returned.
+  // If finalUrl points to a .pages.dev preview or dead hash link, normalize to .warden.autos
   if (finalUrl.includes('.pages.dev')) {
-    try {
-      const parsed = new URL(finalUrl.startsWith('http') ? finalUrl : `https://${finalUrl}`);
-      const parts = parsed.hostname.replace(/\.pages\.dev$/, '').split('.').filter(Boolean);
-      if (parts.length === 1 && /^[a-f0-9]{7,}$/i.test(parts[0]) && parts[0] !== effectiveProject) {
-        // Dead link (<hash>.pages.dev) -> heal to canonical project URL
-        finalUrl = canonicalUrl;
-      } else if (parts.length > 1) {
-        // Preview URL (<hash>.<projectName>.pages.dev) -> return canonical project URL
-        finalUrl = canonicalUrl;
-      }
-    } catch {
-      finalUrl = canonicalUrl;
-    }
+    finalUrl = canonicalUrl;
   }
 
   // Record deployment: increments version (e.g. v1 -> v2) and stamps update timestamp
   const metadata = recordDeployment(userId, {
-    subdomain: effectiveProject,
+    subdomain,
     projectName: effectiveProject,
     deployUrl: finalUrl,
     status: result.status,
@@ -203,10 +192,10 @@ export async function deployDemoPath(
 
   return {
     ok: result.ok,
-    subdomain: effectiveProject,
-    fqdn: `${effectiveProject}.${DEMO_BASE_DOMAIN}`,
+    subdomain,
+    fqdn: `${subdomain}.${DEMO_BASE_DOMAIN}`,
     url: finalUrl,
-    pagesDevUrl: finalUrl,
+    pagesDevUrl: result.pagesDevUrl,
     status: result.status,
     metadata,
     rawDeployResult: result,
