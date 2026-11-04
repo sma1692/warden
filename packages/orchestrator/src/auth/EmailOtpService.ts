@@ -38,12 +38,14 @@ let warnedFreepass = false;
 /**
  * Local-testing free pass: when set to a 6-digit code, that code verifies
  * any email with a pending code, in addition to the emailed code.
- * Ignored when NODE_ENV=production.
+ * Ignored when NODE_ENV=production unless AUTH_EMAIL_FREEPASS_ALLOW_PROD=true
+ * (DEMO ONLY — remove after judging).
  */
 function emailFreepass(): string | null {
   const code = (process.env.AUTH_EMAIL_FREEPASS ?? '').trim();
   if (!/^\d{6}$/.test(code)) return null;
-  if (process.env.NODE_ENV === 'production') return null;
+  const prodOverride = /^(true|1|yes)$/i.test((process.env.AUTH_EMAIL_FREEPASS_ALLOW_PROD ?? '').trim());
+  if (process.env.NODE_ENV === 'production' && !prodOverride) return null;
   if (!warnedFreepass) {
     warnedFreepass = true;
     console.warn('[AUTH] !!! AUTH_EMAIL_FREEPASS is set: the fixed code signs in any email with a pending code. Local testing only. !!!');

@@ -501,8 +501,24 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     routeAfterOtpVerification();
   };
 
-  const completeSignIn = (data: { token: string; user: AuthUser }) => {
+  const completeSignIn = async (data: { token: string; user: AuthUser }) => {
     setToken(data.token);
+    // DEMO SHORTCUT (deadline): skip onboarding tracks — every live sign-in
+    // lands straight in the demo dashboard. Remove after judging.
+    if (isLive && data.user.onboarding.status !== 'COMPLETE') {
+      const saved = await saveOnboarding({
+        status: 'COMPLETE',
+        form: { demo: true, mode: 'demo', chosenMode: 'demo', exploreDemo: true },
+      });
+      if (!saved) {
+        notifyError('Signed in, but demo setup could not be saved. Please retry.');
+        return;
+      }
+      setSignedIn(true);
+      onSignedIn?.(saved);
+      routeAfterOtpVerification(saved);
+      return;
+    }
     if (isLive) {
       setSignedIn(true);
       onSignedIn?.(data.user);
@@ -525,7 +541,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
         const left = typeof data.attempts_left === 'number' && data.attempts_left > 0 ? ` ${data.attempts_left} attempts left.` : '';
         return { ok: false, error: `${data.error || 'Verification failed.'}${left}` };
       }
-      completeSignIn(data);
+      await completeSignIn(data);
       return;
     }
     if (code !== TEST_OTP_CODE) {

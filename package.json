@@ -1,6 +1,6 @@
 {
   "name": "warden",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
   "description": "Warden Automatons: open-source AI workforce command center. One operator, one executive agent, a hierarchy of specialist agents. https://warden.autos",
