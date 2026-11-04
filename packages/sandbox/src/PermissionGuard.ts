@@ -63,7 +63,7 @@ const ROLE_FALLBACK_REPOS: Record<string, string[]> = PERMISSION_REGISTRY.roleFa
  */
 const DESTRUCTIVE_COMMAND_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   {
-    pattern: /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--recursive)\s+(\/|\/\*|~|\$HOME)\b/i,
+    pattern: /\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*|--recursive|--force)(\s+-[a-zA-Z-]+)*\s+(\/|\/\*|~|~\/|\$HOME|\$\{HOME\})(?=$|[\s;&|])/i,
     reason: 'Blocked destructive root/home filesystem wipe (`rm -rf /` or `rm -rf ~`).'
   },
   {
@@ -75,7 +75,7 @@ const DESTRUCTIVE_COMMAND_PATTERNS: Array<{ pattern: RegExp; reason: string }> =
     reason: 'Blocked shell fork bomb.'
   },
   {
-    pattern: /\b(cat|less|more|head|tail|bat|sed|awk|grep|rg)\b[^\n|;&]*\b(\.env(\.[a-zA-Z0-9_-]+)?|id_rsa|id_ed25519|[^\s]*\.pem|[^\s]*\.key)\b/i,
+    pattern: /\b(cat|less|more|head|tail|bat|sed|awk|grep|rg|strings|xxd|od|base64|cp|mv)\b[^\n|;&]*(?:^|[\s/'\"=])(\.env(\.(?!example\b|sample\b|template\b)[a-zA-Z0-9_-]+)?|id_rsa|id_ed25519|[^\s]*\.pem|[^\s]*\.key)(?=$|[\s'\";&|])/i,
     reason: 'Blocked reading `.env` secrets or private keys into agent terminal logs.'
   },
   {

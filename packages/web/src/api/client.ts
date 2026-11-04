@@ -520,32 +520,26 @@ class WardenApiClient {
     agentId: string,
     action: 'KILL' | 'RESTART'
   ): Promise<Agent | undefined> {
-    await this.safeFetch(`/agents/${encodeURIComponent(agentId)}/control`, {
+    const remote = await this.safeFetch<Agent>(`/agents/${encodeURIComponent(agentId)}/control`, {
       method: 'POST',
       body: JSON.stringify({ action }),
     });
     this.agents = this.agents.map((a) => {
       if (a.id !== agentId) return a;
-      if (action === 'KILL') {
-        return {
-          ...a,
-          status: 'IDLE',
-          health_status: 'HEALTHY',
-          active_subagent_count: 0,
-          clocked_in_at: null,
-          active_container_id: null,
-          active_task_title: 'Container terminated cleanly by CEO',
-          tokens_per_sec: 0,
-          last_heartbeat_at: new Date().toISOString(),
-        };
-      }
+      // Trust the server's record; never invent container ids locally.
+      if (remote && remote.id === agentId) return { ...a, ...remote };
       return {
         ...a,
-        status: 'WORKING',
+        status: 'IDLE',
         health_status: 'HEALTHY',
-        clocked_in_at: new Date().toISOString(),
-        active_container_id: `ctr-${a.slug.replace(/[^a-z0-9]/gi, '')}-${Math.floor(100 + Math.random() * 899)}`,
-        active_task_title: `Restarted container & resumed active branch checkpoint`,
+        active_subagent_count: 0,
+        clocked_in_at: null,
+        active_container_id: null,
+        active_task_title:
+          action === 'KILL'
+            ? 'Stop requested (control plane unreachable)'
+            : 'Restart requested (control plane unreachable)',
+        tokens_per_sec: 0,
         last_heartbeat_at: new Date().toISOString(),
       };
     });

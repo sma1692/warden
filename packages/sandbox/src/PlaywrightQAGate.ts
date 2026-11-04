@@ -173,6 +173,13 @@ async function waitForHttpServer(
 
 export class PlaywrightQAGate {
   /**
+   * Instance convenience wrapper around `PlaywrightQAGate.runVerificationGate`.
+   */
+  async runQAGate(opts: RunQAGateOptions): Promise<QAResult> {
+    return PlaywrightQAGate.runVerificationGate(opts);
+  }
+
+  /**
    * Executes the full Section 2.3 Automated Headless Verification Gate:
    * 1. Runs `npm run typecheck` (if present in `package.json`)
    * 2. Runs `npm run build` (if present in `package.json`)

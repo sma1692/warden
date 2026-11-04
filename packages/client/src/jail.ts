@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -13,10 +14,37 @@ export function resolveInside(workspace: string, rel: string): string {
   }
   const root = path.resolve(workspace);
   const target = path.resolve(root, rel);
-  if (target !== root && !target.startsWith(root + path.sep)) {
+  if (!isWithin(root, target)) {
     throw new Error(`path escapes workspace: ${rel}`);
   }
-  return target;
+  // Symlinks: compare real paths so a link inside the workspace cannot point outside it.
+  const realRoot = realpathOfExisting(root);
+  const realTarget = realpathOfExisting(target);
+  if (!isWithin(realRoot, realTarget)) {
+    throw new Error(`path escapes workspace via symlink: ${rel}`);
+  }
+  return realTarget;
+}
+
+function isWithin(root: string, target: string): boolean {
+  return target === root || target.startsWith(root + path.sep);
+}
+
+/**
+ * Real path of `p`, resolving symlinks through its nearest existing ancestor,
+ * so paths for files that do not exist yet (writes) are still checked.
+ */
+export function realpathOfExisting(p: string): string {
+  const missing: string[] = [];
+  let current = p;
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    missing.unshift(path.basename(current));
+    current = parent;
+  }
+  const base = fs.existsSync(current) ? fs.realpathSync(current) : current;
+  return missing.length > 0 ? path.join(base, ...missing) : base;
 }
 
 const SECRET_BASENAMES: RegExp[] = [

@@ -4,6 +4,12 @@ Warden is an open-source (MIT) multi-agent orchestration framework and executive
 
 The platform ships a Node.js Control Plane API (`@warden/orchestrator`), a real-time React + Vite web dashboard (`@warden/web`), a PostgreSQL + `pgvector` hybrid memory engine (`@warden/db`), an ephemeral container/SSH sandbox manager with automated Playwright visual QA (`@warden/sandbox`), and a jailed local workspace execution daemon (`@warden/client` / `warden-link`).
 
+![Warden landing page](docs/images/landing.png)
+
+![Warden dashboard: Needs Action queue and token consumption](docs/images/dashboard.png)
+
+The dashboard home shows what is waiting on you (**NEEDS ACTION**), a chat box to brief `@warden`, the latest demo release, and token spend per department. See [docs/PRODUCT_GUIDE.md](docs/PRODUCT_GUIDE.md) for every screen and flow.
+
 ---
 
 ## 1. The Bottom-Heavy Token Pyramid
@@ -23,7 +29,7 @@ Warden inverts token flow into a **Bottom-Heavy Token Pyramid**:
 - **Level 1 Domain Leads (`@pm`, `@tech_lead`, `@infra_head`, `@sec_lead`, `@seo_aeo_head`, `@designer`)**:
   - Responsibilities: Own prioritized sprint backlogs, API contracts (`propose_contract`), infrastructure runbooks, and security gates.
   - Role in Pyramid: Consume symbol digests from Reader Scouts, deconstruct initiatives into minimal file-edit manifests (`FileEditDirective[]`), and fan out atomic tasks to Level 2 specialists.
-- **Level 2 Sandboxed Developers & Scouts (`@reader_scout`, `@frontend_dev`, `@backend_dev`, `@infra_jr`, `@sec_auditor`, `@coder_applier`)**:
+- **Level 2 Sandboxed Developers & Scouts (`@reader_scout`, `@frontend_dev`, `@backend_dev`, `@infra_jr`, `@sec_auditor`)**:
   - **Fast Read Scout (`@reader_scout`)**: Scans source trees and emits $\le 150$-word symbol + line-range digests so Tier 1 planners never ingest raw files.
   - **Scoped File Appliers**: Execute inside isolated Docker sandboxes, cloud ephemeral VMs, or jailed local workspaces (`warden-link`), capped at $\le 8$ turns per shard (`MAX_L2_SHARD_TURNS = 8`) to prevent quadratic context snowballing.
 
@@ -96,7 +102,9 @@ The pyramid is enforced in code, not only in prompts. See `packages/orchestrator
 - **Path containment**: File tools use `path.relative` containment, so `../` and sibling-prefix paths are rejected.
 - **Honest tool results**: Missing files, refused writes, unapplied edits, and commands with no sandbox session return `ok: false`. The QA gate reports "not run" when Playwright is unavailable.
 - **Telemetry provenance**: Token and cost numbers come only from the provider `usage` block. Tool steps and simulated (offline, no API key) turns record zero, and simulated steps are labelled `[simulated]`. Demo workspaces ship with labelled seed history.
-- **Sandbox modes**: Runs use a Docker container when the `warden-workspace` image is available. Otherwise they fall back to LOCAL mode (host process behind `PermissionGuard`) and log a warning. Set `WARDEN_REQUIRE_DOCKER=1` to forbid the fallback.
+- **Sandbox modes**: Runs use a Docker container when the `warden-workspace` image is available. Otherwise they fall back to LOCAL mode (host process behind `PermissionGuard`) and log a warning. `PermissionGuard` is a command denylist, not a security boundary, so treat LOCAL mode as dev-only and set `WARDEN_REQUIRE_DOCKER=1` to forbid the fallback.
+- **Outbound fetches**: The SEO audit fetches only public `http`/`https` URLs. Private, loopback, link-local, and cloud-metadata addresses are rejected, and every redirect hop is re-checked (`packages/orchestrator/src/seo/urlGuard.ts`).
+- **Local workspace jail**: `warden-link` resolves symlinks before reading or writing, so a link inside the workspace cannot reach files outside it, and secret files (`.env`, keys) are refused even behind an innocently named link.
 - **CORS**: Set `WARDEN_CORS_ORIGIN` to your dashboard origin in production (defaults to `*` for local dev).
 
 Run the checks:
@@ -105,6 +113,8 @@ Run the checks:
 npm run typecheck
 npm test
 ```
+
+Tests cover the tier policy, URL guard, JWT verification, `PermissionGuard`, the `warden-link` path jail, the watchdog, routing, the store, and token accounting.
 
 ---
 
@@ -153,3 +163,18 @@ npm run build
 
 - **Web Dashboard**: `http://localhost:5173` (or `https://localhost:5173` when `WARDEN_HTTPS=true`)
 - **Control Plane API & WebSocket**: `http://localhost:4000` (`/api/*` and `/ws`)
+
+---
+
+## 9. Running Without an API Key
+
+- With no `META_MUSE_API_KEY` (and no key saved in **Settings**), the model router answers with a deterministic, role-aware **simulation** so the dashboard and flows can be explored offline. Simulated steps are labelled `[simulated]` and record zero tokens and cost.
+- Memory recall falls back to deterministic feature-hashing embeddings when the embeddings endpoint is unavailable.
+- For real agent replies, set `META_MUSE_API_KEY` in `.env` or paste your key in **Settings → Your Meta Muse API key**. Model ids and the endpoint (`META_MUSE_BASE_URL`) are configurable per agent and per routing profile.
+
+---
+
+## 10. Project History
+
+Warden started as the founder's private, multi-project command center. The reusable framework was extracted, sanitized, and published to this repository on 2026-10-27 (the first commit here is that import), and development has continued in this repository since. Later commits remove features that depended on the private setup (multi-repo mirrors, GitHub and Telegram integrations, non-Meta model providers).
+

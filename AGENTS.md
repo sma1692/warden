@@ -33,21 +33,11 @@ This repo IS Warden, a single standalone project. It ships a control plane API p
 
 - `.state/` is local gitignored dev scratch. It never ships to cloud.
 - Kept: `.state/warden-db.json` (DB snapshot fallback), `.state/model-registry.json` (model profiles), `.state/tokens/` (telemetry).
-- Legacy, not on the happy path: `.state/onboarded.json`, `.state/topology-cache.json`, `.state/mirror/`.
 - Do not add new onboarding or registry state under `.state/`. New product state belongs in Postgres via `packages/db/`.
 
-## 5. Deprecated Multi-Project Concepts
+## 5. Removed Multi-Project Tooling
 
-The following are commando-era leftovers. They describe a multi-external-repo setup that does not apply to this standalone repo. Do not build new features on them:
-
-- `projects.yaml` plus `projects.example.yaml` external folder registries.
-- `.state/mirror/<repo>` sandbox mirrors and `sync-in` or `sync-out` repo operators.
-- `.state/topology-cache.json` and per-external-project `tech_lead` routing.
-- `.claude/agents/` IDE persona prompts and `@<agent>` direct routing in the CLI.
-- `scripts/warden-muse.mjs` standup and daemon CLI. Dashboard plus control plane own these flows now.
-- `scripts/onboard.mjs check` and `complete`. Dashboard onboarding replaces them.
-
-When you touch code that still references these concepts, prefer a small step toward the single-project DB-backed model. Do not expand multi-project support.
+Earlier multi-repo tooling from the private predecessor has been removed from this repo: the external project registry, `.state/mirror` sync-in and sync-out, IDE persona prompts, the CLI standup daemon, and CLI onboarding. The dashboard and control plane own those flows now. Do not reintroduce multi-project support.
 
 ## 6. Working Conventions
 

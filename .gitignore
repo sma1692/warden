@@ -54,3 +54,4 @@ saved-changes.diff
 
 # Model-generated scratch images
 generated_images/
+.state/model-registry.json

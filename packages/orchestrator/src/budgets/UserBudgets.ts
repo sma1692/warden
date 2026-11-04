@@ -55,6 +55,11 @@ function ensureReady(): Promise<void> {
   if (!ready) {
     ready = pool
       .query(BUDGET_DDL)
+      .then(() =>
+        pool
+          .query("DELETE FROM agent_runs WHERE output_summary LIKE '[Demo seed]%'")
+          .catch(() => undefined)
+      )
       .then(() => undefined)
       .catch((err) => {
         ready = null;
@@ -211,20 +216,6 @@ export async function getUserTokenTelemetry(
         : normalized === 'all'
           ? 'all'
           : 'today';
-
-  // Ensure existing demo users who provisioned before agent_runs seeding have their starter runs
-  try {
-    const wsRes = await pool.query<{ mode: string }>(
-      'SELECT mode FROM demo_workspaces WHERE user_id = $1',
-      [userId]
-    );
-    if (wsRes.rows[0]?.mode === 'demo') {
-      const { seedDemoAgentRuns } = await import('../demo/DemoProvisioning.js');
-      await seedDemoAgentRuns(userId);
-    }
-  } catch {
-    // ignore if demo_workspaces table does not exist yet
-  }
 
   let timeClause = '';
   if (range === 'today') {

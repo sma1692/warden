@@ -17,6 +17,8 @@ export async function executeCommand(
       case 'read_file': {
         assertReadable(cmd.path);
         const abs = resolveInside(workspace, cmd.path);
+        // Also check the real file, so `notes.txt -> .env` is refused.
+        assertReadable(path.basename(abs));
         const stat = await fs.stat(abs);
         if (!stat.isFile()) {
           return { id: cmd.id, ok: false, error: `not a file: ${cmd.path}` };

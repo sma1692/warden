@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AuthRouteContext } from '../auth/routes.js';
+import { BlockedUrlError, assertPublicUrl, guardedFetch } from './urlGuard.js';
 
 /**
  * SEO automation loop — the manual SEO grind as API calls:
@@ -27,10 +28,9 @@ const FETCH_UA = 'WardenSEO/1.0 (+https://warden.example.com)';
 
 async function fetchText(url: string, timeoutMs = 12000): Promise<{ ok: boolean; status: number; text: string }> {
   try {
-    const res = await fetch(url, {
+    const res = await guardedFetch(url, {
       headers: { 'User-Agent': FETCH_UA, Accept: 'text/html,text/plain,*/*' },
       signal: AbortSignal.timeout(timeoutMs),
-      redirect: 'follow',
     });
     const text = await res.text().catch(() => '');
     return { ok: res.ok, status: res.status, text: text.slice(0, 500_000) };
@@ -45,8 +45,9 @@ function firstMatch(html: string, re: RegExp): string | null {
 }
 
 export async function auditUrl(rawUrl: string): Promise<{ url: string; score: number; checks: SeoCheck[] }> {
-  const normalized = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
-  const url = new URL(normalized);
+  const normalized = /^[a-z][a-z0-9+.-]*:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  // Reject non-http(s) schemes and private/internal hosts before any fetch.
+  const url = await assertPublicUrl(normalized);
   const origin = url.origin;
   const checks: SeoCheck[] = [];
 
@@ -282,7 +283,7 @@ export async function handleSeoRoutes(
       const report = await auditUrl(target);
       sendJson(res, 200, { ok: true, ...report });
     } catch (err) {
-      sendJson(res, 400, {
+      sendJson(res, err instanceof BlockedUrlError ? 422 : 400, {
         ok: false,
         error: err instanceof Error ? err.message : 'Audit failed.',
       });

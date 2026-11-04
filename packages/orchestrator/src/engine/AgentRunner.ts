@@ -1056,7 +1056,7 @@ export class AgentRunner {
       updatedRun.tokens_thinking +
       updatedRun.tokens_out;
     const commitsIncrement =
-      codeModified || agent.hierarchy_level === 2 ? 1 : 0;
+      Boolean(updatedRun.git_commit_sha) || codeModified ? 1 : 0;
 
     const clockedOutAgent = (await this.store.updateAgent(agent.id, {
       status: 'IDLE',
@@ -1992,15 +1992,36 @@ export class AgentRunner {
         const relPath = String(args.path || '').replace(/^\/+/, '');
         const content = String(args.content ?? '');
         const resolved = path.resolve(repoRoot, relPath);
+        const normalizedRel = relPath.replace(/\\/g, '/');
+        const baseName = path.basename(normalizedRel);
+        const isBlockedTarget =
+          baseName === '.env' ||
+          baseName.startsWith('.env.') ||
+          normalizedRel.startsWith('.git/') ||
+          normalizedRel.includes('/.git/') ||
+          normalizedRel.startsWith('node_modules/') ||
+          normalizedRel.includes('/node_modules/') ||
+          baseName === 'package-lock.json' ||
+          baseName === 'pnpm-lock.yaml' ||
+          baseName === 'yarn.lock';
+        const isAllowedWorkspacePrefix =
+          resolved.includes(`${path.sep}.state${path.sep}demo-workspaces${path.sep}`) ||
+          resolved.includes(`${path.sep}.state${path.sep}mirror${path.sep}`) ||
+          normalizedRel.startsWith('contracts/') ||
+          normalizedRel.startsWith('worklist/') ||
+          normalizedRel.startsWith('standups/') ||
+          normalizedRel.startsWith('context/') ||
+          normalizedRel.startsWith('memory/') ||
+          normalizedRel.startsWith('src/') ||
+          normalizedRel.startsWith('public/') ||
+          normalizedRel.startsWith('packages/') ||
+          normalizedRel.startsWith('tests/') ||
+          normalizedRel.startsWith('docs/');
         const isSafeWriteTarget =
           relPath.length > 0 &&
           isInsideRoot(repoRoot, relPath) &&
-          (resolved.includes(`${path.sep}.state${path.sep}mirror${path.sep}`) ||
-            relPath.startsWith('contracts/') ||
-            relPath.startsWith('worklist/') ||
-            relPath.startsWith('standups/') ||
-            relPath.startsWith('context/') ||
-            relPath.startsWith('memory/'));
+          !isBlockedTarget &&
+          isAllowedWorkspacePrefix;
         if (isSafeWriteTarget) {
           fs.mkdirSync(path.dirname(resolved), { recursive: true });
           fs.writeFileSync(resolved, content, 'utf8');
@@ -2016,11 +2037,13 @@ export class AgentRunner {
               ok: false,
               path: relPath,
               persistedToDisk: false,
-              error: 'Write target is outside the allowed mirror/contracts/worklist/context/memory paths.',
+              error: isBlockedTarget
+                ? `Write target "${relPath}" is blocked by workspace security policy (.env, .git, lockfiles, or node_modules).`
+                : 'Write target is outside the allowed workspace paths.',
             };
         toolSummaryText = isSafeWriteTarget
           ? `Wrote \`${relPath}\` (${Buffer.byteLength(content, 'utf8')} bytes).`
-          : `Refused write to \`${relPath}\`: outside allowed paths.`;
+          : `Refused write to \`${relPath}\`: outside allowed workspace paths.`;
       } else if (tc.name === 'edit_file') {
         const relPath = String(args.path || '').replace(/^\/+/, '');
         const targetStr = String(args.target ?? '');
@@ -2042,9 +2065,12 @@ export class AgentRunner {
           }
         }
         toolOutputJson = {
-          ok: true,
+          ok: replacedOnDisk,
           path: relPath,
           replacedOnDisk,
+          ...(replacedOnDisk
+            ? {}
+            : { error: 'File missing or target text not found' }),
         };
         toolSummaryText = replacedOnDisk
           ? `Edited \`${relPath}\` (applied diff to disk).`
@@ -2116,7 +2142,7 @@ export class AgentRunner {
     });
 
     return {
-      codeModified: isModifying || tc.name === 'run_command',
+      codeModified: (isModifying || tc.name === 'run_command') && Boolean(toolOutputJson.ok),
       pausedForCeo: false,
       summary: toolSummaryText,
       output: toolOutputJson,
@@ -2143,13 +2169,19 @@ export class AgentRunner {
       if (sandboxMod?.defaultSandboxManager?.spawnSandbox) {
         const session = await sandboxMod.defaultSandboxManager.spawnSandbox({
           runId,
-          agentId: agent.id,
+          agentSlug: agent.slug,
           repoSlug,
-          branchName: gitBranch,
+          hostRepoPath: this.resolveRepoWorkspaceRoot(repoSlug),
+          baseBranch: gitBranch,
+          allowedRepos: agent.allowed_repos,
+          permissionTier: agent.permission_tier,
         });
         return {
           containerId: session.containerId || fallbackContainerId,
-          previewUrl: session.previewUrl || fallbackPreviewUrl,
+          previewUrl:
+            session.previewRoute?.previewUrl ||
+            (session as { previewUrl?: string }).previewUrl ||
+            fallbackPreviewUrl,
         };
       }
     } catch {
@@ -2181,24 +2213,36 @@ export class AgentRunner {
       const sandboxMod = await import(/* @vite-ignore */ modName).catch(
         () => null
       );
-      if (sandboxMod?.PlaywrightQAGate) {
-        const gate = new sandboxMod.PlaywrightQAGate();
-        if (typeof gate.runQAGate === 'function') {
-          const res = await gate.runQAGate({
-            runId,
-            agentSlug: agent.slug,
-            repoSlug,
-            previewUrl,
-          });
-          return {
-            passed: res.passed === true,
-            screenshotUrl: res.screenshotUrl || screenshotUrl,
-            summary:
-              res.summary ||
-              `✅ Build + Headless Playwright Chromium/WebGL Passed (HTTP 200, 0 console.error) on ${previewUrl}`,
-            durationMs: Math.max(240, Date.now() - startMs),
-          };
-        }
+      if (
+        sandboxMod?.defaultSandboxManager?.getSession?.(runId) &&
+        typeof sandboxMod.defaultSandboxManager.runQAGate === 'function'
+      ) {
+        const res = await sandboxMod.defaultSandboxManager.runQAGate(runId);
+        return {
+          passed: res.passed === true,
+          screenshotUrl: res.screenshotUrl || screenshotUrl,
+          summary: res.passed
+            ? `✅ Build + Headless Playwright Chromium/WebGL Passed (HTTP ${res.httpStatus}, ${res.consoleErrors?.length ?? 0} console.error) on ${res.previewUrl || previewUrl}`
+            : `❌ Headless Playwright QA Failed (HTTP ${res.httpStatus}, ${res.consoleErrors?.length ?? 0} console.error, ${res.pageErrors?.length ?? 0} pageError) on ${res.previewUrl || previewUrl}`,
+          durationMs: Math.max(240, res.durationMs || Date.now() - startMs),
+        };
+      }
+      if (typeof sandboxMod?.PlaywrightQAGate?.runVerificationGate === 'function') {
+        const res = await sandboxMod.PlaywrightQAGate.runVerificationGate({
+          runId,
+          repoSlug,
+          workspacePath: this.resolveRepoWorkspaceRoot(repoSlug),
+          mode: 'local',
+          previewUrl,
+        });
+        return {
+          passed: res.passed === true,
+          screenshotUrl: res.screenshotUrl || screenshotUrl,
+          summary: res.passed
+            ? `✅ Build + Headless Playwright Chromium/WebGL Passed (HTTP ${res.httpStatus}, ${res.consoleErrors?.length ?? 0} console.error) on ${res.previewUrl || previewUrl}`
+            : `❌ Headless Playwright QA Failed (HTTP ${res.httpStatus}, ${res.consoleErrors?.length ?? 0} console.error, ${res.pageErrors?.length ?? 0} pageError) on ${res.previewUrl || previewUrl}`,
+          durationMs: Math.max(240, res.durationMs || Date.now() - startMs),
+        };
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -2240,6 +2284,9 @@ export class AgentRunner {
         ? parseFileEditDirectives(directives)
         : directives;
 
+    const repoSlug = options?.repoSlug || this.store.getDefaultProjectSlug();
+    const repoRoot = this.resolveRepoWorkspaceRoot(repoSlug);
+
     const results: Array<{
       filePath: string;
       changeSpec: string;
@@ -2250,13 +2297,50 @@ export class AgentRunner {
 
     for (const directive of parsedDirectives) {
       try {
+        const relPath = String(directive.filePath || '').replace(/^\/+/, '');
+        if (!relPath || !isInsideRoot(repoRoot, relPath)) {
+          results.push({
+            filePath: directive.filePath,
+            changeSpec: directive.changeSpec,
+            status: 'failed',
+            details: `Directive path "${directive.filePath}" is empty or outside workspace root (${repoSlug})`,
+          });
+          continue;
+        }
+
+        const resolvedPath = path.resolve(repoRoot, relPath);
+        if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile()) {
+          results.push({
+            filePath: directive.filePath,
+            changeSpec: directive.changeSpec,
+            status: 'skipped',
+            details: `Target file "${relPath}" does not exist on disk in ${repoSlug}`,
+          });
+          continue;
+        }
+
+        const existingContent = fs.readFileSync(resolvedPath, 'utf8');
+        const arrowSplit = directive.changeSpec.split(/\s*->\s*/);
+        if (arrowSplit.length === 2 && arrowSplit[0] && existingContent.includes(arrowSplit[0])) {
+          const updatedContent = existingContent.split(arrowSplit[0]).join(arrowSplit[1]);
+          fs.writeFileSync(resolvedPath, updatedContent, 'utf8');
+          results.push({
+            filePath: directive.filePath,
+            changeSpec: directive.changeSpec,
+            status: 'applied',
+            details: `Applied replacement in ${relPath} (${Buffer.byteLength(updatedContent, 'utf8')} bytes)`,
+          });
+          appliedCount++;
+          continue;
+        }
+
         results.push({
           filePath: directive.filePath,
           changeSpec: directive.changeSpec,
           status: 'applied',
           details: directive.symbolOrLines
-            ? `Target updated at ${directive.symbolOrLines}`
-            : 'Target updated successfully',
+            ? `Verified target ${relPath} at ${directive.symbolOrLines} (${Buffer.byteLength(existingContent, 'utf8')} bytes)`
+            : `Verified target ${relPath} (${Buffer.byteLength(existingContent, 'utf8')} bytes)`,
         });
         appliedCount++;
       } catch (err) {
@@ -2270,7 +2354,7 @@ export class AgentRunner {
     }
 
     return {
-      success: results.every((r) => r.status === 'applied'),
+      success: results.length > 0 && results.every((r) => r.status === 'applied'),
       appliedCount,
       results,
     };

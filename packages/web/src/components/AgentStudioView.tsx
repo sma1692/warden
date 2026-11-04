@@ -65,6 +65,22 @@ export interface EnrichedRosterAgent {
   forbiddenReads: string;
 }
 
+const VERTICAL_LABELS: Record<AgentVertical, 'Tech' | 'SEO/AEO' | 'Social Media'> = {
+  TECH: 'Tech',
+  SEO_AEO: 'SEO/AEO',
+  SOCIAL: 'Social Media',
+};
+
+// Buckets a live agent into exactly one dashboard vertical, so the roster list
+// always reconciles with the Team badge count.
+function verticalForAgent(a: Agent): AgentVertical {
+  const slug = a.slug.toLowerCase();
+  if (slug.includes('seo') || slug.includes('aeo')) return 'SEO_AEO';
+  if (slug.includes('social')) return 'SOCIAL';
+  if (a.department === 'MARKETING') return 'SEO_AEO';
+  return 'TECH';
+}
+
 const CANONICAL_VERTICAL_ROSTER: {
   slug: string;
   name: string;
@@ -475,8 +491,11 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
   const [credRpmLimit, setCredRpmLimit] = useState(240);
   const [credPriority, setCredPriority] = useState(1);
 
-  // Build unified 13-agent multi-vertical roster + any custom provisioned agents
+  // Build unified multi-vertical roster: the canonical 13 plus every live agent
+  // behind them (per-project variants, provisioned agents), so this list always
+  // reconciles with the Team badge count.
   const enrichedRoster: EnrichedRosterAgent[] = useMemo(() => {
+    const matchedLiveIds = new Set<string>();
     const canonicalList: EnrichedRosterAgent[] = CANONICAL_VERTICAL_ROSTER.map(
       (c, idx) => {
         const cleanHandle = c.slug.replace(/^@/, '');
@@ -487,6 +506,10 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
             (cleanHandle === 'pm' && a.slug.startsWith('@pm')) ||
             (cleanHandle === 'aeo_lead' && a.slug.includes('seo_aeo'))
         );
+        if (matched) matchedLiveIds.add(matched.id);
+        // Live roster is authoritative: skip placeholder rows once the backend
+        // (or seeds) has populated, so the list length matches the Team badge.
+        if (!matched && agents.length > 0) return null;
 
         const synthesizedAgent: Agent = matched
           ? {
@@ -560,9 +583,27 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
           forbiddenReads: c.forbiddenReads,
         };
       }
-    );
+    ).filter((r): r is EnrichedRosterAgent => r !== null);
 
-    return canonicalList;
+    const extraList: EnrichedRosterAgent[] = agents
+      .filter((a) => !matchedLiveIds.has(a.id))
+      .map((a) => {
+        const vertical = verticalForAgent(a);
+        return {
+          agent: a,
+          handle: a.slug.replace(/^@/, ''),
+          vertical,
+          verticalLabel: VERTICAL_LABELS[vertical],
+          supervisorHandle: a.parent_agent_id ? `@${a.parent_agent_id}` : '—',
+          levelBadge: a.hierarchy_level === -1 ? 'Root (L-1)' : `Level ${a.hierarchy_level}`,
+          payloadTokens: a.today_tokens_used ?? 0,
+          turnCapLabel: '—',
+          contextReads: [],
+          forbiddenReads: '—',
+        };
+      });
+
+    return [...canonicalList, ...extraList];
   }, [agents]);
 
   const filteredRoster = useMemo(() => {
