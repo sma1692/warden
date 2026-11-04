@@ -1,0 +1,51 @@
+# Dependencies & Package Management
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Internal State & Caches
+.state/
+.git/
+.claude/
+.gemini/
+*.log
+.DS_Store
+
+# Build Artifacts & Compiled Code
+dist/
+dist*/
+build/
+*.tsbuildinfo
+*.zip
+*.tar.gz
+
+# Secrets & Environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Binary & Media Assets
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.ico
+*.mp4
+*.webm
+*.glb
+*.gltf
+*.bin
+*.wasm
+
+# Large Patch & Diff Files
+saved-changes.diff
+*.patch
+*.diff
+
+# Historical Chat & Standup Logs
+chats/
+standups/
