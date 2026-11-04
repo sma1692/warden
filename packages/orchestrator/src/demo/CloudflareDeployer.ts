@@ -171,7 +171,8 @@ export async function attachCustomDomain(accountId: string, apiToken: string, pr
 
   let kaltiSuccess = false;
   try {
-    const cmd = `node ${kaltiPath} cloudflare attach-domain --project ${projectName} --domain ${fqdn} --json`;
+    const zoneFlag = process.env.CLOUDFLARE_ZONE_ID ? ` --zone-id ${process.env.CLOUDFLARE_ZONE_ID}` : '';
+    const cmd = `node ${kaltiPath} cloudflare attach-domain --project ${projectName} --domain ${fqdn}${zoneFlag} --json`;
     console.log(`[DemoDeploy] Invoking aws-kalti to bind custom domain & DNS CNAME: ${cmd}`);
     const { stdout, stderr } = await execAsync(cmd, {
       env: {

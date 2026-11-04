@@ -18,15 +18,34 @@ export const TokenBreakdownBar: React.FC<TokenBreakdownBarProps> = ({
   maxTokensQuota,
   compact = false,
 }) => {
-  const total = Math.max(1, tokensIn + tokensCached + tokensThinking + tokensOut);
-  const inPct = Math.max(2, (tokensIn / total) * 100);
-  const cachedPct = Math.max(2, (tokensCached / total) * 100);
-  const thinkingPct = Math.max(2, (tokensThinking / total) * 100);
-  const outPct = Math.max(2, (tokensOut / total) * 100);
+  const rawUsed = Math.max(0, tokensIn + tokensThinking + tokensOut);
+  const segmentTotal = Math.max(1, tokensIn + tokensCached + tokensThinking + tokensOut);
 
-  const quotaPct = maxTokensQuota
-    ? Math.min(100, Math.round(((tokensIn + tokensThinking + tokensOut) / maxTokensQuota) * 100))
-    : null;
+  const quotaPct =
+    maxTokensQuota && maxTokensQuota > 0
+      ? Math.min(100, (rawUsed / maxTokensQuota) * 100)
+      : null;
+
+  // When a Run Cap (maxTokensQuota) is present, scale the bar fill to the actual
+  // share of the cap used (with a small 6% minimum visual floor when tokens > 0
+  // so the 4 color segments remain readable without making the cap look full).
+  const fillScalePct =
+    quotaPct !== null
+      ? rawUsed > 0
+        ? Math.max(6, Math.min(100, quotaPct))
+        : 0
+      : 100;
+
+  const inPct = (tokensIn / segmentTotal) * fillScalePct;
+  const cachedPct = (tokensCached / segmentTotal) * fillScalePct;
+  const thinkingPct = (tokensThinking / segmentTotal) * fillScalePct;
+  const outPct = (tokensOut / segmentTotal) * fillScalePct;
+  const displayQuotaPct =
+    quotaPct !== null
+      ? quotaPct > 0 && quotaPct < 1
+        ? '<1%'
+        : `${Math.round(quotaPct)}%`
+      : null;
 
   return (
     <div className="space-y-1.5">
@@ -76,7 +95,7 @@ export const TokenBreakdownBar: React.FC<TokenBreakdownBarProps> = ({
 
           {quotaPct !== null && maxTokensQuota && (
             <span className="text-[var(--surface-text-secondary)]">
-              Run Cap: <strong className="text-[var(--surface-text)]">{formatCompactTokens(maxTokensQuota)}</strong>
+              Run Cap: <strong className="text-[var(--surface-text)]">{formatCompactTokens(rawUsed)}</strong> / <strong className="text-[var(--surface-text)]">{formatCompactTokens(maxTokensQuota)}</strong> ({displayQuotaPct})
             </span>
           )}
         </div>

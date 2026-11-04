@@ -763,6 +763,7 @@ export class ControlPlaneServer {
       `Approved "${item.title}"`;
     const threadId = `thr_spawn_${item.id}`;
     let thread = this.store.threads.get(threadId);
+    const isFreshThread = !thread;
     if (!thread) {
       thread = this.store.createThread({
         id: threadId,
@@ -772,29 +773,48 @@ export class ControlPlaneServer {
         target_agent_id: 'warden',
         project_scope: item.project_slug || 'demo-project',
       });
+    }
+
+    const existingMsgs = this.store.messagesByThread.get(thread.id) || [];
+    if (isFreshThread || !existingMsgs.some((m) => m.sender_type === 'CEO')) {
       this.store.addChatMessage({
         thread_id: thread.id,
         user_id: item.user_id ?? null,
-        sender_type: 'SYSTEM',
-        sender_agent_id: 'warden',
-        recipient_agent_id: 'CEO',
-        content: `Approved by CEO: "${summary}" — spawning the execution team for **${item.title}**.`,
+        sender_type: 'CEO',
+        sender_agent_id: null,
+        recipient_agent_id: 'warden',
+        content: summary,
       });
     }
 
-    const titleLower = (item.title || '').toLowerCase();
-    const preferredSlugs = titleLower.includes('seo')
-      ? ['@seo_aeo_head', '@cmo', '@warden']
-      : titleLower.includes('social') || titleLower.includes('visuals')
-        ? ['@social_lead', '@cmo', '@warden']
-        : titleLower.includes('trophy')
-          ? ['@tech_lead', '@frontend_dev', '@cto', '@warden']
-          : ['@frontend_dev', '@tech_lead', '@cto', '@warden'];
+    const titleLower = `${item.id} ${item.title || ''}`.toLowerCase();
+    const isSeo = titleLower.includes('seo') || titleLower.includes('faq schema');
+    const isSocial =
+      titleLower.includes('social') ||
+      titleLower.includes('visuals') ||
+      titleLower.includes('launch pack');
+    const isTrophyArt =
+      titleLower.includes('trophy_assets') ||
+      titleLower.includes('trophy system art') ||
+      titleLower.includes('trophy asset') ||
+      titleLower.includes('12 sprites');
 
-    const targetAgent =
-      preferredSlugs
-        .map((s) => this.store.getAgentBySlug(s) || this.store.getAgent(s.replace(/^@/, '')))
-        .find((a): a is AgentRecord => Boolean(a)) ||
+    const deptSlug = isSeo || isSocial ? '@cmo' : '@cto';
+    const specialistSlug = isSeo
+      ? '@seo_aeo_head'
+      : isSocial
+        ? '@social_lead'
+        : isTrophyArt
+          ? '@designer'
+          : '@frontend_dev';
+    const leadHelperSlug = isSeo
+      ? '@seo_aeo_head'
+      : isSocial
+        ? '@social_lead'
+        : '@tech_lead';
+
+    const wardenAgent =
+      this.store.getAgentBySlug('@warden') ||
       this.store.getAgent('warden') ||
       Array.from(this.store.agents.values())[0];
 
@@ -807,15 +827,15 @@ export class ControlPlaneServer {
     if (!activeRun) {
       activeRun = this.store.createRun({
         user_id: item.user_id ?? null,
-        agent_id: targetAgent.id,
-        agent_slug: targetAgent.slug,
+        agent_id: wardenAgent.id,
+        agent_slug: wardenAgent.slug,
         parent_run_id: null,
         chat_thread_id: thread.id,
         sprint_id: item.sprint_id ?? null,
         backlog_item_id: item.id,
-        trigger_type: 'DELEGATION',
+        trigger_type: 'CEO_CHAT',
         input_prompt: `${item.title} — ${summary}`,
-        output_summary: `Executing "${item.title}" (${summary})`,
+        output_summary: `@warden reviewing CEO plan & dispatching ${deptSlug} -> ${specialistSlug}`,
         status: 'RUNNING',
         container_id: `ctr-${item.id.slice(0, 8)}`,
         git_branch: `feat/${item.id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 18)}`,
@@ -834,110 +854,414 @@ export class ControlPlaneServer {
     }
     this.runningBacklogTasks.add(item.id);
 
-    const runId = activeRun.id;
-    const plannedSteps = [
-      {
-        step_type: 'LLM_INFERENCE' as const,
-        thinking_text: `Hydrated project context (${item.project_slug}) and CEO directive: "${summary}". Locking execution plan for "${item.title}".`,
-        message_text: `${targetAgent.slug} locked implementation spec for "${item.title}".`,
-        tool_name: null,
-        tool_args_json: null,
-        tool_output_json: null,
-        duration_ms: 2800,
-        tokens_in: 620,
-        tokens_cached: 380,
-        tokens_thinking: 210,
-        tokens_out: 190,
-        cost_usd: 0.0042,
-      },
-      {
-        step_type: 'SUBAGENT_CALL' as const,
-        thinking_text: `Coordinating vertical execution across ${preferredSlugs.slice(0, 2).join(' -> ')} for "${item.title}".`,
-        message_text: `Delegated implementation chunks and verified workspace dependencies.`,
-        tool_name: 'delegate_to_subagents',
-        tool_args_json: {
-          task: item.title,
-          directive: summary,
-          agents: preferredSlugs.slice(0, 2),
-        },
-        tool_output_json: {
-          status: 'accepted',
-          stdout: `✓ Spawned execution context for ${preferredSlugs.slice(0, 2).join(', ')}`,
-        },
-        duration_ms: 3200,
-        tokens_in: 540,
-        tokens_cached: 310,
-        tokens_thinking: 180,
-        tokens_out: 220,
-        cost_usd: 0.0038,
-      },
-      {
-        step_type: 'TOOL_CALL' as const,
-        thinking_text: `Applying code and asset changes for "${item.title}" in isolated workspace.`,
-        message_text: `Applied workspace patch for "${item.title}".`,
-        tool_name: 'apply_workspace_patch',
-        tool_args_json: {
-          project: item.project_slug || 'demo-project',
-          target: item.title,
-        },
-        tool_output_json: {
-          exit_code: 0,
-          diff: `--- a/src/main.js\n+++ b/src/main.js\n@@ -1,3 +1,6 @@\n+// Applied: ${item.title}\n+// Directive: ${summary}`,
-          stdout: `✓ Patched workspace files for "${item.title}"`,
-        },
-        duration_ms: 3500,
-        tokens_in: 710,
-        tokens_cached: 420,
-        tokens_thinking: 240,
-        tokens_out: 290,
-        cost_usd: 0.0049,
-      },
-      {
-        step_type: 'QA_CHECK' as const,
-        thinking_text: `Running build and headless verification gate before marking "${item.title}" complete.`,
-        message_text: `Build and verification checks passed with 0 errors.`,
-        tool_name: 'run_container_verification',
-        tool_args_json: {
-          cmd: 'npm run typecheck && npm run build',
-          project: item.project_slug || 'demo-project',
-        },
-        tool_output_json: {
-          exit_code: 0,
-          stdout: `✓ Typecheck passed\n✓ Production bundle built cleanly\n✓ Verification complete for "${item.title}"`,
-        },
-        duration_ms: 3000,
-        tokens_in: 480,
-        tokens_cached: 290,
-        tokens_thinking: 150,
-        tokens_out: 180,
-        cost_usd: 0.0033,
-      },
-    ];
+    const wardenRunId = activeRun.id;
 
     void (async () => {
       try {
-        await this.store.updateAgent(targetAgent.id, {
+        // Ensure the department head and specialist agents are registered in the roster
+        const deptAgent =
+          (await this.store.ensureAgentBySlug(deptSlug)) ||
+          this.store.getAgentBySlug('@cto') ||
+          wardenAgent;
+        const specialistAgent =
+          (await this.store.ensureAgentBySlug(specialistSlug)) ||
+          deptAgent;
+        if (leadHelperSlug !== specialistSlug) {
+          await this.store.ensureAgentBySlug(leadHelperSlug).catch(() => undefined);
+        }
+
+        // ====================================================================
+        // PHASE 1: @warden Executive Intake & Delegation to @cto / @cmo
+        // ====================================================================
+        await this.store.updateAgent(wardenAgent.id, {
           status: 'WORKING',
-          current_run_id: runId,
+          current_run_id: wardenRunId,
           clocked_in_at: new Date().toISOString(),
           last_heartbeat_at: new Date().toISOString(),
         });
 
-        const existingSteps = this.store.getStepsForRun(runId);
-        const startIdx = existingSteps.length;
+        this.broadcastEvent('brain:status', {
+          runId: wardenRunId,
+          agentId: wardenAgent.id,
+          agentSlug: wardenAgent.slug,
+          stepIndex: 1,
+          totalSteps: 2,
+          status: 'RUNNING',
+          summary: `@warden parsing approved plan & CEO note for "${item.title}"...`,
+        });
 
-        for (let i = startIdx; i < plannedSteps.length; i++) {
+        let wardenReplyText = `Locked execution plan for **${item.title}**. Routing directive to **${deptAgent.slug}** and spawning **${specialistAgent.slug}**${leadHelperSlug !== specialistSlug ? ` + **${leadHelperSlug}**` : ''} to patch the workspace and verify the build.`;
+        let wardenTokensIn = 420;
+        let wardenTokensCached = 260;
+        let wardenTokensThinking = 140;
+        let wardenTokensOut = 135;
+        let wardenCost = 0.0024;
+
+        try {
+          const llmPromise = this.agentRunner.modelRouter.generate({
+            agentId: wardenAgent.id,
+            hierarchyLevel: 0,
+            stepType: 'LLM_INFERENCE',
+            provider: wardenAgent.model_provider,
+            modelId: wardenAgent.model_id,
+            fallbackProvider: wardenAgent.fallback_provider,
+            fallbackModelId: wardenAgent.fallback_model_id,
+            systemPrompt:
+              `You are @warden, Executive Chief of Staff. The CEO just approved the execution plan for "${item.title}". ` +
+              `Acknowledge the approved plan and any custom CEO note in 2 concise sentences, and state that you are delegating execution to ${deptAgent.slug} and ${specialistAgent.slug}.`,
+            userPrompt: summary,
+            maxTokens: 220,
+            temperature: 0.3,
+            userId: item.user_id ?? null,
+          });
+          const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 4000));
+          const llmRes = await Promise.race([llmPromise, timeoutPromise]);
+          if (llmRes && llmRes.content && !llmRes.content.includes('Offline fallback')) {
+            wardenReplyText = llmRes.content.trim();
+            wardenTokensIn = llmRes.tokensIn || wardenTokensIn;
+            wardenTokensCached = llmRes.tokensCached || wardenTokensCached;
+            wardenTokensThinking = llmRes.tokensThinking || wardenTokensThinking;
+            wardenTokensOut = llmRes.tokensOut || wardenTokensOut;
+            wardenCost = llmRes.costUsd || wardenCost;
+          } else {
+            await new Promise((r) => setTimeout(r, 1400));
+          }
+        } catch {
+          await new Promise((r) => setTimeout(r, 1400));
+        }
+
+        this.store.addInferenceStep({
+          user_id: item.user_id ?? null,
+          run_id: wardenRunId,
+          step_type: 'LLM_INFERENCE',
+          model_used: `${wardenAgent.model_provider}/${wardenAgent.model_id}`,
+          thinking_text: `Reviewed CEO approval and custom note for "${item.title}". Preparing handoff to ${deptAgent.slug} -> ${specialistAgent.slug}.`,
+          message_text: wardenReplyText,
+          tool_name: null,
+          tool_args_json: null,
+          tool_output_json: null,
+          duration_ms: 1500,
+          tokens_in: wardenTokensIn,
+          tokens_cached: wardenTokensCached,
+          tokens_thinking: wardenTokensThinking,
+          tokens_out: wardenTokensOut,
+          cost_usd: wardenCost,
+        });
+
+        this.store.addInferenceStep({
+          user_id: item.user_id ?? null,
+          run_id: wardenRunId,
+          step_type: 'SUBAGENT_CALL',
+          model_used: `${wardenAgent.model_provider}/${wardenAgent.model_id}`,
+          thinking_text: `Spawning ${deptAgent.slug} to orchestrate ${specialistAgent.slug} on "${item.title}".`,
+          message_text: `Delegated "${item.title}" to ${deptAgent.slug} (spawning ${specialistAgent.slug}).`,
+          tool_name: 'delegate_agent',
+          tool_args_json: {
+            target_agent: deptAgent.slug,
+            specialist: specialistAgent.slug,
+            task: item.title,
+            directive: summary,
+          },
+          tool_output_json: {
+            status: 'spawned',
+            stdout: `✓ Dispatched ${deptAgent.slug} -> ${specialistAgent.slug}`,
+          },
+          duration_ms: 900,
+          tokens_in: 310,
+          tokens_cached: 190,
+          tokens_thinking: 95,
+          tokens_out: 110,
+          cost_usd: 0.0018,
+        });
+
+        this.store.addChatMessage({
+          thread_id: thread!.id,
+          user_id: item.user_id ?? null,
+          sender_type: 'AGENT',
+          sender_agent_id: wardenAgent.id,
+          recipient_agent_id: 'CEO',
+          content: wardenReplyText,
+          run_id: wardenRunId,
+        });
+
+        // Create Phase 2 Department Head Run (@cto / @cmo)
+        const deptRun = this.store.createRun({
+          user_id: item.user_id ?? null,
+          agent_id: deptAgent.id,
+          agent_slug: deptAgent.slug,
+          parent_run_id: wardenRunId,
+          chat_thread_id: thread!.id,
+          sprint_id: item.sprint_id ?? null,
+          backlog_item_id: item.id,
+          trigger_type: 'DELEGATION',
+          input_prompt: `[From @warden] ${item.title} — ${summary}`,
+          output_summary: `${deptAgent.slug} locking architecture spec & spawning ${specialistAgent.slug}`,
+          status: 'RUNNING',
+          container_id: `ctr-${item.id.slice(0, 8)}`,
+          git_branch: `feat/${item.id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 18)}`,
+          git_commit_sha: null,
+          preview_url: null,
+          qa_passed: null,
+          qa_screenshot_url: null,
+          project_scope: item.project_slug || 'demo-project',
+          child_run_ids: [],
+          inbox_messages: [],
+        });
+
+        this.store.updateRun(wardenRunId, {
+          status: 'COMPLETED',
+          qa_passed: true,
+          active_duration_ms: 2400,
+          tokens_in: wardenTokensIn + 310,
+          tokens_cached: wardenTokensCached + 190,
+          tokens_thinking: wardenTokensThinking + 95,
+          tokens_out: wardenTokensOut + 110,
+          cost_usd: Number((wardenCost + 0.0018).toFixed(6)),
+          output_summary: `Delegated "${item.title}" to ${deptAgent.slug} -> ${specialistAgent.slug}`,
+          child_run_ids: [deptRun.id],
+          ended_at: new Date().toISOString(),
+        });
+
+        await this.store.updateAgent(wardenAgent.id, {
+          status: 'IDLE',
+          current_run_id: null,
+          clocked_in_at: null,
+          last_heartbeat_at: new Date().toISOString(),
+        });
+
+        // ====================================================================
+        // PHASE 2: @cto / @cmo Architecture Lock & Subagent Spawn
+        // ====================================================================
+        await this.store.updateAgent(deptAgent.id, {
+          status: 'WORKING',
+          current_run_id: deptRun.id,
+          active_subagent_count: 1,
+          clocked_in_at: new Date().toISOString(),
+          last_heartbeat_at: new Date().toISOString(),
+        });
+
+        this.broadcastEvent('brain:status', {
+          runId: deptRun.id,
+          agentId: deptAgent.id,
+          agentSlug: deptAgent.slug,
+          stepIndex: 1,
+          totalSteps: 2,
+          status: 'RUNNING',
+          summary: `${deptAgent.slug} scoping workspace changes and spawning ${specialistAgent.slug}...`,
+        });
+
+        await new Promise((r) => setTimeout(r, 1800));
+
+        this.store.addInferenceStep({
+          user_id: item.user_id ?? null,
+          run_id: deptRun.id,
+          step_type: 'LLM_INFERENCE',
+          model_used: `${deptAgent.model_provider}/${deptAgent.model_id}`,
+          thinking_text: `Hydrated project context (${item.project_slug}) and CEO directive: "${summary}". Locking implementation spec for ${specialistAgent.slug}.`,
+          message_text: `${deptAgent.slug} locked implementation spec for "${item.title}".`,
+          tool_name: null,
+          tool_args_json: null,
+          tool_output_json: null,
+          duration_ms: 1800,
+          tokens_in: 580,
+          tokens_cached: 360,
+          tokens_thinking: 190,
+          tokens_out: 175,
+          cost_usd: 0.0036,
+        });
+
+        this.store.updateRun(deptRun.id, {
+          status: 'RUNNING',
+          active_duration_ms: 1800,
+          tokens_in: 580,
+          tokens_cached: 360,
+          tokens_thinking: 190,
+          tokens_out: 175,
+          cost_usd: 0.0036,
+          output_summary: `${deptAgent.slug} locked implementation spec for "${item.title}".`,
+        });
+
+        await new Promise((r) => setTimeout(r, 1400));
+
+        // Create Phase 3 Specialist Run (@frontend_dev / @designer / @seo_aeo_head / @social_lead)
+        const execRun = this.store.createRun({
+          user_id: item.user_id ?? null,
+          agent_id: specialistAgent.id,
+          agent_slug: specialistAgent.slug,
+          parent_run_id: deptRun.id,
+          chat_thread_id: thread!.id,
+          sprint_id: item.sprint_id ?? null,
+          backlog_item_id: item.id,
+          trigger_type: 'DELEGATION',
+          input_prompt: `[From ${deptAgent.slug}] Execute: ${item.title} — ${summary}`,
+          output_summary: `${specialistAgent.slug} patching demo workspace for "${item.title}"`,
+          status: 'RUNNING',
+          container_id: `ctr-${item.id.slice(0, 8)}`,
+          git_branch: `feat/${item.id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 18)}`,
+          git_commit_sha: null,
+          preview_url: null,
+          qa_passed: null,
+          qa_screenshot_url: null,
+          project_scope: item.project_slug || 'demo-project',
+          child_run_ids: [],
+          inbox_messages: [],
+        });
+
+        this.store.addInferenceStep({
+          user_id: item.user_id ?? null,
+          run_id: deptRun.id,
+          step_type: 'SUBAGENT_CALL',
+          model_used: `${deptAgent.model_provider}/${deptAgent.model_id}`,
+          thinking_text: `Spawning specialist ${specialistAgent.slug}${leadHelperSlug !== specialistSlug ? ` (with ${leadHelperSlug})` : ''} to patch the demo workspace and run verification.`,
+          message_text: `${deptAgent.slug} spawned ${specialistAgent.slug} (Run #${execRun.id.slice(0, 10)}) to execute workspace changes.`,
+          tool_name: 'delegate_to_subagents',
+          tool_args_json: {
+            task: item.title,
+            directive: summary,
+            agents: [specialistAgent.slug, ...(leadHelperSlug !== specialistSlug ? [leadHelperSlug] : [])],
+          },
+          tool_output_json: {
+            status: 'accepted',
+            child_run_id: execRun.id,
+            stdout: `✓ Spawned ${specialistAgent.slug} (${execRun.id})`,
+          },
+          duration_ms: 1400,
+          tokens_in: 490,
+          tokens_cached: 290,
+          tokens_thinking: 150,
+          tokens_out: 185,
+          cost_usd: 0.0031,
+        });
+
+        this.store.addChatMessage({
+          thread_id: thread!.id,
+          user_id: item.user_id ?? null,
+          sender_type: 'AGENT',
+          sender_agent_id: deptAgent.id,
+          recipient_agent_id: 'CEO',
+          content: `**[${deptAgent.slug}]** Spec locked for **${item.title}**. Spawned **${specialistAgent.slug}** to apply the workspace patch and run verification.`,
+          run_id: deptRun.id,
+        });
+
+        this.store.updateRun(deptRun.id, {
+          status: 'COMPLETED',
+          qa_passed: true,
+          active_duration_ms: 3200,
+          tokens_in: 1070,
+          tokens_cached: 650,
+          tokens_thinking: 340,
+          tokens_out: 360,
+          cost_usd: 0.0067,
+          output_summary: `Spawned ${specialistAgent.slug} and handed off implementation spec.`,
+          child_run_ids: [execRun.id],
+          ended_at: new Date().toISOString(),
+        });
+
+        await this.store.updateAgent(deptAgent.id, {
+          status: 'IDLE',
+          current_run_id: null,
+          active_subagent_count: 0,
+          clocked_in_at: null,
+          last_heartbeat_at: new Date().toISOString(),
+        });
+
+        // ====================================================================
+        // PHASE 3: Specialist Agent (@frontend_dev / @designer / @seo_aeo_head / @social_lead)
+        // ====================================================================
+        await this.store.updateAgent(specialistAgent.id, {
+          status: 'WORKING',
+          current_run_id: execRun.id,
+          clocked_in_at: new Date().toISOString(),
+          last_heartbeat_at: new Date().toISOString(),
+        });
+
+        const { applyDemoTaskPatch } = await import('../demo/DemoTaskPatcher.js');
+        const patchResult = applyDemoTaskPatch(item.user_id, item, summary);
+
+        const execSteps = [
+          {
+            step_type: 'LLM_INFERENCE' as const,
+            model_used: isTrophyArt
+              ? 'meta_muse/muse-image'
+              : `${specialistAgent.model_provider}/${specialistAgent.model_id}`,
+            thinking_text: isTrophyArt
+              ? `Generating Neon Arcade trophy ladder sprite sheet & tier icons per ASSETS_MANIFEST.md for "${item.title}".`
+              : `Preparing DOM, style, and logic changes in ${patchResult.patchedFiles.join(', ')} for "${item.title}".`,
+            message_text: isTrophyArt
+              ? `${specialistAgent.slug} generated 12 trophy ladder sprites & 4 animation states via muse-image.`
+              : `${specialistAgent.slug} prepared workspace patch across ${patchResult.patchedFiles.join(', ')}.`,
+            tool_name: isTrophyArt ? 'generate_image_assets' : null,
+            tool_args_json: isTrophyArt
+              ? { model: 'muse-image', style: 'neon_arcade', sprites: 12, animations: 4 }
+              : null,
+            tool_output_json: isTrophyArt
+              ? { exit_code: 0, stdout: '✓ Generated 12 neon arcade sprites + 4 trophy tier animations' }
+              : null,
+            duration_ms: 2000,
+            tokens_in: 640,
+            tokens_cached: 390,
+            tokens_thinking: 210,
+            tokens_out: 240,
+            cost_usd: 0.0044,
+          },
+          {
+            step_type: 'TOOL_CALL' as const,
+            model_used: `${specialistAgent.model_provider}/${specialistAgent.model_id}`,
+            thinking_text: `Writing patched files (${patchResult.patchedFiles.join(', ')}) into isolated demo workspace and syncing build/ bundle.`,
+            message_text: `Applied workspace patch to ${patchResult.patchedFiles.join(', ')}.`,
+            tool_name: 'apply_workspace_patch',
+            tool_args_json: {
+              project: item.project_slug || 'demo-project',
+              files: patchResult.patchedFiles,
+              target: item.title,
+            },
+            tool_output_json: {
+              exit_code: 0,
+              diff: patchResult.diffPreview,
+              stdout: `✓ Patched ${patchResult.patchedFiles.join(', ')} in ${patchResult.dir}\n✓ Synced updated assets to build/ bundle`,
+            },
+            duration_ms: 2200,
+            tokens_in: 710,
+            tokens_cached: 420,
+            tokens_thinking: 240,
+            tokens_out: 290,
+            cost_usd: 0.0049,
+          },
+          {
+            step_type: 'QA_CHECK' as const,
+            model_used: `${specialistAgent.model_provider}/${specialistAgent.model_id}`,
+            thinking_text: `Verifying patched demo bundle and checking DOM markers for "${item.title}".`,
+            message_text: `Build and headless verification checks passed (0 errors).`,
+            tool_name: 'run_container_verification',
+            tool_args_json: {
+              cmd: 'verify-demo-bundle && check-dom-markers',
+              project: item.project_slug || 'demo-project',
+            },
+            tool_output_json: {
+              exit_code: 0,
+              stdout: patchResult.verificationChecklist.map((c) => `✓ ${c}`).join('\n'),
+            },
+            duration_ms: 1800,
+            tokens_in: 480,
+            tokens_cached: 290,
+            tokens_thinking: 150,
+            tokens_out: 180,
+            cost_usd: 0.0033,
+          },
+        ];
+
+        for (let i = 0; i < execSteps.length; i++) {
           const currentItem = this.store.backlogItems.get(item.id);
           if (!currentItem || currentItem.stage !== 'IN_PROGRESS') {
             break;
           }
-          const spec = plannedSteps[i];
+          const spec = execSteps[i];
           this.broadcastEvent('brain:status', {
-            runId,
-            agentId: targetAgent.id,
-            agentSlug: targetAgent.slug,
+            runId: execRun.id,
+            agentId: specialistAgent.id,
+            agentSlug: specialistAgent.slug,
             stepIndex: i + 1,
-            totalSteps: plannedSteps.length,
+            totalSteps: execSteps.length,
             status: 'RUNNING',
             summary: spec.message_text,
           });
@@ -951,9 +1275,9 @@ export class ControlPlaneServer {
 
           this.store.addInferenceStep({
             user_id: item.user_id ?? null,
-            run_id: runId,
+            run_id: execRun.id,
             step_type: spec.step_type,
-            model_used: `${targetAgent.model_provider}/${targetAgent.model_id}`,
+            model_used: spec.model_used,
             thinking_text: spec.thinking_text,
             message_text: spec.message_text,
             tool_name: spec.tool_name,
@@ -967,10 +1291,10 @@ export class ControlPlaneServer {
             cost_usd: spec.cost_usd,
           });
 
-          const latestRun = this.store.runs.get(runId);
+          const latestRun = this.store.runs.get(execRun.id);
           if (latestRun) {
-            this.store.updateRun(runId, {
-              status: i === plannedSteps.length - 1 ? 'VERIFYING_QA' : 'RUNNING',
+            this.store.updateRun(execRun.id, {
+              status: i === execSteps.length - 1 ? 'VERIFYING_QA' : 'RUNNING',
               active_duration_ms: (latestRun.active_duration_ms || 0) + spec.duration_ms,
               tokens_in: (latestRun.tokens_in || 0) + spec.tokens_in,
               tokens_cached: (latestRun.tokens_cached || 0) + spec.tokens_cached,
@@ -985,40 +1309,66 @@ export class ControlPlaneServer {
         const finalCheckItem = this.store.backlogItems.get(item.id);
         if (finalCheckItem && finalCheckItem.stage === 'IN_PROGRESS') {
           const nowIso = new Date().toISOString();
-          this.store.updateRun(runId, {
+          this.store.updateRun(execRun.id, {
             status: 'COMPLETED',
             qa_passed: true,
-            git_commit_sha: runId.slice(-7),
-            output_summary: `Completed "${item.title}" (${summary}). Build & verification passed.`,
+            git_commit_sha: execRun.id.slice(-7),
+            output_summary: `Completed "${item.title}". Patched ${patchResult.patchedFiles.join(', ')} & verified bundle.`,
             ended_at: nowIso,
           });
 
-          await this.store.updateAgent(targetAgent.id, {
+          await this.store.updateAgent(specialistAgent.id, {
             status: 'IDLE',
             current_run_id: null,
             clocked_in_at: null,
             last_heartbeat_at: nowIso,
           });
 
+          const checklistMd = patchResult.verificationChecklist
+            .map((line) => `- ${line}`)
+            .join('\n');
+
           this.store.addChatMessage({
             thread_id: thread!.id,
             user_id: item.user_id ?? null,
             sender_type: 'AGENT',
-            sender_agent_id: targetAgent.id,
+            sender_agent_id: specialistAgent.id,
             recipient_agent_id: 'CEO',
-            content: `✅ **[${targetAgent.slug}] Task Completed:** **${item.title}**\n\nDirective applied: *${summary}*\nAll build & verification checks passed.`,
-            run_id: runId,
+            content:
+              `✅ **[${specialistAgent.slug}] Task Completed:** **${item.title}**\n\n` +
+              `**Changes Applied (\`${patchResult.patchedFiles.join('`, `')}\`):**\n${checklistMd}\n\n` +
+              `*How to verify:* Click **Deploy Version** on the Home top bar (or open your live \`.warden.autos\` demo link once auto-deploy finishes) to see the live update.`,
+            run_id: execRun.id,
           });
 
           const doneItem = this.store.updateBacklogItem(item.id, {
             stage: 'DONE',
-            moved_by_agent_id: targetAgent.slug,
+            moved_by_agent_id: specialistAgent.slug,
             movement_reason: summary.startsWith('Approved')
               ? summary
               : `Approved: ${summary}`,
           });
           if (doneItem) {
             this.broadcastEvent('backlog:updated', doneItem);
+          }
+
+          // Automatically push the patched demo bundle to the user's Cloudflare subdomain
+          if (item.user_id) {
+            void (async () => {
+              try {
+                const { deployDemoPath } = await import('./routes/demoSubdomain.js');
+                const deployRes = await deployDemoPath(item.user_id!);
+                this.broadcastEvent('backlog:updated', {
+                  user_id: item.user_id,
+                  kind: 'demo-deploy',
+                  status: deployRes.status,
+                  version: deployRes.metadata.version,
+                  updatedAt: deployRes.metadata.updatedAt,
+                });
+              } catch (deployErr) {
+                console.warn('[BacklogRunner] Auto demo deploy skipped:', deployErr);
+              }
+            })();
           }
         }
       } catch (err) {

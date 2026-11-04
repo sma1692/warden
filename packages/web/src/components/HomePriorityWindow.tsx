@@ -432,19 +432,16 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
   };
 
   const handleResolveItem = (item: PriorityDecisionItem, level: ConsultationLevel) => {
-    let summary = '';
-    if (level === 1) {
-      summary = `Approved "${item.decisiveTitle}"`;
-    } else {
-      const chosenOpt =
-        item.options.find((o) => o.id === selectedOptionById[item.id]) ||
-        item.options[0];
-      const coPill = level === 3 ? ` + [${selectedCoPillById[item.id]}]` : '';
-      const note = customNoteById[item.id]?.trim()
-        ? ` — CEO Note: "${customNoteById[item.id].trim()}"`
-        : '';
-      summary = `Approved ${chosenOpt.label}${coPill}${note}`;
-    }
+    const chosenOpt =
+      item.options.find((o) => o.id === selectedOptionById[item.id]) ||
+      item.options[0];
+    const cleanDecisionLabel = chosenOpt.label.replace(/^[A-C]\.\s*/, '');
+    const deliveryTarget = selectedCoPillById[item.id] || item.coArchitectPills[0];
+    const rawNote = customNoteById[item.id]?.trim() || '';
+    const basePlan = `Approved Plan for "${item.decisiveTitle}": ${cleanDecisionLabel} (${chosenOpt.summary}) • Delivery: ${deliveryTarget}`;
+    const summary = rawNote
+      ? `${basePlan}\nCEO Note for @warden: "${rawNote}"`
+      : basePlan;
 
     setResolvedById((prev) => ({
       ...prev,
@@ -462,7 +459,7 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
     if (onApproveBacklogItem) {
       void onApproveBacklogItem(matchedBacklogItem ? matchedBacklogItem.id : item.id, summary);
     }
-    onDecisionRecorded?.(`${item.agentSlug}: ${summary}`);
+    onDecisionRecorded?.(`@warden: ${summary}`);
   };
 
   const getVerticalBadgeStyle = (vertical: 'TECH' | 'SEO_AEO' | 'SOCIAL') => {
@@ -810,94 +807,54 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
                 </div>
               ) : (
               <>
-              {/* Options & Co-Design Details */}
+              {/* Read-Only Proposed Plan & Final Decisions */}
               <div className="space-y-3 pt-1">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--surface-accent-gold)]">
-                    <HelpCircle className="h-3.5 w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
-                    <span>{activeModalItem.questionTitle}</span>
-                  </div>
-                  <span className="rounded bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/30 px-2 py-0.5 text-[10px] font-mono text-[var(--surface-accent-gold)]">
-                    {activeModalItem.principleTag}
-                  </span>
-                </div>
-                <p className="text-xs text-[var(--surface-text-secondary)]">
-                  {activeModalItem.questionPrompt}
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {activeModalItem.options.map((opt) => {
-                    const isSelected = selectedOptId === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() =>
-                          setSelectedOptionById((prev) => ({
-                            ...prev,
-                            [activeModalItem.id]: opt.id,
-                          }))
-                        }
-                        className={`rounded-xl border p-2.5 text-left transition cursor-pointer flex flex-col justify-between gap-1.5 ${
-                          isSelected
-                            ? 'border-[var(--surface-accent)] bg-[var(--surface-accent)]/10 shadow-xs ring-1 ring-[var(--surface-accent)]/50'
-                            : 'border-[var(--surface-border)] bg-[var(--surface-muted)] hover:border-[var(--surface-border-strong)]'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-1.5">
-                          <span
-                            className={`text-xs font-bold leading-snug ${
-                              isSelected ? 'text-[var(--surface-accent)]' : 'text-[var(--surface-text)]'
-                            }`}
-                          >
-                            {opt.label}
-                          </span>
-                          {opt.recommended && (
-                            <span className="shrink-0 rounded bg-[var(--surface-accent-gold)]/20 border border-[var(--surface-accent-gold)]/40 px-1.5 py-0.2 text-[9px] font-mono font-bold text-[var(--surface-accent-gold)]">
-                              Rec
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-[var(--surface-text-secondary)] leading-relaxed">
-                          {opt.summary}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {vLevel === 3 && (
-                  <div className="rounded-xl border border-[var(--surface-accent-gold)]/35 bg-[var(--surface-accent-gold)]/10 p-3 space-y-2">
-                    <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-[var(--surface-accent-gold)]">
-                      <Sparkles className="h-3.5 w-3.5 text-[var(--surface-accent-gold)]" />
-                      <span>{activeModalItem.coArchitectFollowUp}</span>
+                <div className="rounded-xl border border-[var(--surface-accent-gold)]/35 bg-[var(--surface-accent-gold)]/8 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--surface-accent-gold)]">
+                      <Sparkles className="h-3.5 w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
+                      <span>Proposed Execution Plan &amp; Final Decisions</span>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {activeModalItem.coArchitectPills.map((pill) => {
-                        const active = selectedCoPill === pill;
-                        return (
-                          <button
-                            key={pill}
-                            type="button"
-                            onClick={() =>
-                              setSelectedCoPillById((prev) => ({
-                                ...prev,
-                                [activeModalItem.id]: pill,
-                              }))
-                            }
-                            className={`rounded-lg border px-2.5 py-1 text-[11px] font-mono transition cursor-pointer ${
-                              active
-                                ? 'border-[var(--surface-accent)] bg-[var(--surface-accent)] text-white font-semibold shadow-xs'
-                                : 'border-[var(--surface-border)] bg-[var(--surface-panel)] text-[var(--surface-text-secondary)] hover:text-[var(--surface-text)]'
-                            }`}
-                          >
-                            {pill}
-                          </button>
-                        );
-                      })}
+                    <span className="rounded bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/30 px-2 py-0.5 text-[10px] font-mono text-[var(--surface-accent-gold)]">
+                      {activeModalItem.principleTag}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs text-[var(--surface-text)] leading-relaxed">
+                    <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-2.5 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--surface-text-muted)]">
+                          Locked Scope ({activeModalItem.questionTitle})
+                        </span>
+                        <span className="rounded bg-[var(--surface-accent-gold)]/20 border border-[var(--surface-accent-gold)]/40 px-1.5 py-0.2 text-[9px] font-mono font-bold text-[var(--surface-accent-gold)]">
+                          Final Decision
+                        </span>
+                      </div>
+                      <p className="font-bold text-[var(--surface-text)]">
+                        {chosenOpt.label.replace(/^[A-C]\.\s*/, '')}
+                      </p>
+                      <p className="text-[11px] text-[var(--surface-text-secondary)]">
+                        {chosenOpt.summary}
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-2.5 space-y-1">
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--surface-text-muted)] block">
+                        {activeModalItem.coArchitectFollowUp}
+                      </span>
+                      <p className="font-semibold text-[var(--surface-text)]">
+                        {selectedCoPill}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-0.5 text-[11px] font-mono text-[var(--surface-text-secondary)]">
+                      <span>Execution Chain:</span>
+                      <span className="text-[var(--surface-accent-gold)] font-semibold">
+                        @warden → {activeModalItem.vertical === 'TECH' ? '@cto' : '@cmo'} → {activeModalItem.agentSlug}
+                      </span>
                     </div>
                   </div>
-                )}
+                </div>
 
                 <div className="relative">
                   <MessageSquarePlus className="h-3.5 w-3.5 text-[var(--surface-text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
@@ -910,7 +867,7 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
                         [activeModalItem.id]: e.target.value,
                       }))
                     }
-                    placeholder={`Add custom note for ${activeModalItem.agentSlug} (optional)...`}
+                    placeholder="Add custom note for @warden (optional, appended to kickoff chat)..."
                     className="w-full rounded-xl bg-[var(--surface-muted)] border border-[var(--surface-border)] pl-8 pr-3 py-2 text-xs text-[var(--surface-text)] placeholder:text-[var(--surface-text-muted)] focus:outline-none focus:border-[var(--surface-accent)]"
                   />
                 </div>

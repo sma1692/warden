@@ -1134,8 +1134,13 @@ export const App: React.FC<AppProps> = ({
                       const spawned = await apiClient.spawnDemoTaskRun(itemId, summary);
                       await refreshAllData();
                       if (spawned) {
+                        setThreads((prev) => [
+                          spawned.thread,
+                          ...prev.filter((t) => t.id !== spawned.thread.id),
+                        ]);
+                        handleOpenThreadByObject(spawned.thread);
                         showToast(
-                          `Spawning team for "${spawned.item.title}" — live in Activity.`
+                          `Spawning team for "${spawned.item.title}" in @warden chat & Activity.`
                         );
                       }
                     }}
