@@ -180,3 +180,19 @@ npm run build
 
 Warden started as the founder's private, multi-project command center. The reusable framework was extracted, sanitized, and published to this repository on 2026-10-27 (the first commit here is that import), and development has continued in this repository since. Later commits remove features that depended on the private setup (multi-repo mirrors, GitHub and Telegram integrations, non-Meta model providers).
 
+---
+
+## 11. Roadmap
+
+- **Code connectors** — GitHub, GitLab, Bitbucket, plus custom git remotes. Branch-per-task agent workflows, draft PRs, CI status webhooks, and review comments flowing back into agent memory.
+- **Social connectors** — X, LinkedIn, YouTube, and short-form video. Launch assets get cross-posted and scheduled from one brief, with reach and engagement synced back for the next cycle.
+- **Social media planner board** — Visual content calendar for planning, drafting, and scheduling posts across every channel. Drag-and-drop weeks, asset attachments, approval gates before anything publishes, and performance synced back into company memory.
+- **Organizations & team multitenancy** — Create your company workspace, invite employees, and pair each person with their own AI subagent team. Shared budgets, roles, and company memory across the org, with per-member visibility into what their agents shipped.
+- **User API tokens + usage flow** — Scoped personal API tokens with rate limits so teams can drive Warden programmatically. Per-user, per-agent, and per-department token metering against budgets, spend alerts, and credit top-up to replace the current coming-soon placeholder in Settings.
+- **Cloud connectors (deploy on your infra)** — AWS, GCP, Cloudflare, Fly, Vercel. Previews and production releases deploy into the customer's own accounts with BYO-cloud credentials instead of Warden-hosted infra.
+- **Company-brain ingest connectors** — Notion, Linear, Jira, Google Drive, Slack history. Company docs and decisions land in memory without manual pasting.
+- **Messaging command channels** — Slack and Discord bots plus push approvals, so gates and standup sign-offs resolve from chat or phone.
+- **Enterprise trust** — SSO/SAML, SCIM, role-based access, immutable audit log, data-retention controls, and a self-hosted single-binary/VPC option.
+- **Agent quality guardrails** — Golden-task eval suite and regression gates so prompt or model changes prove themselves before rolling out to the hierarchy.
+- **Agent marketplace** — Versioned, shareable agent packs and skills teams can install instead of building hierarchies from scratch.
+

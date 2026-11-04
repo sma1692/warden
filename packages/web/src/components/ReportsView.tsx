@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -19,6 +19,7 @@ import {
   Share2,
   Sparkles,
   Terminal,
+  Users,
   Zap,
 } from 'lucide-react';
 import { apiClient } from '../api/client';
@@ -37,7 +38,19 @@ import { TokenBreakdownBar } from './TokenBreakdownBar';
 interface ReportsViewProps {
   activeVertical?: VerticalScope;
   agents?: Agent[];
+  runs?: AgentRun[];
   backlogItems?: BacklogItem[];
+  focusedRunId?: string | null;
+  focusedBacklogItemId?: string | null;
+  onFocusConsumed?: () => void;
+  liveBrainStatus?: {
+    runId: string;
+    agentSlug?: string;
+    stepIndex?: number;
+    totalSteps?: number;
+    summary?: string;
+    taskTitle?: string;
+  } | null;
   onTriggerStandupNow?: () => Promise<void>;
   onOpenBacklog?: () => void;
   onOpenBacklogItem?: (itemId: string) => void;
@@ -52,10 +65,53 @@ interface ReportsViewProps {
 
 type StatusFilter = 'ALL' | 'RUNNING' | 'COMPLETED';
 
+type AnnotatedStep = InferenceStep & {
+  _agentSlug?: string;
+  _runId?: string;
+};
+
+function sortAgentRuns(list: AgentRun[]): AgentRun[] {
+  return [...list].sort((a, b) => {
+    const aLive = a.status === 'RUNNING' || a.status === 'VERIFYING_QA' ? 1 : 0;
+    const bLive = b.status === 'RUNNING' || b.status === 'VERIFYING_QA' ? 1 : 0;
+    if (aLive !== bLive) return bLive - aLive;
+    return (b.started_at || '').localeCompare(a.started_at || '');
+  });
+}
+
+function safeRunDurationMs(r: AgentRun): number {
+  const raw = Number(r.active_duration_ms || 0);
+  if (Number.isFinite(raw) && raw > 0 && raw <= 3_600_000) return raw;
+  const start = Date.parse(r.started_at || '');
+  const end = Date.parse(r.ended_at || '');
+  if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+    return Math.min(300_000, end - start);
+  }
+  return raw > 3_600_000 ? 18_400 : 0;
+}
+
 function classifyAgentVertical(
   agentIdOrSlug?: string | null,
-  department?: string | null
+  department?: string | null,
+  promptOrTask?: string | null
 ): Exclude<VerticalScope, 'ALL'> {
+  const p = (promptOrTask || '').toLowerCase();
+  if (
+    p.includes('seo') ||
+    p.includes('aeo') ||
+    p.includes('faq schema') ||
+    p.includes('llms.txt')
+  ) {
+    return 'SEO_AEO';
+  }
+  if (
+    p.includes('social') ||
+    p.includes('visuals') ||
+    p.includes('clips') ||
+    p.includes('launch thread')
+  ) {
+    return 'SOCIAL';
+  }
   const s = `${agentIdOrSlug || ''} ${department || ''}`.toLowerCase();
   if (s.includes('seo') || s.includes('aeo') || s.includes('cbo')) return 'SEO_AEO';
   if (s.includes('social') || s.includes('cmo') || s.includes('marketing')) return 'SOCIAL';
@@ -89,18 +145,30 @@ const VERTICAL_BADGE_STYLE: Record<
 export const ReportsView: React.FC<ReportsViewProps> = ({
   activeVertical = 'ALL',
   agents: externalAgents,
+  runs: externalRuns,
   backlogItems = [],
+  focusedRunId,
+  focusedBacklogItemId,
+  onFocusConsumed,
+  liveBrainStatus: externalLiveBrainStatus,
   onOpenBacklogItem,
   onOpenChatWithAgent,
-  onInspectAgent,
 }) => {
   const [localVertical, setLocalVertical] = useFollowedVertical(activeVertical);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [runs, setRuns] = useState<AgentRun[]>(() =>
+    sortAgentRuns(externalRuns || [])
+  );
   const [agents, setAgents] = useState<Agent[]>(externalAgents || []);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [steps, setSteps] = useState<InferenceStep[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => {
+    const initial = sortAgentRuns(externalRuns || []);
+    const firstLive = initial.find(
+      (r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA'
+    );
+    return focusedRunId || firstLive?.id || initial[0]?.id || null;
+  });
+  const [steps, setSteps] = useState<AnnotatedStep[]>([]);
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
   const [liveBrainStatus, setLiveBrainStatus] = useState<{
     runId: string;
@@ -108,14 +176,105 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     stepIndex?: number;
     totalSteps?: number;
     summary?: string;
-  } | null>(null);
+    taskTitle?: string;
+  } | null>(externalLiveBrainStatus || null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const traceInspectorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (externalAgents && externalAgents.length > 0) {
       setAgents(externalAgents);
     }
   }, [externalAgents]);
+
+  useEffect(() => {
+    if (externalLiveBrainStatus) {
+      setLiveBrainStatus(externalLiveBrainStatus);
+    }
+  }, [externalLiveBrainStatus]);
+
+  useEffect(() => {
+    if (externalRuns && externalRuns.length > 0) {
+      const sorted = sortAgentRuns(externalRuns);
+      setRuns(sorted);
+      setSelectedRunId((prev) => {
+        if (prev && sorted.some((r) => r.id === prev)) {
+          const current = sorted.find((r) => r.id === prev);
+          if (current?.status === 'COMPLETED') {
+            const liveInChain = sorted.find(
+              (r) =>
+                (r.parent_run_id === prev ||
+                  (current.backlog_item_id &&
+                    r.backlog_item_id === current.backlog_item_id)) &&
+                (r.status === 'RUNNING' || r.status === 'VERIFYING_QA')
+            );
+            if (liveInChain) return liveInChain.id;
+          }
+          return prev;
+        }
+        const firstLive = sorted.find(
+          (r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA'
+        );
+        return firstLive?.id || sorted[0]?.id || null;
+      });
+    }
+  }, [externalRuns]);
+
+  useEffect(() => {
+    if (!focusedRunId && !focusedBacklogItemId) return;
+    if (focusedRunId) {
+      setSelectedRunId(focusedRunId);
+      setStatusFilter('ALL');
+      setLocalVertical('ALL');
+      setSearchQuery('');
+      onFocusConsumed?.();
+      return;
+    }
+    if (focusedBacklogItemId && runs.length > 0) {
+      const matchingChain = runs.filter(
+        (r) => r.backlog_item_id === focusedBacklogItemId
+      );
+      const activeMatch =
+        matchingChain.find(
+          (r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA'
+        ) || matchingChain[0];
+      if (activeMatch) {
+        setSelectedRunId(activeMatch.id);
+        setStatusFilter('ALL');
+        setLocalVertical('ALL');
+        setSearchQuery('');
+        onFocusConsumed?.();
+      }
+    }
+  }, [focusedRunId, focusedBacklogItemId, runs, onFocusConsumed, setLocalVertical]);
+
+  const agentByIdOrSlug = useCallback(
+    (idOrSlug?: string | null): Agent | undefined => {
+      if (!idOrSlug) return undefined;
+      const clean = idOrSlug.replace(/^@/, '');
+      return agents.find(
+        (a) =>
+          a.id === idOrSlug ||
+          a.id === clean ||
+          a.slug === idOrSlug ||
+          a.slug === `@${clean}`
+      );
+    },
+    [agents]
+  );
+
+  const getChainRunsForRun = useCallback(
+    (targetRun: AgentRun | null | undefined, allRuns: AgentRun[]): AgentRun[] => {
+      if (!targetRun) return [];
+      if (targetRun.backlog_item_id) {
+        return allRuns
+          .filter((r) => r.backlog_item_id === targetRun.backlog_item_id)
+          .sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''));
+      }
+      return [targetRun];
+    },
+    []
+  );
 
   const loadActivity = useCallback(async () => {
     const [loadedRuns, loadedAgents] = await Promise.all([
@@ -124,12 +283,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         ? Promise.resolve(externalAgents)
         : apiClient.getAgents(),
     ]);
-    const sorted = [...loadedRuns].sort((a, b) => {
-      const aLive = a.status === 'RUNNING' || a.status === 'VERIFYING_QA' ? 1 : 0;
-      const bLive = b.status === 'RUNNING' || b.status === 'VERIFYING_QA' ? 1 : 0;
-      if (aLive !== bLive) return bLive - aLive;
-      return (b.started_at || '').localeCompare(a.started_at || '');
-    });
+    const sorted = sortAgentRuns(loadedRuns);
     setRuns(sorted);
     setAgents(loadedAgents);
     setSelectedRunId((prev) => {
@@ -141,7 +295,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           if (current.status === 'COMPLETED') {
             const liveChild = sorted.find(
               (r) =>
-                r.parent_run_id === prev &&
+                (r.parent_run_id === prev ||
+                  (current.backlog_item_id &&
+                    r.backlog_item_id === current.backlog_item_id)) &&
                 (r.status === 'RUNNING' || r.status === 'VERIFYING_QA')
             );
             if (liveChild) return liveChild.id;
@@ -156,23 +312,61 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     });
   }, [externalAgents]);
 
-  const loadStepsForSelected = useCallback(async (runId: string | null) => {
-    if (!runId) {
-      setSteps([]);
-      return;
-    }
-    const loadedSteps = await apiClient.getInferenceSteps(runId);
-    setSteps(loadedSteps);
-    setExpandedSteps((prev) => {
-      const next = { ...prev };
-      for (const s of loadedSteps) {
-        if (next[s.id] === undefined) {
-          next[s.id] = true;
-        }
+  const loadStepsForSelected = useCallback(
+    async (runId: string | null) => {
+      if (!runId) {
+        setSteps([]);
+        return;
       }
-      return next;
-    });
-  }, []);
+      const targetRun = runs.find((r) => r.id === runId);
+      const chainRuns =
+        targetRun && targetRun.backlog_item_id
+          ? runs
+              .filter((r) => r.backlog_item_id === targetRun.backlog_item_id)
+              .sort((a, b) =>
+                (a.started_at || '').localeCompare(b.started_at || '')
+              )
+          : targetRun
+            ? [targetRun]
+            : [];
+
+      const runsToLoad =
+        chainRuns.length > 0
+          ? chainRuns
+          : [{ id: runId, agent_id: targetRun?.agent_id || 'warden' } as AgentRun];
+
+      const stepLists = await Promise.all(
+        runsToLoad.map(async (r) => {
+          const rSteps = await apiClient.getInferenceSteps(r.id);
+          const ag = agentByIdOrSlug(r.agent_id);
+          const slug =
+            ag?.slug ||
+            (r.agent_id?.startsWith('@') ? r.agent_id : `@${r.agent_id}`);
+          return rSteps
+            .slice()
+            .sort((a, b) => (a.step_index || 0) - (b.step_index || 0))
+            .map((s) => ({
+              ...s,
+              _agentSlug: slug,
+              _runId: r.id,
+            }));
+        })
+      );
+
+      const combinedSteps = stepLists.flat();
+      setSteps(combinedSteps);
+      setExpandedSteps((prev) => {
+        const next = { ...prev };
+        for (const s of combinedSteps) {
+          if (next[s.id] === undefined) {
+            next[s.id] = true;
+          }
+        }
+        return next;
+      });
+    },
+    [runs, agentByIdOrSlug]
+  );
 
   useEffect(() => {
     void loadActivity();
@@ -191,6 +385,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           stepIndex?: number;
           totalSteps?: number;
           summary?: string;
+          taskTitle?: string;
         };
         if (data.runId) {
           setLiveBrainStatus({
@@ -199,6 +394,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             stepIndex: data.stepIndex,
             totalSteps: data.totalSteps,
             summary: data.summary,
+            taskTitle: data.taskTitle,
           });
         }
       }
@@ -211,18 +407,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         void loadActivity();
         if (evt.type === 'STEP_CREATED' && evt.data) {
           const step = evt.data as InferenceStep;
-          if (step.run_id && step.run_id === selectedRunId) {
-            setSteps((prev) =>
-              prev.some((s) => s.id === step.id) ? prev : [...prev, step]
-            );
+          if (step.run_id && selectedRunId) {
             setExpandedSteps((prev) =>
               prev[step.id] !== undefined ? prev : { ...prev, [step.id]: true }
             );
             void loadStepsForSelected(selectedRunId);
           }
         } else if (evt.type === 'RUN_UPDATED' && evt.data) {
-          const run = evt.data as AgentRun;
-          if (run.id === selectedRunId) {
+          if (selectedRunId) {
             void loadStepsForSelected(selectedRunId);
           }
         }
@@ -230,21 +422,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     });
     return unsubscribe;
   }, [loadActivity, loadStepsForSelected, selectedRunId]);
-
-  const agentByIdOrSlug = useCallback(
-    (idOrSlug?: string | null): Agent | undefined => {
-      if (!idOrSlug) return undefined;
-      const clean = idOrSlug.replace(/^@/, '');
-      return agents.find(
-        (a) =>
-          a.id === idOrSlug ||
-          a.id === clean ||
-          a.slug === idOrSlug ||
-          a.slug === `@${clean}`
-      );
-    },
-    [agents]
-  );
 
   const liveRuns = useMemo(
     () =>
@@ -270,7 +447,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       const ag = agentByIdOrSlug(run.agent_id);
       const vertical = classifyAgentVertical(
         ag?.slug || run.agent_id,
-        ag?.department
+        ag?.department,
+        `${run.input_prompt || ''} ${run.output_summary || ''} ${run.backlog_item_id || ''}`
       );
       if (localVertical !== 'ALL' && vertical !== localVertical) {
         return false;
@@ -310,15 +488,22 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return backlogItems.find((b) => b.id === selectedRun.backlog_item_id);
   }, [selectedRun, backlogItems]);
 
-  const delegationChain = useMemo(() => {
-    if (!selectedRun) return [];
-    if (selectedRun.backlog_item_id) {
-      return runs
-        .filter((r) => r.backlog_item_id === selectedRun.backlog_item_id)
-        .sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''));
+  const delegationChain = useMemo(
+    () => getChainRunsForRun(selectedRun, runs),
+    [selectedRun, runs, getChainRunsForRun]
+  );
+
+  const handleSelectRunAndInspect = useCallback((runId: string) => {
+    setSelectedRunId(runId);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      window.setTimeout(() => {
+        traceInspectorRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }, 60);
     }
-    return [];
-  }, [runs, selectedRun]);
+  }, []);
 
   // Real-time 1.5s polling while any run is active so the Brain Trace updates
   // live even if WebSocket frames are buffered or reconnected.
@@ -492,7 +677,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <button
                     key={run.id}
                     type="button"
-                    onClick={() => setSelectedRunId(run.id)}
+                    onClick={() => handleSelectRunAndInspect(run.id)}
                     className={`text-left rounded-xl border p-3 transition cursor-pointer ${
                       isSelected
                         ? 'border-[var(--semantic-success)] bg-[var(--semantic-success)]/10 ring-1 ring-[var(--semantic-success)]/40'
@@ -528,7 +713,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         <div className="lg:col-span-5 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] overflow-hidden shadow-sm">
           <div className="border-b border-[var(--surface-border)] bg-[var(--surface-elevated)] px-4 py-3 flex items-center justify-between">
             <span className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)]">
-              Agent Execution Feed ({filteredRuns.length})
+              Agent Execution &amp; Past Activity ({filteredRuns.length})
             </span>
             <span className="text-[11px] font-mono text-[var(--surface-accent-gold)]">
               WebSocket Live
@@ -547,88 +732,144 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 </p>
               </div>
             ) : (
-              filteredRuns.map((run) => {
+              filteredRuns.map((run, idx) => {
                 const ag = agentByIdOrSlug(run.agent_id);
                 const slug = ag?.slug || `@${run.agent_id}`;
-                const vertical = classifyAgentVertical(slug, ag?.department);
+                const vertical = classifyAgentVertical(
+                  slug,
+                  ag?.department,
+                  `${run.input_prompt || ''} ${run.output_summary || ''} ${run.backlog_item_id || ''}`
+                );
                 const vBadge = VERTICAL_BADGE_STYLE[vertical];
                 const isSelected = selectedRun?.id === run.id;
                 const isLive =
                   run.status === 'RUNNING' || run.status === 'VERIFYING_QA';
-                const totalTokens =
-                  (run.tokens_in || 0) +
-                  (run.tokens_thinking || 0) +
-                  (run.tokens_out || 0);
+                const prevRun = idx > 0 ? filteredRuns[idx - 1] : null;
+                const prevIsLive =
+                  prevRun &&
+                  (prevRun.status === 'RUNNING' || prevRun.status === 'VERIFYING_QA');
+                const showPastHeader =
+                  !isLive && (idx === 0 || Boolean(prevIsLive));
+
+                const taskChain = getChainRunsForRun(run, runs);
+                const chainAgentSlugs = Array.from(
+                  new Set(
+                    (taskChain.length > 0 ? taskChain : [run]).map((r) => {
+                      const chainAg = agentByIdOrSlug(r.agent_id);
+                      return (
+                        chainAg?.slug ||
+                        (r.agent_id.startsWith('@') ? r.agent_id : `@${r.agent_id}`)
+                      );
+                    })
+                  )
+                );
+                const chainRunsForStats = taskChain.length > 0 ? taskChain : [run];
+                const chainTokens = chainRunsForStats.reduce(
+                  (sum, r) =>
+                    sum +
+                    (r.tokens_in || 0) +
+                    (r.tokens_thinking || 0) +
+                    (r.tokens_out || 0),
+                  0
+                );
+                const chainDurationMs = chainRunsForStats.reduce(
+                  (sum, r) => sum + safeRunDurationMs(r),
+                  0
+                );
+                const chainCostUsd = chainRunsForStats.reduce(
+                  (sum, r) => sum + (r.cost_usd || 0),
+                  0
+                );
 
                 return (
-                  <button
-                    key={run.id}
-                    type="button"
-                    onClick={() => setSelectedRunId(run.id)}
-                    className={`w-full text-left p-4 transition cursor-pointer block ${
-                      isSelected
-                        ? 'bg-[var(--surface-accent-gold)]/10 border-l-4 border-l-[var(--surface-accent-gold)]'
-                        : 'hover:bg-[var(--surface-elevated)]'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-xs font-bold text-[var(--surface-accent-gold)]">
-                          {slug}
-                        </span>
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${vBadge.className}`}
-                        >
-                          {vBadge.icon}
-                          <span>{vBadge.label}</span>
-                        </span>
+                  <React.Fragment key={run.id}>
+                    {showPastHeader && (
+                      <div className="bg-[var(--surface-elevated)]/80 px-4 py-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
+                        <span>Past &amp; Completed Activity</span>
+                        <span>Click any card to open Brain Trace</span>
                       </div>
-
-                      {isLive ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--semantic-success)]/15 border border-[var(--semantic-success)]/40 px-2 py-0.5 text-[10px] font-mono font-bold text-[var(--semantic-success)]">
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--semantic-success)] animate-pulse" />
-                          <span>{run.status === 'VERIFYING_QA' ? 'QA CHECK' : 'RUNNING'}</span>
-                        </span>
-                      ) : run.status === 'COMPLETED' ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/35 px-2 py-0.5 text-[10px] font-mono font-semibold text-[var(--surface-accent-gold)]">
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span>COMPLETED</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--semantic-alert)]/15 border border-[var(--semantic-alert)]/35 px-2 py-0.5 text-[10px] font-mono font-semibold text-[var(--semantic-alert)]">
-                          <AlertTriangle className="h-3 w-3" />
-                          <span>{run.status}</span>
-                        </span>
-                      )}
-                    </div>
-
-                    <h3 className="text-xs sm:text-sm font-bold text-[var(--text-main)] leading-snug line-clamp-2">
-                      {run.input_prompt}
-                    </h3>
-
-                    {run.output_summary && (
-                      <p className="text-[11px] text-[var(--text-muted)] mt-1 line-clamp-2">
-                        {run.output_summary}
-                      </p>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => handleSelectRunAndInspect(run.id)}
+                      className={`w-full text-left p-4 transition cursor-pointer block ${
+                        isSelected
+                          ? 'bg-[var(--surface-accent-gold)]/10 border-l-4 border-l-[var(--surface-accent-gold)]'
+                          : 'hover:bg-[var(--surface-elevated)]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-[var(--surface-accent-gold)]">
+                            {slug}
+                          </span>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${vBadge.className}`}
+                          >
+                            {vBadge.icon}
+                            <span>{vBadge.label}</span>
+                          </span>
+                        </div>
 
-                    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-[var(--text-muted)]">
-                      <div className="flex items-center gap-2">
-                        <span>{formatRelativeTime(run.started_at)}</span>
-                        <span>•</span>
-                        <span>{formatStopwatch(run.active_duration_ms || 0)}</span>
+                        {isLive ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--semantic-success)]/15 border border-[var(--semantic-success)]/40 px-2 py-0.5 text-[10px] font-mono font-bold text-[var(--semantic-success)]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[var(--semantic-success)] animate-pulse" />
+                            <span>{run.status === 'VERIFYING_QA' ? 'QA CHECK' : 'RUNNING'}</span>
+                          </span>
+                        ) : run.status === 'COMPLETED' ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/35 px-2 py-0.5 text-[10px] font-mono font-semibold text-[var(--surface-accent-gold)]">
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>COMPLETED</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--semantic-alert)]/15 border border-[var(--semantic-alert)]/35 px-2 py-0.5 text-[10px] font-mono font-semibold text-[var(--semantic-alert)]">
+                            <AlertTriangle className="h-3 w-3" />
+                            <span>{run.status}</span>
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[var(--surface-accent-gold)]">
-                          {formatCompactTokens(totalTokens)} tok
+
+                      <h3 className="text-xs sm:text-sm font-bold text-[var(--text-main)] leading-snug line-clamp-2">
+                        {run.input_prompt}
+                      </h3>
+
+                      {run.output_summary && (
+                        <p className="text-[11px] text-[var(--text-muted)] mt-1 line-clamp-2">
+                          {run.output_summary}
+                        </p>
+                      )}
+
+                      {/* High-Level Analytics Badges */}
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-2 py-0.5 text-[10px] font-mono text-[var(--text-main)]">
+                          <Users className="h-3 w-3 text-[var(--surface-accent-gold)] shrink-0" />
+                          <span className="truncate max-w-[240px]">
+                            {chainAgentSlugs.length}{' '}
+                            {chainAgentSlugs.length === 1 ? 'agent' : 'agents'} (
+                            {chainAgentSlugs.join(' → ')})
+                          </span>
                         </span>
-                        <span>•</span>
-                        <span className="text-[var(--semantic-success)]">
-                          {formatUsd(run.cost_usd || 0)}
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-accent-gold)]/10 border border-[var(--surface-accent-gold)]/30 px-2 py-0.5 text-[10px] font-mono font-semibold text-[var(--surface-accent-gold)]">
+                          <span>{formatCompactTokens(chainTokens)} tok</span>
                         </span>
                       </div>
-                    </div>
-                  </button>
+
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-[var(--text-muted)]">
+                        <div className="flex items-center gap-1.5">
+                          <span>{formatRelativeTime(run.started_at)}</span>
+                          <span>•</span>
+                          <span>{formatStopwatch(chainDurationMs)}</span>
+                          <span>•</span>
+                          <span className="text-[var(--semantic-success)]">
+                            {formatUsd(chainCostUsd)}
+                          </span>
+                        </div>
+                        <span className="text-[var(--surface-accent-gold)] font-semibold">
+                          Inspect Brain Trace →
+                        </span>
+                      </div>
+                    </button>
+                  </React.Fragment>
                 );
               })
             )}
@@ -636,7 +877,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
 
         {/* Right Column: Live Brain & Terminal Trace Inspector (7 cols) */}
-        <div className="lg:col-span-7 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] overflow-hidden shadow-sm">
+        <div
+          ref={traceInspectorRef}
+          className="lg:col-span-7 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] overflow-hidden shadow-sm"
+        >
           {selectedRun ? (
             <>
               {/* Selected Run Header */}
@@ -774,7 +1018,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     <span className="inline-flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       <strong className="text-[var(--text-main)]">
-                        {formatStopwatch(selectedRun.active_duration_ms || 0)}
+                        {formatStopwatch(
+                          (delegationChain.length > 0
+                            ? delegationChain
+                            : [selectedRun]
+                          ).reduce((sum, r) => sum + safeRunDurationMs(r), 0)
+                        )}
                       </strong>
                     </span>
                     <span>
@@ -841,7 +1090,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                             <ChevronRight className="h-4 w-4 text-[var(--text-muted)]" />
                           )}
                           <span className="rounded bg-[var(--surface-panel)] border border-[var(--surface-border)] px-2 py-0.5 text-[11px] font-mono font-bold text-[var(--surface-accent-gold)]">
-                            Step #{step.step_index} • {step.step_type}
+                            {step._agentSlug ? `${step._agentSlug} • ` : ''}Step #{step.step_index} • {step.step_type}
                           </span>
                           {step.tool_name && (
                             <span className="rounded bg-[var(--surface-accent)]/15 border border-[var(--surface-accent)]/30 px-2 py-0.5 text-[11px] font-mono text-[var(--surface-accent)]">

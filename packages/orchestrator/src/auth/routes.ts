@@ -257,12 +257,16 @@ export async function handleAuthRoutes(req: IncomingMessage, res: ServerResponse
     try {
       const updated = await updateOnboarding(user.id, patch);
       if (updated?.onboarding.status === 'COMPLETE') {
-        try {
-          const { provisionUser } = await import('../demo/DemoProvisioning.js');
-          await provisionUser(user.id, updated.onboarding.form as Record<string, unknown>);
-        } catch (err) {
-          console.error('[Auth] Provisioning failed; onboarding kept COMPLETE:', err);
-        }
+        // Provision in the background: the Cloudflare deploy takes ~15-20s and
+        // must not block the auth response. The client shows a loader and polls
+        // GET /api/demo/workspace until the workspace row lands.
+        void import('../demo/DemoProvisioning.js')
+          .then(({ provisionUser }) =>
+            provisionUser(user.id, updated.onboarding.form as Record<string, unknown>)
+          )
+          .catch((err) => {
+            console.error('[Auth] Provisioning failed; onboarding kept COMPLETE:', err);
+          });
       }
       sendJson(res, 200, { ok: true, user: updated ? publicUser(updated) : publicUser(user) });
     } catch {

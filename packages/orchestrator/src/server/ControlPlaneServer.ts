@@ -39,7 +39,8 @@ import { WhatsAppCommandCenter } from '../bridge/whatsapp/WhatsAppCommandCenter.
 import { authenticateRequest, handleAuthRoutes, isPublicPath } from '../auth/routes.js';
 import { handleClientRoutes } from '../client/routes.js';
 import { handleSeoRoutes } from '../seo/seo.js';
-import { onTokensRevoked } from '../auth/UserStore.js';
+import { getUserById, onTokensRevoked } from '../auth/UserStore.js';
+import { sendEmailMessage } from '../auth/EmailSender.js';
 import { handleInboundLoginText } from '../auth/WhatsAppLinkLogin.js';
 import {
   createReminderFromText,
@@ -643,41 +644,130 @@ export class ControlPlaneServer {
     };
   }
 
+  private async notifyUserByEmail(
+    userId: string | null | undefined,
+    subject: string,
+    bodyText: string
+  ): Promise<void> {
+    if (!userId) return;
+    try {
+      const user = await getUserById(userId);
+      const formEmail =
+        typeof user?.onboarding?.form?.email === 'string'
+          ? user.onboarding.form.email.trim()
+          : '';
+      const toEmail = (user?.email || formEmail || '').trim();
+      if (!toEmail || !toEmail.includes('@')) return;
+      await sendEmailMessage(toEmail, subject, bodyText);
+    } catch (err) {
+      console.warn('[EmailNotify] Failed to send email notification:', err);
+    }
+  }
+
+  private getStarterKeyForBacklogItem(idOrTitle: string): string | null {
+    const k = (idOrTitle || '').toLowerCase();
+    if (k.includes('lobby_bootstrap') || k.includes('lobby with play') || k.includes('lobby bootstrap')) {
+      return 'lobby_bootstrap';
+    }
+    if (k.includes('trophy_assets') || k.includes('trophy system art') || k.includes('trophy asset')) {
+      return 'trophy_assets';
+    }
+    if (k.includes('crash_patch') || k.includes('crashes after the final move')) {
+      return 'crash_patch';
+    }
+    if (k.includes('trophy_social') || k.includes('social visuals') || k.includes('trophy launch pack')) {
+      return 'trophy_social';
+    }
+    if (k.includes('trophy_seo') || k.includes('seo cluster')) {
+      return 'trophy_seo';
+    }
+    return null;
+  }
+
+  private syncMatchingStarterBacklogItems(
+    sourceItem: BacklogItemRecord,
+    patch: Parameters<OrchestratorStore['updateBacklogItem']>[1]
+  ): void {
+    const starterKey =
+      this.getStarterKeyForBacklogItem(sourceItem.id) ||
+      this.getStarterKeyForBacklogItem(sourceItem.title);
+    if (!starterKey) return;
+    for (const candidate of this.store.backlogItems.values()) {
+      if (candidate.id === sourceItem.id) continue;
+      if (
+        sourceItem.user_id &&
+        candidate.user_id &&
+        candidate.user_id !== sourceItem.user_id
+      ) {
+        continue;
+      }
+      const candKey =
+        this.getStarterKeyForBacklogItem(candidate.id) ||
+        this.getStarterKeyForBacklogItem(candidate.title);
+      if (candKey === starterKey) {
+        if (sourceItem.user_id && !candidate.user_id) {
+          candidate.user_id = sourceItem.user_id;
+        }
+        const synced = this.store.updateBacklogItem(candidate.id, patch);
+        if (synced) {
+          this.broadcastEvent('backlog:updated', synced);
+        }
+      }
+    }
+  }
+
   private findOrCreateBacklogItemForApproval(
     rawItemId: string,
     userId: string | null,
     fallbackTitle?: string
   ): BacklogItemRecord | undefined {
     const direct = this.store.backlogItems.get(rawItemId);
-    if (direct && (!userId || (direct.user_id ?? null) === userId)) {
+    if (direct && (!userId || direct.user_id === userId || !direct.user_id)) {
+      if (userId && direct.user_id !== userId) {
+        // Check if there is a user-specific copy first before mutating a global seed item
+        const starterKey =
+          this.getStarterKeyForBacklogItem(rawItemId) ||
+          this.getStarterKeyForBacklogItem(direct.title);
+        if (starterKey) {
+          const userSpecific = Array.from(this.store.backlogItems.values()).find(
+            (b) =>
+              b.user_id === userId &&
+              (this.getStarterKeyForBacklogItem(b.id) === starterKey ||
+                this.getStarterKeyForBacklogItem(b.title) === starterKey)
+          );
+          if (userSpecific) return userSpecific;
+        }
+        direct.user_id = userId;
+      }
       return direct;
     }
 
-    const userItems = Array.from(this.store.backlogItems.values()).filter(
-      (i) => !userId || (i.user_id ?? null) === userId
-    );
+    const allItems = Array.from(this.store.backlogItems.values());
+    // Prioritize items explicitly owned by userId over global unowned seed items
+    const orderedItems = userId
+      ? [
+          ...allItems.filter((i) => i.user_id === userId),
+          ...allItems.filter((i) => !i.user_id),
+        ]
+      : allItems;
+
+    const starterKey =
+      this.getStarterKeyForBacklogItem(rawItemId) ||
+      (fallbackTitle ? this.getStarterKeyForBacklogItem(fallbackTitle) : null);
     const key = rawItemId.toLowerCase();
-    const matched = userItems.find((b) => {
-      const t = (b.title || '').toLowerCase();
-      const id = (b.id || '').toLowerCase();
-      if (key.includes('lobby_bootstrap')) {
-        return id.includes('lobby_bootstrap') || t.includes('lobby with play') || t.includes('lobby bootstrap');
-      }
-      if (key.includes('trophy_assets')) {
-        return id.includes('trophy_assets') || t.includes('trophy system art') || t.includes('trophy asset');
-      }
-      if (key.includes('crash_patch')) {
-        return id.includes('crash_patch') || t.includes('crashes after the final move');
-      }
-      if (key.includes('trophy_social')) {
-        return id.includes('trophy_social') || t.includes('social visuals') || t.includes('trophy launch pack');
-      }
-      if (key.includes('trophy_seo')) {
-        return id.includes('trophy_seo') || t.includes('seo cluster');
-      }
-      return id === key;
+    const matched = orderedItems.find((b) => {
+      const candKey =
+        this.getStarterKeyForBacklogItem(b.id) ||
+        this.getStarterKeyForBacklogItem(b.title);
+      if (starterKey && candKey === starterKey) return true;
+      return (b.id || '').toLowerCase() === key;
     });
-    if (matched) return matched;
+    if (matched) {
+      if (userId && !matched.user_id) {
+        matched.user_id = userId;
+      }
+      return matched;
+    }
 
     const defaultsByPrioId: Record<
       string,
@@ -849,6 +939,27 @@ export class ControlPlaneServer {
       });
     }
 
+    // Ensure @warden run has an immediate initial step at millisecond 0 so Activity Brain Trace is never empty
+    if ((this.store.stepsByRun.get(activeRun.id) || []).length === 0) {
+      this.store.addInferenceStep({
+        user_id: item.user_id ?? null,
+        run_id: activeRun.id,
+        step_type: 'LLM_INFERENCE',
+        model_used: `${wardenAgent.model_provider}/${wardenAgent.model_id}`,
+        thinking_text: `Received CEO approval for "${item.title}". Parsing locked option, delivery target, and custom notes before routing to ${deptSlug} -> ${specialistSlug}.`,
+        message_text: `@warden intake: Locking execution plan for "${item.title}" and preparing handoff to ${deptSlug} -> ${specialistSlug}.`,
+        tool_name: null,
+        tool_args_json: null,
+        tool_output_json: null,
+        duration_ms: 850,
+        tokens_in: 420,
+        tokens_cached: 260,
+        tokens_thinking: 140,
+        tokens_out: 135,
+        cost_usd: 0.0024,
+      });
+    }
+
     if (this.runningBacklogTasks.has(item.id)) {
       return { thread, run: activeRun };
     }
@@ -882,6 +993,8 @@ export class ControlPlaneServer {
 
         this.broadcastEvent('brain:status', {
           runId: wardenRunId,
+          backlogItemId: item.id,
+          taskTitle: item.title,
           agentId: wardenAgent.id,
           agentSlug: wardenAgent.slug,
           stepIndex: 1,
@@ -921,29 +1034,11 @@ export class ControlPlaneServer {
             wardenTokensOut = llmRes.usage?.tokens_out || wardenTokensOut;
             wardenCost = llmRes.usage?.cost_usd || wardenCost;
           } else {
-            await new Promise((r) => setTimeout(r, 1400));
+            await new Promise((r) => setTimeout(r, 1200));
           }
         } catch {
-          await new Promise((r) => setTimeout(r, 1400));
+          await new Promise((r) => setTimeout(r, 1200));
         }
-
-        this.store.addInferenceStep({
-          user_id: item.user_id ?? null,
-          run_id: wardenRunId,
-          step_type: 'LLM_INFERENCE',
-          model_used: `${wardenAgent.model_provider}/${wardenAgent.model_id}`,
-          thinking_text: `Reviewed CEO approval and custom note for "${item.title}". Preparing handoff to ${deptAgent.slug} -> ${specialistAgent.slug}.`,
-          message_text: wardenReplyText,
-          tool_name: null,
-          tool_args_json: null,
-          tool_output_json: null,
-          duration_ms: 1500,
-          tokens_in: wardenTokensIn,
-          tokens_cached: wardenTokensCached,
-          tokens_thinking: wardenTokensThinking,
-          tokens_out: wardenTokensOut,
-          cost_usd: wardenCost,
-        });
 
         this.store.addInferenceStep({
           user_id: item.user_id ?? null,
@@ -951,7 +1046,7 @@ export class ControlPlaneServer {
           step_type: 'SUBAGENT_CALL',
           model_used: `${wardenAgent.model_provider}/${wardenAgent.model_id}`,
           thinking_text: `Spawning ${deptAgent.slug} to orchestrate ${specialistAgent.slug} on "${item.title}".`,
-          message_text: `Delegated "${item.title}" to ${deptAgent.slug} (spawning ${specialistAgent.slug}).`,
+          message_text: `${wardenReplyText}\n\nDelegated "${item.title}" to ${deptAgent.slug} (spawning ${specialistAgent.slug}).`,
           tool_name: 'delegate_agent',
           tool_args_json: {
             target_agent: deptAgent.slug,
@@ -1005,6 +1100,31 @@ export class ControlPlaneServer {
           inbox_messages: [],
         });
 
+        // Immediate initial step for @cto / @cmo so switching to deptRun never shows 0 steps
+        this.store.addInferenceStep({
+          user_id: item.user_id ?? null,
+          run_id: deptRun.id,
+          step_type: 'TOOL_CALL',
+          model_used: `${deptAgent.model_provider}/${deptAgent.model_id}`,
+          thinking_text: `Hydrating project context (${item.project_slug || 'demo-project'}) and @warden directive for "${item.title}".`,
+          message_text: `${deptAgent.slug} loaded workspace architecture & contract boundaries for "${item.title}".`,
+          tool_name: 'load_project_context',
+          tool_args_json: {
+            project: item.project_slug || 'demo-project',
+            target_files: ['index.html', 'src/main.js', 'src/style.css'],
+          },
+          tool_output_json: {
+            exit_code: 0,
+            stdout: `✓ Loaded context for ${item.project_slug || 'demo-project'} (3 target files indexed)`,
+          },
+          duration_ms: 650,
+          tokens_in: 240,
+          tokens_cached: 180,
+          tokens_thinking: 70,
+          tokens_out: 85,
+          cost_usd: 0.0012,
+        });
+
         this.store.updateRun(wardenRunId, {
           status: 'COMPLETED',
           qa_passed: true,
@@ -1039,10 +1159,12 @@ export class ControlPlaneServer {
 
         this.broadcastEvent('brain:status', {
           runId: deptRun.id,
+          backlogItemId: item.id,
+          taskTitle: item.title,
           agentId: deptAgent.id,
           agentSlug: deptAgent.slug,
           stepIndex: 1,
-          totalSteps: 2,
+          totalSteps: 3,
           status: 'RUNNING',
           summary: `${deptAgent.slug} scoping workspace changes and spawning ${specialistAgent.slug}...`,
         });
@@ -1084,12 +1206,12 @@ export class ControlPlaneServer {
             deptTokensOut = deptRes.usage?.tokens_out || deptTokensOut;
             deptCost = deptRes.usage?.cost_usd || deptCost;
           } else {
-            await new Promise((r) => setTimeout(r, 2000));
+            await new Promise((r) => setTimeout(r, 1500));
           }
         } catch {
-          await new Promise((r) => setTimeout(r, 2000));
+          await new Promise((r) => setTimeout(r, 1500));
         }
-        const deptStep1Ms = Math.max(1800, Date.now() - deptStartMs);
+        const deptStep1Ms = Math.max(1500, Date.now() - deptStartMs);
 
         this.store.addInferenceStep({
           user_id: item.user_id ?? null,
@@ -1120,7 +1242,7 @@ export class ControlPlaneServer {
           output_summary: deptSpecText.slice(0, 220),
         });
 
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 1000));
 
         // Create Phase 3 Specialist Run (@frontend_dev / @designer / @seo_aeo_head / @social_lead)
         const execRun = this.store.createRun({
@@ -1165,7 +1287,7 @@ export class ControlPlaneServer {
             child_run_id: execRun.id,
             stdout: `✓ Spawned ${specialistAgent.slug} (${execRun.id})`,
           },
-          duration_ms: 1500,
+          duration_ms: 1200,
           tokens_in: 490,
           tokens_cached: 290,
           tokens_thinking: 150,
@@ -1186,7 +1308,7 @@ export class ControlPlaneServer {
         this.store.updateRun(deptRun.id, {
           status: 'COMPLETED',
           qa_passed: true,
-          active_duration_ms: deptStep1Ms + 1500,
+          active_duration_ms: deptStep1Ms + 1200,
           tokens_in: deptTokensIn + 490,
           tokens_cached: deptTokensCached + 290,
           tokens_thinking: deptTokensThinking + 150,
@@ -1252,22 +1374,19 @@ export class ControlPlaneServer {
           });
           const latestRun = this.store.runs.get(execRun.id);
           if (latestRun) {
+            // Note: recordStep already increments active_duration_ms and token counters on the run.
             this.store.updateRun(execRun.id, {
               status: spec.status || 'RUNNING',
-              active_duration_ms: (latestRun.active_duration_ms || 0) + spec.duration_ms,
-              tokens_in: (latestRun.tokens_in || 0) + spec.tokens_in,
-              tokens_cached: (latestRun.tokens_cached || 0) + spec.tokens_cached,
-              tokens_thinking: (latestRun.tokens_thinking || 0) + spec.tokens_thinking,
-              tokens_out: (latestRun.tokens_out || 0) + spec.tokens_out,
-              cost_usd: Number(((latestRun.cost_usd || 0) + spec.cost_usd).toFixed(6)),
               output_summary: spec.message_text,
             });
           }
         };
 
-        // Step 1: Read workspace files
+        // Step 1: Read workspace files immediately on execRun start so trace is populated at ms 0
         this.broadcastEvent('brain:status', {
           runId: execRun.id,
+          backlogItemId: item.id,
+          taskTitle: item.title,
           agentId: specialistAgent.id,
           agentSlug: specialistAgent.slug,
           stepIndex: 1,
@@ -1275,7 +1394,6 @@ export class ControlPlaneServer {
           status: 'RUNNING',
           summary: `${specialistAgent.slug} inspecting index.html, src/main.js, and src/style.css...`,
         });
-        await new Promise((r) => setTimeout(r, 2000));
 
         appendExecStep({
           stepIndex: 1,
@@ -1292,7 +1410,7 @@ export class ControlPlaneServer {
             exit_code: 0,
             stdout: '✓ Loaded index.html, src/main.js, src/style.css from user demo workspace',
           },
-          duration_ms: 2000,
+          duration_ms: 1400,
           tokens_in: 520,
           tokens_cached: 340,
           tokens_thinking: 140,
@@ -1300,9 +1418,13 @@ export class ControlPlaneServer {
           cost_usd: 0.0029,
         });
 
+        await new Promise((r) => setTimeout(r, 1400));
+
         // Step 2: Real LLM Code/Asset Synthesis + Fast-Path Baseline Patch
         this.broadcastEvent('brain:status', {
           runId: execRun.id,
+          backlogItemId: item.id,
+          taskTitle: item.title,
           agentId: specialistAgent.id,
           agentSlug: specialistAgent.slug,
           stepIndex: 2,
@@ -1544,15 +1666,24 @@ export class ControlPlaneServer {
             run_id: execRun.id,
           });
 
-          const doneItem = this.store.updateBacklogItem(item.id, {
-            stage: 'DONE',
+          const donePatch = {
+            stage: 'DONE' as BacklogStage,
             moved_by_agent_id: specialistAgent.slug,
             movement_reason: summary.startsWith('Approved')
               ? summary
               : `Approved: ${summary}`,
-          });
+          };
+          const doneItem = this.store.updateBacklogItem(item.id, donePatch);
           if (doneItem) {
             this.broadcastEvent('backlog:updated', doneItem);
+            this.syncMatchingStarterBacklogItems(doneItem, donePatch);
+            void this.notifyUserByEmail(
+              doneItem.user_id ?? item.user_id,
+              `[Warden] Task Completed: ${doneItem.title}`,
+              `@${specialistAgent.slug} has finished executing "${doneItem.title}".\n\n` +
+                `Changes applied: ${patchResult.patchedFiles.join(', ')}\n` +
+                `${deployLine.replace(/\*\*/g, '')}`
+            );
           }
         }
       } catch (err) {
@@ -2372,7 +2503,7 @@ export class ControlPlaneServer {
           return;
         }
         const allRuns = Array.from(this.store.runs.values())
-          .filter((r) => !requestUserId || (r.user_id ?? null) === requestUserId)
+          .filter((r) => !requestUserId || !r.user_id || r.user_id === requestUserId)
           .sort((a, b) => b.started_at.localeCompare(a.started_at));
         this.sendJson(res, 200, allRuns);
         return;
@@ -2393,7 +2524,7 @@ export class ControlPlaneServer {
       if (singleRunMatch && method === 'GET') {
         const runId = decodeURIComponent(singleRunMatch[1]);
         const run = this.store.runs.get(runId);
-        if (!run || (requestUserId && (run.user_id ?? null) !== requestUserId)) {
+        if (!run || (requestUserId && run.user_id && run.user_id !== requestUserId)) {
           this.sendJson(res, 404, { error: `Run ${runId} not found` });
           return;
         }
@@ -2760,11 +2891,50 @@ export class ControlPlaneServer {
                 `[💬 CEO CHAT DONE] thread=${threadId} run=${routeResult.primaryRun.id} mode=${routeResult.routedMode}`
               );
               const rawPrompt = String(body.content || '').trim();
+              const replyText = String(
+                routeResult.agentReply?.content ||
+                  routeResult.primaryRun?.output_summary ||
+                  ''
+              ).trim();
+              const agentAskedQuestion = replyText.includes('?');
+
+              if (agentAskedQuestion) {
+                const questionTitle = `Question from @${routeResult.respondingAgent.slug}: ${rawPrompt.slice(0, 64)}${rawPrompt.length > 64 ? '...' : ''}`;
+                const questionBacklog = this.store.createBacklogItem({
+                  user_id: requestUserId ?? null,
+                  title: questionTitle,
+                  spec_md: replyText,
+                  stage: 'NEEDS_CEO',
+                  priority: 'P0',
+                  project_slug: 'demo-project',
+                  department: 'Tech',
+                  assigned_agent_id: routeResult.respondingAgent.id,
+                  requested_by_agent_id: routeResult.respondingAgent.id,
+                  requires_human_intervention: true,
+                  intervention_type: 'QUESTION',
+                  intervention_prompt: replyText,
+                });
+                questionBacklog.origin_thread_id = threadId;
+                this.store.updateBacklogItem(questionBacklog.id, {
+                  status_note: `Waiting for CEO answer in thread ${threadId}`,
+                });
+                this.broadcastEvent('backlog:updated', questionBacklog);
+
+                void this.notifyUserByEmail(
+                  requestUserId,
+                  `[Warden] @${routeResult.respondingAgent.slug} has a question for you`,
+                  `@${routeResult.respondingAgent.slug} asked a clarifying question regarding your message ("${rawPrompt}"):\n\n` +
+                    `${replyText}\n\n` +
+                    `Reply directly in Warden Chat or under NEEDS ACTION on your dashboard.`
+                );
+                return;
+              }
+
               const looksLikeCodeOrFeatureRequest =
-                /\b(add|change|make|update|build|create|style|color|button|screen|timer|score|sound|effect|animation|trophy|lobby|board|cell|header|title|background|theme|fix|modify|replace|show|display)\b/i.test(
+                /\b(add|change|make|update|build|create|style|color|button|screen|timer|score|sound|effect|animation|trophy|lobby|board|cell|header|title|background|theme|fix|modify|replace|show|display|dungeon|dunjun|logo|gritty|cartoon)\b/i.test(
                   rawPrompt
                 );
-              if (requestUserId && rawPrompt.length >= 6 && looksLikeCodeOrFeatureRequest) {
+              if (requestUserId && rawPrompt.length >= 4 && looksLikeCodeOrFeatureRequest) {
                 try {
                   const { applyLlmOrFallbackDemoTaskPatch } = await import(
                     '../demo/DemoTaskPatcher.js'
@@ -2813,6 +2983,12 @@ export class ControlPlaneServer {
                   console.warn('[ChatDemoPatcher] Non-fatal demo patch error:', chatPatchErr);
                 }
               }
+
+              void this.notifyUserByEmail(
+                requestUserId,
+                `[Warden] @${routeResult.respondingAgent.slug} completed your activity`,
+                `Your request ("${rawPrompt}") has been completed by @${routeResult.respondingAgent.slug}:\n\n${replyText}`
+              );
             })
             .catch((err: unknown) => {
               const message = err instanceof Error ? err.message : String(err);
@@ -2980,17 +3156,49 @@ export class ControlPlaneServer {
         const movementReason = decisionSummary.startsWith('Approved')
           ? decisionSummary
           : `Approved: ${decisionSummary}`;
-        const updated = this.store.updateBacklogItem(target.id, {
-          stage: 'IN_PROGRESS',
+        const isChatQuestionItem =
+          (target.intervention_type === 'QUESTION' ||
+            target.title.startsWith('Question from @')) &&
+          !this.getStarterKeyForBacklogItem(target.id) &&
+          !this.getStarterKeyForBacklogItem(target.title);
+
+        const approvePatch = {
+          stage: (isChatQuestionItem ? 'DONE' : 'IN_PROGRESS') as BacklogStage,
           requires_human_intervention: false,
           human_response: decisionSummary,
           moved_by_agent_id: 'CEO',
           movement_reason: movementReason,
-        });
+        };
+        const updated = this.store.updateBacklogItem(target.id, approvePatch);
         if (!updated) {
           this.sendJson(res, 404, { error: `Backlog item ${target.id} not found` });
           return;
         }
+        if (requestUserId && !updated.user_id) {
+          updated.user_id = requestUserId;
+        }
+        this.broadcastEvent('backlog:updated', updated);
+        this.syncMatchingStarterBacklogItems(updated, approvePatch);
+
+        if (isChatQuestionItem && updated.origin_thread_id) {
+          const originThread = this.store.getThread(updated.origin_thread_id);
+          if (originThread) {
+            void this.hierarchyRouter.routeMessage({
+              threadId: originThread.id,
+              userId: requestUserId ?? undefined,
+              content: decisionSummary,
+              targetAgentId: updated.assigned_agent_id || 'warden',
+            });
+          }
+          this.sendJson(res, 200, {
+            ok: true,
+            item: updated,
+            thread: originThread,
+            run: null,
+          });
+          return;
+        }
+
         const { thread, run } = this.startOrResumeBacklogTaskExecution(
           updated,
           decisionSummary

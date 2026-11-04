@@ -458,6 +458,7 @@ export class HierarchyRouter {
 
       const agentReply = this.store.addChatMessage({
         thread_id: thread.id,
+        user_id: params.userId ?? thread.user_id ?? null,
         sender_type: 'AGENT',
         sender_agent_id: 'warden',
         recipient_agent_id: 'CEO',
@@ -473,6 +474,49 @@ export class HierarchyRouter {
         routedMode: 'WARDEN_EXECUTIVE',
         respondingAgent: this.store.getAgent('warden')!,
       };
+    }
+
+    const wardenText = (wardenRunRes.outputSummary || '').trim();
+    const isAskingQuestion =
+      wardenText.includes('?') && (wardenRunRes.run.child_run_ids?.length ?? 0) === 0;
+
+    if (isAskingQuestion) {
+      const agentReply = this.store.addChatMessage({
+        thread_id: thread.id,
+        user_id: params.userId ?? thread.user_id ?? null,
+        sender_type: 'AGENT',
+        sender_agent_id: 'warden',
+        recipient_agent_id: 'CEO',
+        content: wardenText,
+        run_id: wardenRunRes.run.id,
+      });
+
+      return {
+        userMessage,
+        agentReply,
+        primaryRun: this.store.runs.get(wardenRunRes.run.id)!,
+        delegatedRuns,
+        routedMode: 'WARDEN_EXECUTIVE',
+        respondingAgent: this.store.getAgent('warden')!,
+      };
+    }
+
+    // Keep root run in RUNNING state while C-Suite / Lead / Executor sub-runs execute so
+    // the chat UI stays in live streaming state until the final reply is saved.
+    this.store.updateRun(wardenRunRes.run.id, {
+      status: 'RUNNING',
+      ended_at: null,
+    });
+    if (wardenText) {
+      this.store.addChatMessage({
+        thread_id: thread.id,
+        user_id: params.userId ?? thread.user_id ?? null,
+        sender_type: 'AGENT',
+        sender_agent_id: 'warden',
+        recipient_agent_id: 'CEO',
+        content: wardenText,
+        run_id: wardenRunRes.run.id,
+      });
     }
 
     // 2. C-Suite (Level 0: @cto or @cmo) — receives @warden's actual synthesized directive
@@ -634,20 +678,23 @@ export class HierarchyRouter {
         : `- **Verification**: ✅ Completed & synced to \`project_contexts\` + \`agent_memories\` (\`pgvector\`).`,
     ].join('\n');
 
-    this.store.updateRun(wardenRunRes.run.id, {
-      output_summary: executiveSummary,
-      preview_url: executorRes.run.preview_url,
-      qa_passed: executorRes.run.qa_passed,
-      qa_screenshot_url: executorRes.run.qa_screenshot_url,
-    });
-
     const agentReply = this.store.addChatMessage({
       thread_id: thread.id,
+      user_id: params.userId ?? thread.user_id ?? null,
       sender_type: 'AGENT',
       sender_agent_id: 'warden',
       recipient_agent_id: 'CEO',
       content: executiveSummary,
       run_id: wardenRunRes.run.id,
+    });
+
+    this.store.updateRun(wardenRunRes.run.id, {
+      status: 'COMPLETED',
+      ended_at: new Date().toISOString(),
+      output_summary: executiveSummary,
+      preview_url: executorRes.run.preview_url,
+      qa_passed: executorRes.run.qa_passed,
+      qa_screenshot_url: executorRes.run.qa_screenshot_url,
     });
 
     return {

@@ -455,8 +455,28 @@ async function deployInitialDemoBuild(
 /**
  * Idempotent per-user provisioning. Safe to call on every COMPLETE save;
  * existing workspaces return immediately (after ensuring initial deploy for demo users).
+ * Concurrent calls for the same user share one in-flight run, so retries and
+ * double-submits never provision (or deploy) twice.
  */
-export async function provisionUser(
+const inflightProvisions = new Map<string, Promise<DemoWorkspace>>();
+
+export function provisionUser(
+  userId: string,
+  form: Record<string, unknown> | null | undefined
+): Promise<DemoWorkspace> {
+  const running = inflightProvisions.get(userId);
+  if (running) {
+    console.log(`[🚀 DEMO PROVISION] Joining in-flight provision for user=${userId}`);
+    return running;
+  }
+  const p = provisionUserInner(userId, form).finally(() => {
+    if (inflightProvisions.get(userId) === p) inflightProvisions.delete(userId);
+  });
+  inflightProvisions.set(userId, p);
+  return p;
+}
+
+async function provisionUserInner(
   userId: string,
   form: Record<string, unknown> | null | undefined
 ): Promise<DemoWorkspace> {

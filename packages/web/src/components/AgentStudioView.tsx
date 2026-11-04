@@ -101,7 +101,7 @@ const CANONICAL_VERTICAL_ROSTER: {
   active_git_branch: string;
   project_scope: string;
 }[] = [
-  // TECH VERTICAL (8 Agents)
+  // TECH VERTICAL (4 Agents)
   {
     slug: '@warden',
     name: 'Warden (Chief of Staff)',
@@ -113,7 +113,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     supervisorHandle: 'CEO (Founder)',
     model_provider: 'meta_muse',
     model_id: 'muse-spark-1.3',
-    status: 'WORKING',
+    status: 'IDLE',
     payloadTokens: 920,
     turnCapLabel: '<= 1.5K tok/turn',
     contextReads: ['0 repo files (context/warden.md on-demand)'],
@@ -133,141 +133,61 @@ const CANONICAL_VERTICAL_ROSTER: {
     supervisorHandle: '@warden',
     model_provider: 'meta_muse',
     model_id: 'muse-spark-1.3',
-    status: 'WORKING',
+    status: 'IDLE',
     payloadTokens: 1840,
     turnCapLabel: '<= 4.0K tok/turn',
     contextReads: ['context/cto.md', 'memory/cto.md'],
     forbiddenReads: 'topology-cache.json, raw worklist/*, source code',
-    active_task_title: 'Co-designing pulse-core checkout sync & reviewing Phase 1.5 contracts',
-    active_git_branch: 'feat/pulse-checkout-sync',
-    project_scope: 'pulse-core, pulse-infra, pulse-support',
-  },
-  {
-    slug: '@pm',
-    name: 'Product Manager',
-    role_title: 'Level 1 Cross-Project Backlog & Standup Lead',
-    vertical: 'TECH',
-    verticalLabel: 'Tech',
-    hierarchy_level: 1,
-    levelBadge: 'Level 1 (Lead)',
-    supervisorHandle: '@cto',
-    model_provider: 'meta_muse',
-    model_id: 'muse-spark-1.3',
-    status: 'WORKING',
-    payloadTokens: 1120,
-    turnCapLabel: '<= 150w upward',
-    contextReads: ['worklist/inbox.md', 'worklist/*/backlog.md', 'COLLATED_BACKLOG.md'],
-    forbiddenReads: '.state/mirror/* source trees',
-    active_task_title: 'Collating 12:00 PM IST standup & triaging [NEEDS_CEO] queue',
-    active_git_branch: 'chore/standup-2026-10-26',
-    project_scope: 'ALL',
-  },
-  {
-    slug: '@tech_lead',
-    name: 'Tech Lead',
-    role_title: 'Level 1 Principal Architecture & Contract Lead',
-    vertical: 'TECH',
-    verticalLabel: 'Tech',
-    hierarchy_level: 1,
-    levelBadge: 'Level 1 (Lead)',
-    supervisorHandle: '@cto',
-    model_provider: 'meta_muse',
-    model_id: 'muse-spark-1.3',
-    status: 'WAITING_FOR_CEO',
-    payloadTokens: 1410,
-    turnCapLabel: '<= 150w upward',
-    contextReads: ['context/<proj>.md', 'memory/<proj>/tech_lead.md', 'contracts/*'],
-    forbiddenReads: 'Unassigned project repos',
-    active_task_title: 'Awaiting Phase 1.5 contract sign-off on pulse-core cart & Stripe webhook sync',
-    active_git_branch: 'feat/pulse-contracts',
-    project_scope: 'pulse-core,warden',
+    active_task_title: 'Directing @frontend_dev & @designer across demo-project game architecture',
+    active_git_branch: 'main',
+    project_scope: 'demo-project,demo-game',
   },
   {
     slug: '@frontend_dev',
-    name: 'Frontend Developer',
-    role_title: 'Level 2 React / TypeScript / Storefront UI Engineer',
+    name: 'Frontend & Game Dev',
+    role_title: 'Level 2 React / Canvas / Game UI Engineer',
     vertical: 'TECH',
     verticalLabel: 'Tech',
     hierarchy_level: 2,
     levelBadge: 'Level 2 (Dev)',
-    supervisorHandle: '@tech_lead',
+    supervisorHandle: '@cto',
     model_provider: 'meta_muse',
     model_id: 'muse-light',
-    status: 'WORKING',
+    status: 'IDLE',
     payloadTokens: 1290,
     turnCapLabel: '<= 200w upward',
-    contextReads: ['context/warden/web.md', '.state/mirror/warden/packages/web'],
+    contextReads: ['context/demo-project/web.md', 'packages/web'],
     forbiddenReads: 'Unassigned repos',
-    active_task_title: 'Shipping NovaPulse Window Tabs & Responsive Dashboard Rehaul',
-    active_git_branch: 'feat/dashboard-rehaul-v2',
-    project_scope: 'warden,pulse-core',
+    active_task_title: 'Shipping lobby bootstrap, trophy UI & 60fps arena loop',
+    active_git_branch: 'feat/lobby-bootstrap',
+    project_scope: 'demo-project,demo-game',
   },
   {
-    slug: '@backend_dev',
-    name: 'Backend & Systems Developer',
-    role_title: 'Level 2 Node / Postgres / High-Throughput API Engineer',
+    slug: '@designer',
+    name: 'Creative & Sprite Designer',
+    role_title: 'Level 2 Pixel Art, Sprite Atlas & Visual Asset Designer',
     vertical: 'TECH',
     verticalLabel: 'Tech',
     hierarchy_level: 2,
     levelBadge: 'Level 2 (Dev)',
-    supervisorHandle: '@tech_lead',
+    supervisorHandle: '@cto',
     model_provider: 'meta_muse',
     model_id: 'muse-light',
-    status: 'WORKING',
-    payloadTokens: 1180,
+    status: 'IDLE',
+    payloadTokens: 980,
     turnCapLabel: '<= 200w upward',
-    contextReads: ['context/pulse-core/pulse-api.md', '.state/mirror/pulse-api'],
-    forbiddenReads: 'Unassigned repos',
-    active_task_title: 'Optimizing sub-15ms Stripe webhook idempotency & checkout session state',
-    active_git_branch: 'perf/webhook-sub15ms',
-    project_scope: 'pulse-core,pulse-support',
-  },
-  {
-    slug: '@infra_head',
-    name: 'Infra & Cloud Head',
-    role_title: 'Level 1 Multi-Cloud & Deployment Lead (pulse-infra)',
-    vertical: 'TECH',
-    verticalLabel: 'Tech',
-    hierarchy_level: 1,
-    levelBadge: 'Level 1 (Lead)',
-    supervisorHandle: '@cto',
-    model_provider: 'meta_muse',
-    model_id: 'muse-spark-1.3',
-    status: 'IDLE',
-    payloadTokens: 480,
-    turnCapLabel: '<= 150w upward',
-    contextReads: ['context/pulse-infra.md', 'memory/infra_head.md'],
-    forbiddenReads: 'Application source trees',
-    active_task_title: 'Monitoring Cloudflare Pages, media asset buckets & pm2 health',
-    active_git_branch: 'main',
-    project_scope: 'pulse-infra',
-  },
-  {
-    slug: '@sec_lead',
-    name: 'Security & VAPT Lead',
-    role_title: 'Level 1 Out-of-Flow OWASP & Tenant Isolation Auditor',
-    vertical: 'TECH',
-    verticalLabel: 'Tech',
-    hierarchy_level: 1,
-    levelBadge: 'Level 1 (Lead)',
-    supervisorHandle: '@cto',
-    model_provider: 'meta_muse',
-    model_id: 'muse-spark-1.3',
-    status: 'IDLE',
-    payloadTokens: 410,
-    turnCapLabel: '<= 150w upward',
-    contextReads: ['context/sec.md', 'contracts/security-audit.md'],
-    forbiddenReads: 'Production secrets',
-    active_task_title: 'Auditing multi-tenant RBAC boundaries & Stripe webhook HMAC signatures',
-    active_git_branch: 'sec/vapt-oct',
-    project_scope: 'pulse-core,pulse-support',
+    contextReads: ['ASSETS_MANIFEST.md', 'public/assets/sprites'],
+    forbiddenReads: 'Backend service repos',
+    active_task_title: 'Generating 8-bit trophy ladder sprite pack & match-end animations',
+    active_git_branch: 'art/trophy-sprites',
+    project_scope: 'demo-project,demo-game',
   },
 
-  // SEO/AEO VERTICAL (3 Agents)
+  // SEO/AEO VERTICAL (2 Agents)
   {
-    slug: '@cbo',
-    name: 'CBO (Chief Business Officer)',
-    role_title: 'Level 0 Revenue, ARR Expansion & Organic Growth Head',
+    slug: '@cmo',
+    name: 'CMO (Growth & Brand)',
+    role_title: 'Level 0 Chief Marketing & Distribution Officer',
     vertical: 'SEO_AEO',
     verticalLabel: 'SEO/AEO',
     hierarchy_level: 0,
@@ -275,57 +195,37 @@ const CANONICAL_VERTICAL_ROSTER: {
     supervisorHandle: '@warden',
     model_provider: 'meta_muse',
     model_id: 'muse-spark-1.3',
-    status: 'WORKING',
+    status: 'IDLE',
     payloadTokens: 1150,
     turnCapLabel: '<= 4.0K tok/turn',
-    contextReads: ['context/cbo.md', 'memory/cbo.md'],
+    contextReads: ['context/cmo.md', 'memory/cmo.md'],
     forbiddenReads: 'topology-cache.json, raw source trees',
-    active_task_title: 'Ranking $1.8M ARR enterprise expansion EV & organic AEO funnel ROI',
+    active_task_title: 'Directing @seo_aeo_head & @social_lead for trophy launch distribution',
     active_git_branch: 'main',
-    project_scope: 'pulse-core,pulse-seo,pulse-social',
+    project_scope: 'marketing,demo-project',
   },
   {
-    slug: '@aeo_lead',
+    slug: '@seo_aeo_head',
     name: 'SEO & AEO Lead',
     role_title: 'Level 1 Answer Engine & LLM Citation Strategist',
     vertical: 'SEO_AEO',
     verticalLabel: 'SEO/AEO',
     hierarchy_level: 1,
     levelBadge: 'Level 1 (Lead)',
-    supervisorHandle: '@cbo',
+    supervisorHandle: '@cmo',
     model_provider: 'meta_muse',
     model_id: 'muse-spark-1.3',
-    status: 'WAITING_FOR_CEO',
+    status: 'IDLE',
     payloadTokens: 890,
     turnCapLabel: '<= 150w upward',
-    contextReads: ['context/aeo.md', 'memory/aeo_lead.md', 'contracts/aeo-schema.md'],
+    contextReads: ['context/aeo.md', 'public/llms.txt', 'contracts/aeo-schema.md'],
     forbiddenReads: 'Backend service repos',
-    active_task_title: 'Awaiting CEO principle selection on Meta AI citation graph',
+    active_task_title: 'Shipping /llms.txt, VideoGame JSON-LD & trophy launch FAQ schema',
     active_git_branch: 'feat/llms-txt-schema',
-    project_scope: 'pulse-seo,pulse-core',
-  },
-  {
-    slug: '@aeo_specialist',
-    name: 'AEO & Schema Specialist',
-    role_title: 'Level 2 Programmatic JSON-LD & Keyword Executor',
-    vertical: 'SEO_AEO',
-    verticalLabel: 'SEO/AEO',
-    hierarchy_level: 2,
-    levelBadge: 'Level 2 (Exec)',
-    supervisorHandle: '@aeo_lead',
-    model_provider: 'meta_muse',
-    model_id: 'muse-light',
-    status: 'WORKING',
-    payloadTokens: 660,
-    turnCapLabel: '<= 200w upward',
-    contextReads: ['context/pulse-seo/seo.md', 'public/llms.txt', 'public/sitemap.xml'],
-    forbiddenReads: 'Unassigned repos',
-    active_task_title: 'Generating SoftwareApplication + FAQPage JSON-LD for NovaPulse landing pages',
-    active_git_branch: 'feat/softwareapp-jsonld',
-    project_scope: 'pulse-seo,pulse-core',
+    project_scope: 'marketing,demo-project',
   },
 
-  // SOCIAL MEDIA VERTICAL (2 Agents)
+  // SOCIAL MEDIA VERTICAL (1 Agent)
   {
     slug: '@social_lead',
     name: 'Social Media Growth Lead',
@@ -334,37 +234,17 @@ const CANONICAL_VERTICAL_ROSTER: {
     verticalLabel: 'Social Media',
     hierarchy_level: 1,
     levelBadge: 'Level 1 (Lead)',
-    supervisorHandle: '@cbo',
+    supervisorHandle: '@cmo',
     model_provider: 'meta_muse',
     model_id: 'muse-spark-1.3',
-    status: 'WAITING_FOR_CEO',
+    status: 'IDLE',
     payloadTokens: 1140,
     turnCapLabel: '<= 150w upward',
     contextReads: ['context/social.md', 'memory/social_lead.md', 'contracts/social-calendar.md'],
     forbiddenReads: 'Source code repos',
-    active_task_title: 'Co-designing weekly X/LinkedIn founder voice & 15s product demo reel hooks',
-    active_git_branch: 'content/w43-hooks',
-    project_scope: 'pulse-social,pulse-core,novapulse',
-  },
-  {
-    slug: '@social_creator',
-    name: 'Social Content & Reel Creator',
-    role_title: 'Level 2 Short-Form Video Script & Thread Producer',
-    vertical: 'SOCIAL',
-    verticalLabel: 'Social Media',
-    hierarchy_level: 2,
-    levelBadge: 'Level 2 (Exec)',
-    supervisorHandle: '@social_lead',
-    model_provider: 'meta_muse',
-    model_id: 'muse-light',
-    status: 'WORKING',
-    payloadTokens: 860,
-    turnCapLabel: '<= 200w upward',
-    contextReads: ['context/social/hooks.md', 'worklist/social/backlog.md'],
-    forbiddenReads: 'Source code repos',
-    active_task_title: 'Cutting 60FPS AI Checkout Flow & Zero-Click AEO demo clips for Reels/Shorts',
-    active_git_branch: 'content/reels-batch-14',
-    project_scope: 'pulse-social,pulse-seo',
+    active_task_title: 'Cutting trophy launch social visuals & announcement thread',
+    active_git_branch: 'content/trophy-launch-pack',
+    project_scope: 'marketing,demo-project',
   },
 ];
 
@@ -491,25 +371,29 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
   const [credRpmLimit, setCredRpmLimit] = useState(240);
   const [credPriority, setCredPriority] = useState(1);
 
-  // Build unified multi-vertical roster: the canonical 13 plus every live agent
-  // behind them (per-project variants, provisioned agents), so this list always
-  // reconciles with the Team badge count.
+  // Build unified multi-vertical roster: the canonical 7 plus any actively
+  // running subagents or custom user-created agents, so the Team view cleanly
+  // shows the 7 core agents (plus any actively spawned subagents).
   const enrichedRoster: EnrichedRosterAgent[] = useMemo(() => {
     const matchedLiveIds = new Set<string>();
     const canonicalList: EnrichedRosterAgent[] = CANONICAL_VERTICAL_ROSTER.map(
       (c, idx) => {
         const cleanHandle = c.slug.replace(/^@/, '');
-        const matched = agents.find(
-          (a) =>
-            a.slug.replace(/^@/, '').toLowerCase() === cleanHandle.toLowerCase() ||
-            (cleanHandle === 'tech_lead' && a.slug.includes('tech_lead')) ||
-            (cleanHandle === 'pm' && a.slug.startsWith('@pm')) ||
-            (cleanHandle === 'aeo_lead' && a.slug.includes('seo_aeo'))
-        );
+        const matched = agents.find((a) => {
+          const liveSlug = a.slug.replace(/^@/, '').toLowerCase();
+          return (
+            liveSlug === cleanHandle.toLowerCase() ||
+            (cleanHandle === 'frontend_dev' &&
+              (liveSlug.startsWith('frontend_dev') || a.id === 'agent_frontend_demo_game')) ||
+            (cleanHandle === 'designer' &&
+              (liveSlug.startsWith('designer') || a.id === 'agent_designer')) ||
+            (cleanHandle === 'seo_aeo_head' &&
+              (liveSlug.includes('seo_aeo') || liveSlug === 'aeo_lead')) ||
+            (cleanHandle === 'social_lead' && liveSlug.includes('social_lead')) ||
+            (cleanHandle === 'cmo' && (liveSlug === 'cmo' || liveSlug === 'cbo'))
+          );
+        });
         if (matched) matchedLiveIds.add(matched.id);
-        // Live roster is authoritative: skip placeholder rows once the backend
-        // (or seeds) has populated, so the list length matches the Team badge.
-        if (!matched && agents.length > 0) return null;
 
         const synthesizedAgent: Agent = matched
           ? {
@@ -521,10 +405,10 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
               // Live execution state: never overwrite with canonical demo values,
               // or every agent shows WORKING regardless of reality.
               status: matched.status,
-              active_task_title: matched.active_task_title ?? null,
-              active_git_branch: matched.active_git_branch ?? null,
+              active_task_title: matched.active_task_title ?? c.active_task_title,
+              active_git_branch: matched.active_git_branch ?? c.active_git_branch,
               project_scope: c.project_scope,
-              today_tokens_used: c.payloadTokens,
+              today_tokens_used: matched.today_tokens_used || c.payloadTokens,
             }
           : {
               id: `canonical_agent_${cleanHandle}_${idx}`,
@@ -555,8 +439,8 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
               max_run_duration_ms: 1_800_000,
               current_run_id: null,
               clocked_in_at: null,
-              active_git_branch: null,
-              active_task_title: null,
+              active_git_branch: c.active_git_branch,
+              active_task_title: c.active_task_title,
               today_work_time_ms: 5_400_000,
               total_work_time_ms: 48_000_000,
               total_runs: 18,
@@ -583,10 +467,46 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
           forbiddenReads: c.forbiddenReads,
         };
       }
-    ).filter((r): r is EnrichedRosterAgent => r !== null);
+    );
+
+    const LEGACY_SEED_HANDLES = new Set([
+      'pm',
+      'pm:demo-game',
+      'pm:arcade-hub',
+      'pm:demo-project',
+      'tech_lead',
+      'tech_lead:demo-game',
+      'tech_lead:arcade-hub',
+      'tech_lead:demo-project',
+      'backend_dev',
+      'backend_dev:demo-game',
+      'backend_dev:arcade-hub',
+      'backend_dev:demo-project',
+      'frontend_dev:demo-game',
+      'frontend_dev:arcade-hub',
+      'frontend_dev:demo-project',
+      'infra_head',
+      'infra_jr',
+      'sec_lead',
+      'seo_content_dev',
+      'aeo_analyst',
+      'aeo_lead',
+      'aeo_specialist',
+      'social_creator',
+      'cbo',
+    ]);
 
     const extraList: EnrichedRosterAgent[] = agents
-      .filter((a) => !matchedLiveIds.has(a.id))
+      .filter((a) => {
+        if (matchedLiveIds.has(a.id)) return false;
+        const isActivelyRunning =
+          a.status === 'WORKING' || a.status === 'WAITING_FOR_CEO';
+        if (isActivelyRunning) return true;
+        const cleanSlug = a.slug.replace(/^@/, '').toLowerCase();
+        const isLegacySeed =
+          LEGACY_SEED_HANDLES.has(cleanSlug) || cleanSlug.includes(':');
+        return !isLegacySeed;
+      })
       .map((a) => {
         const vertical = verticalForAgent(a);
         return {
@@ -886,10 +806,10 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
             <div className="flex items-center gap-1 rounded-xl bg-[var(--surface-card)] p-1 border border-[var(--surface-border)] text-xs">
               {(
                 [
-                  { id: 'ALL' as const, label: 'All (13)' },
-                  { id: 'TECH' as const, label: 'Tech (8)' },
-                  { id: 'SEO_AEO' as const, label: 'SEO/AEO (3)' },
-                  { id: 'SOCIAL' as const, label: 'Social (2)' },
+                  { id: 'ALL' as const, label: 'All (7)' },
+                  { id: 'TECH' as const, label: 'Tech (4)' },
+                  { id: 'SEO_AEO' as const, label: 'SEO/AEO (2)' },
+                  { id: 'SOCIAL' as const, label: 'Social (1)' },
                 ] as const
               ).map((vf) => {
                 const isSelected = effectiveVertical === vf.id;
@@ -1296,18 +1216,18 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                   },
                   {
                     lvl: 0,
-                    title: 'Level 0 (CXO Heads): @cto (Tech) & @cbo (SEO/AEO + Business)',
+                    title: 'Level 0 (CXO Heads): @cto (Tech) & @cmo (Growth & Brand)',
                     cap: 'Budget: <= 4.0K tok/turn | Max Upward Reply: <= 120 words',
                   },
                   {
                     lvl: 1,
-                    title: 'Level 1 (Vertical & Project Leads): @pm, @tech_lead, @aeo_lead, @social_lead, @infra_head, @sec_lead',
+                    title: 'Level 1 (Vertical Leads): @seo_aeo_head & @social_lead',
                     cap: 'Owns contracts/* & worklist/* | Max Upward Reply: <= 150 words',
                   },
                   {
                     lvl: 2,
-                    title: 'Level 2 (Sandboxed Executors): @frontend_dev, @backend_dev, @aeo_specialist, @social_creator',
-                    cap: 'Operates in .state/mirror/<repo> | Max Upward Reply: <= 200 words',
+                    title: 'Level 2 (Sandboxed Executors): @frontend_dev & @designer',
+                    cap: 'Operates in workspace | Max Upward Reply: <= 200 words',
                   },
                 ] as const
               ).map((tier) => {

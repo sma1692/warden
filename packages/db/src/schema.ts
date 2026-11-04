@@ -11,7 +11,36 @@ export type Department =
   | 'hr'
   | 'ops'
   | 'support'
-  | 'finance';
+  | 'finance'
+  | 'product';
+
+/** Canonical values accepted by the Postgres `agents_department_check` constraint. */
+export const DB_DEPARTMENTS: ReadonlySet<string> = new Set([
+  'executive',
+  'tech',
+  'infra',
+  'marketing',
+  'sales',
+  'hr',
+  'ops',
+  'support',
+  'finance',
+  'product',
+]);
+
+/**
+ * Normalizes any legacy or miscased department label to a value the
+ * `agents_department_check` constraint accepts. Unknown values fall back to
+ * 'tech' so agent writes never fail the check.
+ */
+export function normalizeDepartment(value: unknown): Department {
+  const lower = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (lower === 'operations') return 'ops';
+  if (DB_DEPARTMENTS.has(lower)) return lower as Department;
+  return 'tech';
+}
 
 export type HierarchyLevel = -1 | 0 | 1 | 2 | 3;
 

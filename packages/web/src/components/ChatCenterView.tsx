@@ -154,6 +154,21 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
           setRunStepsMap((prev) => ({ ...prev, [runId]: steps }));
         }
       }
+      const hasAgentReply =
+        loaded.length > 0 &&
+        (loaded[loaded.length - 1]?.sender_type === 'AGENT' ||
+          (runId ? loaded.some((m) => m.sender_type === 'AGENT' && m.run_id === runId) : false));
+      if (!hasAgentReply) {
+        for (const delay of [700, 2000]) {
+          window.setTimeout(async () => {
+            if (activeThreadIdRef.current !== threadId) return;
+            const retry = await apiClient.getChatMessages(threadId);
+            if (activeThreadIdRef.current === threadId && retry.length > 0) {
+              setMessages(retry);
+            }
+          }, delay);
+        }
+      }
     }
   }, []);
 
@@ -327,12 +342,13 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
     };
   }, [pendingRun, activeThread, finishPendingRun]);
 
-  // Real-time stream for spawned Needs Action threads (@warden -> @cto/@cmo -> specialist)
+  // Real-time stream for any open thread so direct @warden replies, clarifying questions,
+  // and async Live Demo Updated follow-up messages appear reliably without refresh.
   useEffect(() => {
     const tid = activeThread?.id;
-    if (!tid || !tid.startsWith('thr_spawn_')) return;
+    if (!tid) return;
     let cancelled = false;
-    const pollSpawnThread = async () => {
+    const pollActiveThread = async () => {
       if (cancelled || activeThreadIdRef.current !== tid) return;
       try {
         const loaded = await apiClient.getChatMessages(tid);
@@ -340,7 +356,10 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
         setMessages((prev) => {
           if (
             prev.length === loaded.length &&
-            prev.every((m, i) => m.id === loaded[i]?.id)
+            prev.every(
+              (m, i) =>
+                m.id === loaded[i]?.id && m.content === loaded[i]?.content
+            )
           ) {
             return prev;
           }
@@ -350,8 +369,8 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
         // Ignore transient poll errors
       }
     };
-    const interval = window.setInterval(pollSpawnThread, 1800);
-    void pollSpawnThread();
+    const interval = window.setInterval(pollActiveThread, 2200);
+    void pollActiveThread();
     return () => {
       cancelled = true;
       window.clearInterval(interval);

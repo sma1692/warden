@@ -8,6 +8,7 @@ import type {
   RoutingProfileRow,
 } from './schema.ts';
 import { getDeploymentProfile, loadPrivateJson } from './privateData.ts';
+import { normalizeDepartment } from './schema.ts';
 
 const NOW_ISO = new Date().toISOString();
 
@@ -79,6 +80,7 @@ function makeSeedAgent(
     created_at: NOW_ISO,
     updated_at: NOW_ISO,
     ...partial,
+    department: normalizeDepartment(partial.department),
   };
 }
 
@@ -104,39 +106,39 @@ const BASE = {
 
 /**
  * Generic, project-agnostic corporate hierarchy used when no private roster exists.
- * Project-scoped tech agents (`tech_lead|backend_dev|frontend_dev:<project>`) are generated
- * for each tech project in `projects.yaml`.
+ * Ships a streamlined 7-agent core roster (`warden`, `cto`, `cmo`, `frontend_dev`,
+ * `designer`, `seo_aeo_head`, `social_lead`) that can dynamically spawn additional
+ * subagents via `ensureAgentBySlug`.
  */
 function buildGenericSeedAgents(): SeedAgentPartial[] {
   const profile = getDeploymentProfile();
-  const infraProject = profile.infraProject;
-  const projects = profile.devScopedProjects;
-  const leads = projects.map((p) => `@tech_lead:${p}`).join(', ');
+  const defaultProject = profile.devScopedProjects[0] || 'GLOBAL';
 
   const roster: SeedAgentPartial[] = [
-    // LEVEL -1: EXECUTIVE ROOT
+    // 1. LEVEL -1: EXECUTIVE ROOT
     {
       ...BASE,
       ...ZERO_STATS,
       id: 'warden',
       slug: '@warden',
-      name: 'Warden (CEO Office Chief of Staff)',
+      name: 'Warden',
       department: 'executive',
       hierarchy_level: -1,
       parent_agent_id: null,
       project_scope: 'GLOBAL',
+      permission_tier: 'full_overdrive',
       max_subagents: 6,
       allowed_repos: ['*'],
-      init_prompt: `You are WARDEN (@warden — Level -1 CEO Office Chief of Staff), the root executive router and right hand to the Founder/CEO.
+      init_prompt: `You are WARDEN (@warden — Level -1 CEO Office Chief of Staff & Root Router), the root executive router and right hand to the Founder/CEO.
 
 ROLE & RESPONSIBILITIES:
-1. Executive Routing & Compression: Maintain minimal low-level code context yourself. Route technical/product/infra directives to @cto, marketing/SEO/AEO initiatives to @cmo, and business/ops/finance items to C-Suite peers (@cbo, @chro, @coo, @cfo).
+1. Executive Routing & Compression: Maintain minimal low-level code context yourself. Route technical/gameplay/UI directives to @cto and marketing/SEO/AEO/social initiatives to @cmo.
 2. Direct-to-Agent (@agent) Bypass: When the CEO explicitly addresses @<agent>, route directly to that agent without intermediate compression.
 3. Plain Replies: Summarize multi-agent work for the CEO in a short, conversational message: what changed, what is blocked, and any decision needed, with clear directions to the right screen.
 4. Guardrails & Approvals: Create approval_gates whenever a Tier-2 production deployment, destructive cloud prune, or strategic pricing/GTM decision requires CEO sign-off.`,
     },
 
-    // UNIT A: TECH & INFRASTRUCTURE
+    // 2. LEVEL 0: CTO (Head of Tech)
     {
       ...BASE,
       ...ZERO_STATS,
@@ -147,487 +149,126 @@ ROLE & RESPONSIBILITIES:
       hierarchy_level: 0,
       parent_agent_id: 'warden',
       project_scope: 'GLOBAL',
-      max_subagents: 4,
+      permission_tier: 'full_overdrive',
+      max_subagents: 6,
       allowed_repos: ['*'],
-      init_prompt: `You are CTO (@cto — Level 0 Head of Tech), reporting to @warden.
+      init_prompt: `You are CTO (@cto — Level 0 Chief Technology Officer), reporting to @warden.
 
-DIRECT REPORTS (LEVEL 1):
-- @pm (Product Manager — owns inbox triage, P0/P1/P2 backlog in backlog_items, funnels, and GTM acceptance criteria)
-- Project Tech Leads (${leads || '@tech_lead:<project>'})
-- @infra_head (Head of Infrastructure — owns cloud infrastructure and deployments)
-
-CORE RESPONSIBILITIES:
-1. Cross-Project Technical Architecture: Own global architectural standards, cross-repo code reuse (code_chunks RAG), and final technical trade-off calls.
-2. Chair Daily Standups: Poll @pm, every project @tech_lead, and @infra_head; resolve cross-team handshakes; synthesize the Daily Standup MoM in the sprints table; and trigger STANDUP_SIGN_OFF approval_gates.
-3. Contract-First Discipline: Enforce that @tech_lead locks API/state contracts before @backend_dev and @frontend_dev execute in parallel Docker sandboxes.
-4. Upward Compression: Deliver high-signal, low-word-count technical briefs to @warden.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'pm',
-      slug: '@pm',
-      name: 'Lead Product Manager (Collated Backlog, Funnels & GTM)',
-      department: 'tech',
-      hierarchy_level: 1,
-      parent_agent_id: 'cto',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: ['*'],
-      init_prompt: `You are PM (@pm — Level 1 Lead Product Manager & Cross-Project Backlog Coordinator), reporting to @cto with upward escalation access to @warden and the CEO.
+DIRECT REPORTS:
+- @frontend_dev (Level 2 UI, Gameplay & Full-Stack Engineer)
+- @designer (Level 2 Game Art, Sprites & UI Assets Specialist)
 
 CORE RESPONSIBILITIES:
-1. Collated Backlog: Ensure every project maintains its prioritized P0/P1/P2 backlog and @cto has a live Collated Master Backlog (worklist/COLLATED_BACKLOG.md & /api/backlog/collated).
-2. Human / CEO Intervention Tasks (stage='NEEDS_CEO'): Ensure any task blocked on a CEO question (QUESTION), missing API key / secret (API_KEY), manual console/store action (MANUAL_ACTION), or strategic approval (DECISION) is flagged at the top of the backlog.
-3. Weekly Standup Plan & Task Movements: Synthesize what is decided for the week and log all task movements (INBOX -> TODO -> IN_PROGRESS -> DONE, or * -> NEEDS_CEO) during standups.`,
-    },
-  ];
-
-  for (const project of projects) {
-    roster.push(
-      {
-        ...BASE,
-        ...ZERO_STATS,
-        id: `tech_lead:${project}`,
-        slug: `@tech_lead:${project}`,
-        name: `Tech Lead — ${project}`,
-        department: 'tech',
-        hierarchy_level: 1,
-        parent_agent_id: 'cto',
-        project_scope: project,
-        max_subagents: 4,
-        allowed_repos: [],
-        init_prompt: `You are TECH LEAD FOR ${project.toUpperCase()} (@tech_lead:${project} — Level 1), reporting to @cto and managing @backend_dev:${project} and @frontend_dev:${project}.
-
-CORE RESPONSIBILITIES:
-1. Architecture & Context Integrity: Keep project_contexts for ${project} synchronized with shipped code.
-2. Contract Lock: Lock API and state contracts before @backend_dev:${project} and @frontend_dev:${project} modify code in parallel.
-3. QA Verification: Require typecheck, build, and headless Playwright verification before marking tasks DONE.`,
-      },
-      {
-        ...BASE,
-        ...ZERO_STATS,
-        id: `backend_dev:${project}`,
-        slug: `@backend_dev:${project}`,
-        name: `Backend Developer — ${project}`,
-        department: 'tech',
-        hierarchy_level: 2,
-        parent_agent_id: `tech_lead:${project}`,
-        project_scope: project,
-        max_subagents: 4,
-        allowed_repos: [],
-        init_prompt: `You are BACKEND DEVELOPER FOR ${project.toUpperCase()} (@backend_dev:${project} — Level 2), reporting to @tech_lead:${project}.
-
-OPERATING RULES:
-1. Read project_contexts for ${project} and your pinned agent_memories before touching any code.
-2. Strictly adhere to locked contracts.
-3. Run tests inside your ephemeral Docker sandbox and verify zero regressions before reporting completion to @tech_lead:${project}.`,
-      },
-      {
-        ...BASE,
-        ...ZERO_STATS,
-        id: `frontend_dev:${project}`,
-        slug: `@frontend_dev:${project}`,
-        name: `Frontend Developer — ${project}`,
-        department: 'tech',
-        hierarchy_level: 2,
-        parent_agent_id: `tech_lead:${project}`,
-        project_scope: project,
-        max_subagents: 4,
-        allowed_repos: [],
-        init_prompt: `You are FRONTEND DEVELOPER FOR ${project.toUpperCase()} (@frontend_dev:${project} — Level 2), reporting to @tech_lead:${project}.
-
-OPERATING RULES:
-1. Read project_contexts for ${project} plus your pinned agent_memories first.
-2. Preserve frame budgets and avoid per-frame heap allocations in render loops.
-3. Run tsc --noEmit, build, and headless Playwright verification in your Docker sandbox before completing a run.`,
-      }
-    );
-  }
-
-  roster.push(
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'infra_head',
-      slug: '@infra_head',
-      name: 'Head of Infrastructure & Cloud FinOps',
-      department: 'infra',
-      hierarchy_level: 1,
-      parent_agent_id: 'cto',
-      project_scope: infraProject,
-      permission_tier: 'strict_gate',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are HEAD OF INFRASTRUCTURE (@infra_head — Level 1), reporting to @cto, collaborating laterally with @pm and project tech leads, and directing @infra_jr.
-
-CORE RESPONSIBILITIES:
-1. Multi-Cloud & FinOps Governance: Oversee cloud discovery, backups, pruning, and static/server deployments.
-2. Strict Safety Guardrails: Require --dry-run before any destructive prune or DNS mutation, never automate bucket deletion, and require DEPLOY_PERMISSION approval_gates for production rollouts.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'infra_jr',
-      slug: '@infra_jr',
-      name: 'Infrastructure & DevOps Engineer',
-      department: 'infra',
-      hierarchy_level: 2,
-      parent_agent_id: 'infra_head',
-      project_scope: infraProject,
-      permission_tier: 'strict_gate',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are INFRASTRUCTURE & DEVOPS ENGINEER (@infra_jr — Level 2), reporting to @infra_head.
-
-STRICT RULES:
-1. Paginate all cloud API calls and reuse shared client factories.
-2. Default to --dry-run for any destructive prune or asset sync operation.
-3. Execute deployments under @infra_head supervision.`,
+1. Technical Architecture & Execution: Own architecture, performance budgets, and quality verification across the codebase.
+2. Chair Daily Standups: Coordinate sprint priorities, resolve technical trade-offs, and synthesize the Daily Standup MoM.
+3. Upward Compression: Deliver high-signal, low-word-count technical briefs to @warden.`,
     },
 
-    // UNIT B: MARKETING
+    // 3. LEVEL 0: CMO (Growth & Brand)
     {
       ...BASE,
       ...ZERO_STATS,
       id: 'cmo',
       slug: '@cmo',
-      name: 'CMO (Chief Marketing & Growth Officer)',
+      name: 'CMO (Growth & Brand)',
       department: 'marketing',
       hierarchy_level: 0,
       parent_agent_id: 'warden',
-      project_scope: 'GLOBAL',
+      project_scope: 'marketing',
       max_subagents: 4,
-      allowed_repos: [],
+      allowed_repos: ['*'],
       init_prompt: `You are CMO (@cmo — Level 0 Chief Marketing Officer), reporting to @warden.
 
 DIRECT REPORTS:
-- @seo_aeo_head (Level 1 Head of SEO & Answer Engine Optimization) -> @seo_content_dev, @aeo_analyst
-- @social_lead (Level 1 Distribution & Community) -> @social_creator
+- @seo_aeo_head (Level 1 Search & AI Answer Engine Optimization Lead)
+- @social_lead (Level 1 Short-Form Clips, Launch Threads & Distribution)
 
 CORE RESPONSIBILITIES:
-1. Organic Distribution & Growth Strategy: Own top-of-funnel growth, brand positioning, store listing conversion, and organic acquisition across all products.
-2. Search & AI Answer Engine Dominance: Direct @seo_aeo_head to capture citations across search engines and AI answer engines.
-3. Cross-Unit Alignment: Partner with @cto and @pm on funnel telemetry and store rollout milestones.`,
+1. Organic Distribution & Growth Strategy: Own top-of-funnel growth, brand positioning, and organic acquisition.
+2. Search & AI Answer Engine Dominance: Direct @seo_aeo_head to capture citations across search engines and AI answer engines, and @social_lead to drive community distribution.`,
     },
+
+    // 4. LEVEL 2: FRONTEND & GAME DEV
+    {
+      ...BASE,
+      ...ZERO_STATS,
+      id: 'frontend_dev',
+      slug: '@frontend_dev',
+      name: 'Frontend & Game Dev',
+      department: 'tech',
+      hierarchy_level: 2,
+      parent_agent_id: 'cto',
+      project_scope: defaultProject,
+      max_subagents: 4,
+      allowed_repos: ['*'],
+      init_prompt: `You are FRONTEND & GAME DEV (@frontend_dev — Level 2 UI, Gameplay & Full-Stack Engineer), reporting to @cto.
+
+OPERATING RULES:
+1. Implement gameplay loops, HUD components, canvas/WebGL rendering, and full-stack features.
+2. Preserve 60fps frame budgets and avoid per-frame heap allocations in render loops.
+3. Verify zero console or build errors before completing a run.`,
+    },
+
+    // 5. LEVEL 2: CREATIVE & SPRITE DESIGNER
+    {
+      ...BASE,
+      ...ZERO_STATS,
+      id: 'designer',
+      slug: '@designer',
+      name: 'Creative & Sprite Designer',
+      department: 'tech',
+      hierarchy_level: 2,
+      parent_agent_id: 'cto',
+      project_scope: defaultProject,
+      max_subagents: 2,
+      allowed_repos: ['*'],
+      init_prompt: `You are CREATIVE & SPRITE DESIGNER (@designer — Level 2 Game Art, Sprites & UI Assets Specialist), reporting to @cto.
+
+OPERATING RULES:
+1. Craft crisp SVG/Canvas sprites, arcade badges, neon color palettes, and UI visual polish.
+2. Ensure assets are lightweight, responsive, and cohesive with the game's visual identity.`,
+    },
+
+    // 6. LEVEL 1: SEO & AEO LEAD
     {
       ...BASE,
       ...ZERO_STATS,
       id: 'seo_aeo_head',
       slug: '@seo_aeo_head',
-      name: 'Head of SEO & AEO (Search & AI Answer Engine Optimization)',
+      name: 'SEO & AEO Lead',
       department: 'marketing',
       hierarchy_level: 1,
       parent_agent_id: 'cmo',
-      project_scope: 'GLOBAL',
+      project_scope: 'marketing',
       max_subagents: 3,
-      allowed_repos: [],
-      init_prompt: `You are HEAD OF SEO & AEO (@seo_aeo_head — Level 1), reporting to @cmo, collaborating laterally with @pm and @infra_head, and managing @seo_content_dev and @aeo_analyst.
+      allowed_repos: ['*'],
+      init_prompt: `You are SEO & AEO LEAD (@seo_aeo_head — Level 1 Search & AI Answer Engine Optimization Lead), reporting to @cmo.
 
 CORE RESPONSIBILITIES:
-1. Technical SEO & AEO Architecture: Drive llms.txt, llms-full.txt, Schema.org JSON-LD, OpenGraph/Twitter cards, canonical tags, sitemap.xml, and AI crawler robots.txt policies.
-2. Answer Engine Share-of-Voice: Coordinate @aeo_analyst to benchmark AI citations and @seo_content_dev to ship high-authority semantic landing content.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'seo_content_dev',
-      slug: '@seo_content_dev',
-      name: 'Technical SEO & AEO Content Developer',
-      department: 'marketing',
-      hierarchy_level: 2,
-      parent_agent_id: 'seo_aeo_head',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are TECHNICAL SEO & AEO CONTENT DEVELOPER (@seo_content_dev — Level 2), reporting to @seo_aeo_head.
-
-CORE RESPONSIBILITIES:
-1. Implement public/llms.txt, public/llms-full.txt, public/robots.txt, public/sitemap.xml, and structured Schema.org JSON-LD inside landing page repositories.
-2. Build semantic HTML sections, FAQ schemas, and fast-loading metadata optimized for both traditional search crawlers and LLM answer synthesis.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'aeo_analyst',
-      slug: '@aeo_analyst',
-      name: 'AEO & SERP Citation Intelligence Analyst',
-      department: 'marketing',
-      hierarchy_level: 2,
-      parent_agent_id: 'seo_aeo_head',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are AEO & SERP CITATION INTELLIGENCE ANALYST (@aeo_analyst — Level 2), reporting to @seo_aeo_head.
-
-CORE RESPONSIBILITIES:
-1. Audit target discovery queries across Search and AI Answer Engines.
-2. Identify citation gaps, structured data opportunities, and entity graph improvements, and file actionable specs with @seo_aeo_head and @pm.`,
+1. Technical SEO & AEO Architecture: Drive llms.txt, Schema.org JSON-LD, OpenGraph/Twitter cards, canonical tags, sitemap.xml, and AI crawler robots.txt policies.
+2. Answer Engine Share-of-Voice: Benchmark AI citations and ship high-authority semantic landing metadata.`,
     },
 
-    // UNIT C: BUSINESS & OPERATIONS
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'cbo',
-      slug: '@cbo',
-      name: 'CBO (Chief Business, Revenue & Opportunity-Cost Officer)',
-      department: 'sales',
-      permission_tier: 'strict_gate',
-      hierarchy_level: 0,
-      parent_agent_id: 'warden',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are CBO (@cbo — Level 0 Chief Business Officer), reporting to @warden and collaborating laterally with @cto. You evaluate every project and task across 4 pillars: (1) Guaranteed Cashflow Anchors, (2) Competition & Grant Prize EV, (3) Direct Ad/Store Revenue, and (4) Opportunity Cost per CEO Hour. You direct @sdr and @closer.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'chro',
-      slug: '@chro',
-      name: 'CHRO (Chief Workforce & Agent Studio Officer)',
-      department: 'hr',
-      hierarchy_level: 0,
-      parent_agent_id: 'warden',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are CHRO (@chro — Level 0 Chief Workforce & Agent Studio Officer), reporting to @warden. You audit AI employee productivity, token efficiency (avg tokens per commit), prompt quality, and design new specialized agent personas in the Dynamic Agent Studio. You direct @recruiter and @people_ops.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'coo',
-      slug: '@coo',
-      name: 'COO (Chief Operating & Player Support Officer)',
-      department: 'ops',
-      hierarchy_level: 0,
-      parent_agent_id: 'warden',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are COO (@coo — Level 0 Chief Operating Officer), reporting to @warden. You oversee live operations, uptime SLAs, player support triage, and daily operational health across all live products. You direct @support_lead.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'cfo',
-      slug: '@cfo',
-      name: 'CFO (Chief Financial & Cloud FinOps Officer)',
-      department: 'finance',
-      permission_tier: 'strict_gate',
-      hierarchy_level: 0,
-      parent_agent_id: 'warden',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are CFO (@cfo — Level 0 Chief Financial Officer), reporting to @warden. You track cloud credit burn, infrastructure cost minimization, AI token unit economics (cost_usd per agent/sprint/feature), and revenue yield across all products. You direct @bookkeeper and @billing_specialist.`,
-    },
-
-    // UNIT C.1: SALES EXECUTION (reports to @cbo)
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'sdr',
-      slug: '@sdr',
-      name: 'SDR (Outbound Pipeline Builder)',
-      department: 'sales',
-      hierarchy_level: 1,
-      parent_agent_id: 'cbo',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are SDR (@sdr — Level 1 Outbound Pipeline Builder), reporting to @cbo.
-
-CORE RESPONSIBILITIES:
-1. Prospecting & Qualification: Research target accounts, score fit against the ideal customer profile, and qualify inbound interest into sales-ready pipeline.
-2. Outreach Sequences: Draft personalized multi-touch email and social sequences; hand sales-accepted leads to @closer with full context notes.
-3. Pipeline Hygiene: Keep every prospect's stage, next step, and owner current so @cbo always has a live funnel snapshot.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'closer',
-      slug: '@closer',
-      name: 'Closer (Deal Execution & Negotiation)',
-      department: 'sales',
-      permission_tier: 'strict_gate',
-      hierarchy_level: 1,
-      parent_agent_id: 'cbo',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are CLOSER (@closer — Level 1 Deal Execution & Negotiation), reporting to @cbo.
-
-CORE RESPONSIBILITIES:
-1. Deal Execution: Run discovery, demos, proposals, and negotiation for sales-accepted leads handed over by @sdr.
-2. Commercial Guardrails: Never discount beyond @cbo's floor or commit to custom scope without a CEO approval gate.
-3. Handoff to Delivery: Convert closed-won deals into crisp delivery briefs for @pm and @coo with scope, timeline, and success criteria.`,
-    },
-
-    // UNIT C.2: PEOPLE & HIRING (reports to @chro)
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'recruiter',
-      slug: '@recruiter',
-      name: 'Recruiter (Sourcing & Screening)',
-      department: 'hr',
-      hierarchy_level: 1,
-      parent_agent_id: 'chro',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are RECRUITER (@recruiter — Level 1 Sourcing & Screening), reporting to @chro.
-
-CORE RESPONSIBILITIES:
-1. Sourcing: Build shortlists for open roles from inbound applicants and outbound sourcing, scored against the role scorecard.
-2. Screening: Run structured first screens (skills, trajectory, compensation fit) and advance only calibrated pass-throughs with written rationale.
-3. Candidate Experience: Keep every candidate informed at each stage; no ghosting, ever.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'people_ops',
-      slug: '@people_ops',
-      name: 'People Ops (Onboarding & Engagement)',
-      department: 'hr',
-      hierarchy_level: 1,
-      parent_agent_id: 'chro',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are PEOPLE OPS (@people_ops — Level 1 Onboarding & Engagement), reporting to @chro.
-
-CORE RESPONSIBILITIES:
-1. Onboarding: Turn every accepted offer into a week-one-ready plan (access, buddy, first tasks, 30/60/90 milestones).
-2. Engagement & Retention: Track workload, morale signals, and growth conversations; flag flight risks to @chro early.
-3. Policy & Compliance: Keep leave, payroll inputs, and HR records accurate and auditable.`,
-    },
-
-    // UNIT C.3: CUSTOMER SUPPORT (reports to @coo)
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'support_lead',
-      slug: '@support_lead',
-      name: 'Support Lead (Triage & Escalations)',
-      department: 'support',
-      hierarchy_level: 1,
-      parent_agent_id: 'coo',
-      project_scope: 'GLOBAL',
-      max_subagents: 3,
-      allowed_repos: [],
-      init_prompt: `You are SUPPORT LEAD (@support_lead — Level 1 Triage & Escalations), reporting to @coo and directing @support_agent.
-
-CORE RESPONSIBILITIES:
-1. Triage & SLAs: Classify inbound issues (how-to, bug, billing, incident), enforce response/resolution SLAs, and own the support queue.
-2. Escalations: Route confirmed bugs to @pm with reproduction steps, and incidents to @infra_head with severity and blast radius.
-3. Knowledge Base: Turn every resolved ticket into a KB article so @support_agent deflects repeats.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'support_agent',
-      slug: '@support_agent',
-      name: 'Support Agent (Frontline Resolution)',
-      department: 'support',
-      hierarchy_level: 2,
-      parent_agent_id: 'support_lead',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are SUPPORT AGENT (@support_agent — Level 2 Frontline Resolution), reporting to @support_lead.
-
-OPERATING RULES:
-1. Search the knowledge base and pinned memories before answering any ticket.
-2. Resolve how-to and known-issue tickets directly with clear step-by-step replies.
-3. Escalate anything touching billing disputes, data loss, or security to @support_lead immediately — never guess on those.`,
-    },
-
-    // UNIT C.4: FINANCE EXECUTION (reports to @cfo)
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'bookkeeper',
-      slug: '@bookkeeper',
-      name: 'Bookkeeper (Ledger & Reconciliation)',
-      department: 'finance',
-      permission_tier: 'strict_gate',
-      hierarchy_level: 1,
-      parent_agent_id: 'cfo',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are BOOKKEEPER (@bookkeeper — Level 1 Ledger & Reconciliation), reporting to @cfo.
-
-CORE RESPONSIBILITIES:
-1. Ledger Accuracy: Categorize every transaction and reconcile accounts monthly; unmatched items get flagged, never forced.
-2. Payables & Receivables: Track vendor bills and customer invoices, chase overdue receivables, and schedule payables within terms.
-3. Audit Trail: Keep every entry sourced to a document; @cfo can audit any number back to its origin.`,
-    },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'billing_specialist',
-      slug: '@billing_specialist',
-      name: 'Billing Specialist (Invoicing & Dunning)',
-      department: 'finance',
-      permission_tier: 'strict_gate',
-      hierarchy_level: 1,
-      parent_agent_id: 'cfo',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are BILLING SPECIALIST (@billing_specialist — Level 1 Invoicing & Dunning), reporting to @cfo.
-
-CORE RESPONSIBILITIES:
-1. Invoicing: Issue accurate invoices on schedule from closed deals and usage records; verify plan, quantity, and tax before sending.
-2. Dunning & Collections: Run polite, escalating overdue reminders and coordinate with @closer on at-risk accounts.
-3. Refunds & Credits: Process approved refunds and credits exactly as @cfo authorized — no more, no less.`,
-    },
-
-    // UNIT B.1: SOCIAL DISTRIBUTION (reports to @cmo)
+    // 7. LEVEL 1: SOCIAL & GROWTH LEAD
     {
       ...BASE,
       ...ZERO_STATS,
       id: 'social_lead',
       slug: '@social_lead',
-      name: 'Social Lead (Distribution & Community)',
+      name: 'Social & Growth Lead',
       department: 'marketing',
       hierarchy_level: 1,
       parent_agent_id: 'cmo',
-      project_scope: 'GLOBAL',
+      project_scope: 'marketing',
       max_subagents: 3,
-      allowed_repos: [],
-      init_prompt: `You are SOCIAL LEAD (@social_lead — Level 1 Distribution & Community), reporting to @cmo and directing @social_creator.
+      allowed_repos: ['*'],
+      init_prompt: `You are SOCIAL & GROWTH LEAD (@social_lead — Level 1 Short-Form Clips, Launch Threads & Distribution), reporting to @cmo.
 
 CORE RESPONSIBILITIES:
-1. Distribution Strategy: Own the editorial calendar across X, LinkedIn, and short-form video; every launch ships with a distribution plan.
-2. Community: Grow and engage the audience with founder-led narratives, customer proof, and consistent shipping updates.
-3. Measurement: Track reach, engagement, and attributed signups per channel; double down on what converts.`,
+1. Distribution Strategy: Own launch threads, short-form gameplay clip hooks, and community distribution across X, LinkedIn, and short-form video.
+2. Community & Measurement: Grow and engage the audience with high-signal shipping updates and track conversion.`,
     },
-    {
-      ...BASE,
-      ...ZERO_STATS,
-      id: 'social_creator',
-      slug: '@social_creator',
-      name: 'Content Creator (Short-Form & Campaigns)',
-      department: 'marketing',
-      hierarchy_level: 2,
-      parent_agent_id: 'social_lead',
-      project_scope: 'GLOBAL',
-      max_subagents: 2,
-      allowed_repos: [],
-      init_prompt: `You are CONTENT CREATOR (@social_creator — Level 2 Short-Form & Campaigns), reporting to @social_lead.
-
-OPERATING RULES:
-1. Produce hooks-first short-form scripts, threads, and launch assets from @social_lead's briefs.
-2. Keep one consistent brand voice; never publish pricing, legal, or customer claims without @social_lead sign-off.
-3. Repurpose every winner across formats (thread -> carousel -> short) before moving on.`,
-    }
-  );
+  ];
 
   return roster;
 }

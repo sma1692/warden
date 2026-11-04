@@ -94,6 +94,28 @@ export async function signOut(): Promise<void> {
   setToken(null);
 }
 
+export interface DemoWorkspaceStatus {
+  deploy_url: string | null;
+  deploy_status: string;
+}
+
+/**
+ * Poll target while provisioning: the workspace row lands once the
+ * server-side provision (including the initial Cloudflare deploy) finishes.
+ * Returns null until then. Never throws.
+ */
+export async function fetchDemoWorkspace(): Promise<DemoWorkspaceStatus | null> {
+  try {
+    const res = await fetch(`${API_BASE}/demo/workspace`, {
+      headers: { ...authHeaders() },
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok && data?.workspace ? (data.workspace as DemoWorkspaceStatus) : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface WhatsAppLoginRequest {
   id: string;
   code: string;

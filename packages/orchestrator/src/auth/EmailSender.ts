@@ -89,12 +89,19 @@ async function expectOk(conn: LineSocket, command: string): Promise<string> {
   return reply.text;
 }
 
-export async function sendEmailCode(to: string, code: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function sendEmailMessage(
+  to: string,
+  subject: string,
+  bodyText: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const host = (process.env.SMTP_HOST || '').trim();
   const user = (process.env.SMTP_USER || '').trim();
   const pass = process.env.SMTP_PASS || '';
   const from = (process.env.SMTP_FROM || user).trim();
-  if (!host || !user || !pass) return { ok: false, error: 'SMTP is not configured (SMTP_HOST/SMTP_USER/SMTP_PASS).' };
+  if (!host || !user || !pass) {
+    console.log(`[EMAIL NOTIFY (dev log)] To=${to} | Subject="${subject}" | Body="${bodyText.replace(/\r?\n/g, ' ').slice(0, 140)}"`);
+    return { ok: false, error: 'SMTP is not configured (SMTP_HOST/SMTP_USER/SMTP_PASS).' };
+  }
 
   const port = smtpPort();
   const secure = smtpSecure(port);
@@ -111,11 +118,12 @@ export async function sendEmailCode(to: string, code: string): Promise<{ ok: tru
     return { ok: false, error: `Could not reach SMTP ${host}:${port}.` };
   }
 
+  const safeSubject = subject.replace(/[\r\n]+/g, ' ').trim();
   const conn = wrapSocket(raw);
   try {
     const greeting = await readReply(conn);
     if (greeting.code !== 220) throw new Error(`SMTP greeting failed (${greeting.code})`);
-    let ehlo = await expectOk(conn, `EHLO warden`);
+    const ehlo = await expectOk(conn, `EHLO warden`);
     if (!secure && /STARTTLS/i.test(ehlo)) {
       await expectOk(conn, 'STARTTLS');
       const upgraded = tls.connect({ socket: raw, host, timeout: 15000 });
@@ -132,9 +140,9 @@ export async function sendEmailCode(to: string, code: string): Promise<{ ok: tru
       await expectOk(tlsConn, `RCPT TO:<${to}>`);
       await expectOk(tlsConn, 'DATA');
       const body =
-        `From: ${from}\r\nTo: ${to}\r\nSubject: Your Warden Automatons sign-in code\r\n` +
+        `From: ${from}\r\nTo: ${to}\r\nSubject: ${safeSubject}\r\n` +
         `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
-        `Your Warden Automatons sign-in code is: ${code}\r\nIt expires in 5 minutes.\r\n`;
+        `${bodyText.replace(/\r?\n/g, '\r\n')}\r\n`;
       await tlsConn.send(body + '\r\n.');
       await readReply(tlsConn).then((r) => {
         if (r.code !== 250) throw new Error(`SMTP DATA failed (${r.code})`);
@@ -151,9 +159,9 @@ export async function sendEmailCode(to: string, code: string): Promise<{ ok: tru
     await expectOk(conn, `RCPT TO:<${to}>`);
     await expectOk(conn, 'DATA');
     const body =
-      `From: ${from}\r\nTo: ${to}\r\nSubject: Your Warden Automatons sign-in code\r\n` +
+      `From: ${from}\r\nTo: ${to}\r\nSubject: ${safeSubject}\r\n` +
       `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
-      `Your Warden Automatons sign-in code is: ${code}\r\nIt expires in 5 minutes.\r\n`;
+      `${bodyText.replace(/\r?\n/g, '\r\n')}\r\n`;
     await conn.send(body + '\r\n.');
     const dataReply = await readReply(conn);
     if (dataReply.code !== 250) throw new Error(`SMTP DATA failed (${dataReply.code})`);
@@ -165,4 +173,12 @@ export async function sendEmailCode(to: string, code: string): Promise<{ ok: tru
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: message };
   }
+}
+
+export async function sendEmailCode(to: string, code: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  return sendEmailMessage(
+    to,
+    'Your Warden Automatons sign-in code',
+    `Your Warden Automatons sign-in code is: ${code}\nIt expires in 5 minutes.`
+  );
 }

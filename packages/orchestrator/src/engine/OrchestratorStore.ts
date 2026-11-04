@@ -396,6 +396,8 @@ export interface BacklogItemRecord {
   requested_by_agent_id?: string | null;
   last_moved_at?: string | null;
   last_movement_note?: string | null;
+  status_note?: string | null;
+  origin_thread_id?: string | null;
   created_at: string;
   completed_at: string | null;
 }
@@ -482,6 +484,28 @@ export function inferDepartmentForRole(role: string): string {
   if (/(exec|chief|warden|strategy)/.test(r)) return 'executive';
   if (/(ops|operator|logistics|procure|vendor)/.test(r)) return 'ops';
   return 'tech';
+}
+
+export const CORE_DEMO_AGENT_IDS = new Set([
+  'warden',
+  'cto',
+  'cmo',
+  'frontend_dev',
+  'designer',
+  'seo_aeo_head',
+  'social_lead',
+]);
+
+function isCoreOrActiveDemoAgent(agent: AgentRecord): boolean {
+  const cleanId = agent.id.toLowerCase().replace(/^agent_/, '');
+  const cleanSlug = agent.slug.replace(/^@/, '').toLowerCase().replace(/^agent_/, '');
+  return (
+    CORE_DEMO_AGENT_IDS.has(cleanId) ||
+    CORE_DEMO_AGENT_IDS.has(cleanSlug) ||
+    agent.status === 'WORKING' ||
+    agent.status === 'WAITING_FOR_CEO' ||
+    agent.needs_review === true
+  );
 }
 
 /**
@@ -879,10 +903,23 @@ export class OrchestratorStore {
       : await dbStore.listAgentRuns({ userId });
     for (const r of runs) {
       const ag = this.getAgent(r.agent_id);
+      const rawActiveMs = Number(r.active_duration_ms ?? 0);
+      const startMs = Date.parse(r.started_at || '');
+      const endMs = Date.parse(r.ended_at || '');
+      const healedDuration =
+        Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs
+          ? Math.min(300_000, endMs - startMs)
+          : 12_500;
+      const activeDurationMs =
+        !Number.isFinite(rawActiveMs) || rawActiveMs > 3_600_000
+          ? healedDuration
+          : rawActiveMs;
       this.runs.set(r.id, {
         ...r,
         agent_slug: r.agent_slug || ag?.slug || `@${r.agent_id}`,
         spawns_count: Number((r as any).spawns_count ?? 0),
+        active_duration_ms: activeDurationMs,
+        pause_duration_ms: Number(r.pause_duration_ms ?? 0),
         tokens_in: Number(r.tokens_in ?? 0),
         tokens_cached: Number(r.tokens_cached ?? 0),
         tokens_thinking: Number(r.tokens_thinking ?? 0),
@@ -911,6 +948,7 @@ export class OrchestratorStore {
       if (!list.some((existing) => existing.id === s.id)) {
         list.push({
           ...s,
+          duration_ms: Number(s.duration_ms || 0),
           tokens_in: Number(s.tokens_in ?? 0),
           tokens_cached: Number(s.tokens_cached ?? 0),
           tokens_thinking: Number(s.tokens_thinking ?? 0),
@@ -918,6 +956,61 @@ export class OrchestratorStore {
           cost_usd: Number((s as any).cost_usd ?? 0),
         });
         this.stepsByRun.set(s.run_id, list);
+      }
+    }
+
+    // Reconcile completed runs with backlogItems so tasks with a COMPLETED run
+    // are guaranteed to be marked stage='DONE' even if an earlier DB write failed FK constraints.
+    const starterPatterns: Array<{ itemMatch: RegExp; runMatch: RegExp }> = [
+      {
+        itemMatch: /lobby_bootstrap|lobby bootstrap:\s*loading screen/i,
+        runMatch: /lobby_bootstrap|lobby bootstrap|loading screen/i,
+      },
+      {
+        itemMatch: /trophy_assets|trophy asset batch/i,
+        runMatch: /trophy_assets|trophy asset batch|generate trophy system art/i,
+      },
+      {
+        itemMatch: /crash_patch|game crashes after the final move/i,
+        runMatch: /crash_patch|game crashes after the final move|victory modal/i,
+      },
+      {
+        itemMatch: /trophy_seo|trophy launch seo cluster/i,
+        runMatch: /trophy_seo|trophy launch seo cluster|json-ld|sitemap\.xml/i,
+      },
+      {
+        itemMatch: /trophy_social|trophy launch pack/i,
+        runMatch: /trophy_social|trophy launch pack|launch thread/i,
+      },
+    ];
+    for (const item of this.backlogItems.values()) {
+      if (item.stage === 'DONE') continue;
+      const itemText = `${item.id} ${item.title} ${item.spec_md || ''}`;
+      const matchedPattern = starterPatterns.find((p) => p.itemMatch.test(itemText));
+      let completedRun: AgentRunRecord | undefined;
+      for (const r of this.runs.values()) {
+        if (r.status !== 'COMPLETED') continue;
+        if (item.user_id && r.user_id && item.user_id !== r.user_id) continue;
+        if (r.backlog_item_id && r.backlog_item_id === item.id) {
+          completedRun = r;
+          break;
+        }
+        if (matchedPattern && matchedPattern.runMatch.test(`${r.id} ${r.input_prompt || ''} ${r.output_summary || ''}`)) {
+          completedRun = r;
+          break;
+        }
+      }
+      if (completedRun) {
+        item.stage = 'DONE';
+        item.requires_human_intervention = false;
+        item.completed_at = item.completed_at || completedRun.ended_at || new Date().toISOString();
+        item.last_moved_at = completedRun.ended_at || new Date().toISOString();
+        item.last_movement_note =
+          item.last_movement_note || completedRun.output_summary || 'Completed';
+        (item as any).status_note =
+          (item as any).status_note || completedRun.output_summary || 'Completed';
+        this.backlogItems.set(item.id, item);
+        this.persistBacklogItem(item);
       }
     }
 
@@ -1026,30 +1119,28 @@ export class OrchestratorStore {
             clocked_in_at: row.clocked_in_at
               ? new Date(row.clocked_in_at).toISOString()
               : null,
-            total_work_time_ms: Number(row.total_work_time_ms ?? 0),
-            today_work_time_ms: Number(row.today_work_time_ms ?? 0),
-            total_runs: Number(row.total_runs ?? 0),
-            total_commits: Number(row.total_commits ?? 0),
+            total_work_time_ms: Math.max(Number(row.total_work_time_ms ?? 0), existing?.total_work_time_ms ?? 0),
+            today_work_time_ms: Math.max(Number(row.today_work_time_ms ?? 0), existing?.today_work_time_ms ?? 0),
+            total_runs: Math.max(Number(row.total_runs ?? 0), existing?.total_runs ?? 0),
+            total_commits: Math.max(Number(row.total_commits ?? 0), existing?.total_commits ?? 0),
             max_tokens_per_run: Number(row.max_tokens_per_run ?? 1000000),
-            today_tokens_used: Number(row.today_tokens_used ?? 0),
-            total_tokens_in: Number(row.total_tokens_in ?? 0),
-            total_tokens_cached: Number(row.total_tokens_cached ?? 0),
-            total_tokens_thinking: Number(row.total_tokens_thinking ?? 0),
-            total_tokens_out: Number(row.total_tokens_out ?? 0),
-            total_cost_usd: Number(row.total_cost_usd ?? 0),
+            today_tokens_used: Math.max(Number(row.today_tokens_used ?? 0), existing?.today_tokens_used ?? 0),
+            total_tokens_in: Math.max(Number(row.total_tokens_in ?? 0), existing?.total_tokens_in ?? 0),
+            total_tokens_cached: Math.max(Number(row.total_tokens_cached ?? 0), existing?.total_tokens_cached ?? 0),
+            total_tokens_thinking: Math.max(Number(row.total_tokens_thinking ?? 0), existing?.total_tokens_thinking ?? 0),
+            total_tokens_out: Math.max(Number(row.total_tokens_out ?? 0), existing?.total_tokens_out ?? 0),
+            total_cost_usd: Math.max(Number(row.total_cost_usd ?? 0), existing?.total_cost_usd ?? 0),
             needs_review: row.needs_review === true,
           };
           this.agents.set(merged.id, merged);
         }
-        // Db mode defers to Postgres: drop generic in-memory seeds the DB
-        // roster does not know, so the two lists cannot drift. Private-seed
-        // workspaces and md mode keep their local agents untouched.
-        if (this.source === 'db' && this.seedSource === 'generic') {
-          const dbIds = new Set(
-            (agentsRes.rows as Array<{ id: unknown }>).map((row) => String(row.id))
-          );
-          for (const id of Array.from(this.agents.keys())) {
-            if (!dbIds.has(id)) this.agents.delete(id);
+        // In generic demo mode, prune legacy idle non-core agents from memory so
+        // getAllAgents() returns the clean 7-agent roster (plus any working/spawned subagents).
+        if (this.seedSource === 'generic') {
+          for (const [id, agent] of Array.from(this.agents.entries())) {
+            if (!isCoreOrActiveDemoAgent(agent)) {
+              this.agents.delete(id);
+            }
           }
         }
       }
@@ -1277,9 +1368,551 @@ export class OrchestratorStore {
 
     } // end cloud-mode user-seed skip
 
+    if (this.runs.size === 0) {
+      this.seedHistoricalDemoRuns(now);
+    }
+
     // Perform non-destructive initial Disk -> DB sync so any existing context/memory/worklist markdown files hydrate the store
     if (this.source === 'md') {
       this.syncDiskToDb();
+    }
+  }
+
+  private seedHistoricalDemoRuns(nowIso: string): void {
+    const baseMs = new Date(nowIso).getTime();
+    const isoMinus = (mins: number, secs = 0) =>
+      new Date(baseMs - (mins * 60 + secs) * 1000).toISOString();
+    const defaultSlug = this.getDefaultProjectSlug();
+
+    const historicalRuns: AgentRunRecord[] = [
+      // Chain 1: @warden -> @cto -> @frontend_dev ("Arena HUD & 60fps Frame Pacing Polish")
+      {
+        id: 'run_hist_warden_1',
+        user_id: null,
+        agent_id: 'warden',
+        agent_slug: '@warden',
+        parent_run_id: null,
+        child_run_ids: ['run_hist_cto_1'],
+        chat_thread_id: 'thr_executive_main',
+        sprint_id: null,
+        backlog_item_id: null,
+        trigger_type: 'CEO_CHAT',
+        input_prompt: 'Arena HUD & 60fps Frame Pacing Polish — route to @cto and @frontend_dev to lock 60fps frame pacing and crisp score/combo HUD overlays.',
+        output_summary: 'Routed Arena HUD & 60fps Frame Pacing Polish to @cto -> @frontend_dev. Verified 60fps render loop stability and zero console errors.',
+        status: 'COMPLETED',
+        container_id: 'sbx-warden-root',
+        git_branch: 'main',
+        git_commit_sha: 'a4c91e2',
+        preview_url: 'http://localhost:5180',
+        qa_passed: true,
+        qa_screenshot_url: null,
+        spawns_count: 1,
+        started_at: isoMinus(48, 0),
+        ended_at: isoMinus(44, 10),
+        active_duration_ms: 38400,
+        pause_duration_ms: 0,
+        tokens_in: 6420,
+        tokens_cached: 4100,
+        tokens_thinking: 920,
+        tokens_out: 1180,
+        cost_usd: 0.0142,
+        project_scope: defaultSlug,
+      },
+      {
+        id: 'run_hist_cto_1',
+        user_id: null,
+        agent_id: 'cto',
+        agent_slug: '@cto',
+        parent_run_id: 'run_hist_warden_1',
+        child_run_ids: ['run_hist_fe_1'],
+        chat_thread_id: 'thr_executive_main',
+        sprint_id: null,
+        backlog_item_id: null,
+        trigger_type: 'DELEGATION',
+        input_prompt: 'Coordinate Arena HUD & 60fps Frame Pacing Polish: audit canvas requestAnimationFrame delta clamping and delegate HUD implementation to @frontend_dev.',
+        output_summary: 'Locked requestAnimationFrame delta cap (33ms max step) and verified @frontend_dev HUD glyph batching pass.',
+        status: 'COMPLETED',
+        container_id: 'sbx-cto-arch',
+        git_branch: 'feat/hud-frame-pacing',
+        git_commit_sha: 'a4c91e2',
+        preview_url: 'http://localhost:5180',
+        qa_passed: true,
+        qa_screenshot_url: null,
+        spawns_count: 1,
+        started_at: isoMinus(47, 30),
+        ended_at: isoMinus(44, 25),
+        active_duration_ms: 52100,
+        pause_duration_ms: 0,
+        tokens_in: 11240,
+        tokens_cached: 7800,
+        tokens_thinking: 1640,
+        tokens_out: 2190,
+        cost_usd: 0.0268,
+        project_scope: defaultSlug,
+      },
+      {
+        id: 'run_hist_fe_1',
+        user_id: null,
+        agent_id: 'frontend_dev',
+        agent_slug: '@frontend_dev',
+        parent_run_id: 'run_hist_cto_1',
+        child_run_ids: [],
+        chat_thread_id: 'thr_executive_main',
+        sprint_id: null,
+        backlog_item_id: 'bl_demo_hud_frame_timing',
+        trigger_type: 'DELEGATION',
+        input_prompt: 'Implement Arena HUD score/combo counter and clamp frame delta in the main game loop so frame times hold steady at 16.6ms (60fps).',
+        output_summary: 'Shipped batched Arena HUD overlay and pre-allocated particle pool; verified 60fps pacing and zero console warnings.',
+        status: 'COMPLETED',
+        container_id: 'sbx-fe-game',
+        git_branch: 'feat/hud-frame-pacing',
+        git_commit_sha: 'a4c91e2',
+        preview_url: 'http://localhost:5180',
+        qa_passed: true,
+        qa_screenshot_url: null,
+        spawns_count: 0,
+        started_at: isoMinus(46, 50),
+        ended_at: isoMinus(44, 40),
+        active_duration_ms: 84600,
+        pause_duration_ms: 0,
+        tokens_in: 18450,
+        tokens_cached: 12400,
+        tokens_thinking: 2310,
+        tokens_out: 3840,
+        cost_usd: 0.0415,
+        project_scope: defaultSlug,
+      },
+
+      // Chain 2: @cmo -> @seo_aeo_head ("Ship /llms.txt & VideoGame FAQ JSON-LD Schema")
+      {
+        id: 'run_hist_cmo_2',
+        user_id: null,
+        agent_id: 'cmo',
+        agent_slug: '@cmo',
+        parent_run_id: null,
+        child_run_ids: ['run_hist_seo_2'],
+        chat_thread_id: 'thr_executive_main',
+        sprint_id: null,
+        backlog_item_id: null,
+        trigger_type: 'DIRECT_MENTION',
+        input_prompt: 'Ship /llms.txt & VideoGame FAQ JSON-LD Schema so AI answer engines and search crawlers index our browser arcade game.',
+        output_summary: 'Directed @seo_aeo_head to publish /llms.txt and Schema.org VideoGame + FAQPage JSON-LD metadata on the landing page.',
+        status: 'COMPLETED',
+        container_id: 'sbx-cmo-growth',
+        git_branch: 'feat/aeo-llms-schema',
+        git_commit_sha: '7f3b891',
+        preview_url: 'http://localhost:5180',
+        qa_passed: true,
+        qa_screenshot_url: null,
+        spawns_count: 1,
+        started_at: isoMinus(29, 0),
+        ended_at: isoMinus(26, 15),
+        active_duration_ms: 41200,
+        pause_duration_ms: 0,
+        tokens_in: 7890,
+        tokens_cached: 5200,
+        tokens_thinking: 1120,
+        tokens_out: 1540,
+        cost_usd: 0.0184,
+        project_scope: 'marketing',
+      },
+      {
+        id: 'run_hist_seo_2',
+        user_id: null,
+        agent_id: 'seo_aeo_head',
+        agent_slug: '@seo_aeo_head',
+        parent_run_id: 'run_hist_cmo_2',
+        child_run_ids: [],
+        chat_thread_id: 'thr_executive_main',
+        sprint_id: null,
+        backlog_item_id: null,
+        trigger_type: 'DELEGATION',
+        input_prompt: 'Generate public/llms.txt and inject VideoGame + FAQPage JSON-LD structured data into index.html.',
+        output_summary: 'Added public/llms.txt crawler manifest and validated VideoGame + FAQPage JSON-LD schema with zero rich-result warnings.',
+        status: 'COMPLETED',
+        container_id: 'sbx-seo-aeo',
+        git_branch: 'feat/aeo-llms-schema',
+        git_commit_sha: '7f3b891',
+        preview_url: 'http://localhost:5180',
+        qa_passed: true,
+        qa_screenshot_url: null,
+        spawns_count: 0,
+        started_at: isoMinus(28, 20),
+        ended_at: isoMinus(26, 30),
+        active_duration_ms: 63500,
+        pause_duration_ms: 0,
+        tokens_in: 14320,
+        tokens_cached: 9600,
+        tokens_thinking: 1850,
+        tokens_out: 2940,
+        cost_usd: 0.0319,
+        project_scope: 'marketing',
+      },
+
+      // Chain 3: @cto -> @designer ("Arcade Badge Icon Set & Neon Palette Lock")
+      {
+        id: 'run_hist_cto_3',
+        user_id: null,
+        agent_id: 'cto',
+        agent_slug: '@cto',
+        parent_run_id: null,
+        child_run_ids: ['run_hist_des_3'],
+        chat_thread_id: 'thr_executive_main',
+        sprint_id: null,
+        backlog_item_id: null,
+        trigger_type: 'DIRECT_MENTION',
+        input_prompt: 'Arcade Badge Icon Set & Neon Palette Lock — have @designer craft crisp SVG rank badges and lock the high-contrast neon HUD tokens.',
+        output_summary: 'Reviewed and merged @designer SVG arcade rank badges and CSS neon palette tokens.',
+        status: 'COMPLETED',
+        container_id: 'sbx-cto-arch',
+        git_branch: 'feat/arcade-neon-badges',
+        git_commit_sha: 'd92e41b',
+        preview_url: 'http://localhost:5180',
+        qa_passed: true,
+        qa_screenshot_url: null,
+        spawns_count: 1,
+        started_at: isoMinus(15, 0),
+        ended_at: isoMinus(12, 20),
+        active_duration_ms: 36800,
+        pause_duration_ms: 0,
+        tokens_in: 8150,
+        tokens_cached: 5400,
+        tokens_thinking: 1090,
+        tokens_out: 1490,
+        cost_usd: 0.0179,
+        project_scope: defaultSlug,
+      },
+      {
+        id: 'run_hist_des_3',
+        user_id: null,
+        agent_id: 'designer',
+        agent_slug: '@designer',
+        parent_run_id: 'run_hist_cto_3',
+        child_run_ids: [],
+        chat_thread_id: 'thr_executive_main',
+        sprint_id: null,
+        backlog_item_id: null,
+        trigger_type: 'DELEGATION',
+        input_prompt: 'Design crisp SVG arcade tier badges (Bronze, Silver, Gold, Cyber) and lock the neon cyan/magenta/emerald CSS custom properties.',
+        output_summary: 'Created 4 vector arcade tier badges and locked WCAG AA high-contrast neon HUD tokens.',
+        status: 'COMPLETED',
+        container_id: 'sbx-designer-art',
+        git_branch: 'feat/arcade-neon-badges',
+        git_commit_sha: 'd92e41b',
+        preview_url: 'http://localhost:5180',
+        qa_passed: true,
+        qa_screenshot_url: null,
+        spawns_count: 0,
+        started_at: isoMinus(14, 30),
+        ended_at: isoMinus(12, 35),
+        active_duration_ms: 58900,
+        pause_duration_ms: 0,
+        tokens_in: 12680,
+        tokens_cached: 8100,
+        tokens_thinking: 1520,
+        tokens_out: 2680,
+        cost_usd: 0.0287,
+        project_scope: defaultSlug,
+      },
+    ];
+
+    const stepsByRunId: Record<string, InferenceStepRecord[]> = {
+      run_hist_warden_1: [
+        {
+          id: 'stp_hist_w1_1',
+          user_id: null,
+          run_id: 'run_hist_warden_1',
+          step_index: 1,
+          step_type: 'LLM_INFERENCE',
+          model_used: 'muse-spark-1.3',
+          thinking_text: 'CEO requested Arena HUD & 60fps frame pacing polish. This is a core gameplay & rendering task under @cto -> @frontend_dev.',
+          message_text: 'Routing Arena HUD & 60fps Frame Pacing Polish to `@cto` for technical contract lock and `@frontend_dev` execution.',
+          tool_name: null,
+          tool_args_json: null,
+          tool_output_json: null,
+          duration_ms: 4200,
+          tokens_in: 3100,
+          tokens_cached: 2000,
+          tokens_thinking: 520,
+          tokens_out: 480,
+          cost_usd: 0.0068,
+          created_at: isoMinus(47, 50),
+        },
+        {
+          id: 'stp_hist_w1_2',
+          user_id: null,
+          run_id: 'run_hist_warden_1',
+          step_index: 2,
+          step_type: 'SUBAGENT_CALL',
+          model_used: 'muse-spark-1.3',
+          thinking_text: 'Spawning @cto subagent run to oversee frame-pacing clamp and HUD batching.',
+          message_text: 'Delegated to `@cto` (run `run_hist_cto_1`).',
+          tool_name: 'spawn_subagent',
+          tool_args_json: { target_agent: '@cto', task: 'Arena HUD & 60fps Frame Pacing Polish' },
+          tool_output_json: { child_run_id: 'run_hist_cto_1', status: 'COMPLETED' },
+          duration_ms: 34200,
+          tokens_in: 3320,
+          tokens_cached: 2100,
+          tokens_thinking: 400,
+          tokens_out: 700,
+          cost_usd: 0.0074,
+          created_at: isoMinus(44, 15),
+        },
+      ],
+      run_hist_cto_1: [
+        {
+          id: 'stp_hist_cto1_1',
+          user_id: null,
+          run_id: 'run_hist_cto_1',
+          step_index: 1,
+          step_type: 'LLM_INFERENCE',
+          model_used: 'muse-spark-1.3',
+          thinking_text: 'Inspecting game loop timing and HUD state updates. Clamping dt <= 33ms prevents physics/spiral jumps on tab switch.',
+          message_text: 'Locked frame delta clamp spec and HUD canvas layer separation. Spawning `@frontend_dev` to implement.',
+          tool_name: null,
+          tool_args_json: null,
+          tool_output_json: null,
+          duration_ms: 6100,
+          tokens_in: 5400,
+          tokens_cached: 3800,
+          tokens_thinking: 890,
+          tokens_out: 980,
+          cost_usd: 0.0124,
+          created_at: isoMinus(47, 10),
+        },
+        {
+          id: 'stp_hist_cto1_2',
+          user_id: null,
+          run_id: 'run_hist_cto_1',
+          step_index: 2,
+          step_type: 'SUBAGENT_CALL',
+          model_used: 'muse-spark-1.3',
+          thinking_text: 'Dispatching @frontend_dev to patch game loop and HUD overlay component.',
+          message_text: 'Spawned `@frontend_dev` (`run_hist_fe_1`) for HUD + 60fps loop polish.',
+          tool_name: 'spawn_subagent',
+          tool_args_json: { target_agent: '@frontend_dev', branch: 'feat/hud-frame-pacing' },
+          tool_output_json: { child_run_id: 'run_hist_fe_1', qa_passed: true, commit: 'a4c91e2' },
+          duration_ms: 46000,
+          tokens_in: 5840,
+          tokens_cached: 4000,
+          tokens_thinking: 750,
+          tokens_out: 1210,
+          cost_usd: 0.0144,
+          created_at: isoMinus(44, 30),
+        },
+      ],
+      run_hist_fe_1: [
+        {
+          id: 'stp_hist_fe1_1',
+          user_id: null,
+          run_id: 'run_hist_fe_1',
+          step_index: 1,
+          step_type: 'TOOL_CALL',
+          model_used: 'muse-light',
+          thinking_text: 'Reading main game loop and HUD renderer to eliminate per-frame object allocations.',
+          message_text: 'Patched `requestAnimationFrame` loop with 33ms delta clamp and pre-allocated HUD score/streak buffers.',
+          tool_name: 'write_file',
+          tool_args_json: { path: 'src/components/ArenaHud.tsx', mode: 'patch' },
+          tool_output_json: { bytes_written: 3480, status: 'ok' },
+          duration_ms: 38400,
+          tokens_in: 8900,
+          tokens_cached: 6100,
+          tokens_thinking: 1120,
+          tokens_out: 1940,
+          cost_usd: 0.0198,
+          created_at: isoMinus(45, 50),
+        },
+        {
+          id: 'stp_hist_fe1_2',
+          user_id: null,
+          run_id: 'run_hist_fe_1',
+          step_index: 2,
+          step_type: 'QA_CHECK',
+          model_used: 'muse-light',
+          thinking_text: 'Running typecheck, production bundle build, and headless frame timing check.',
+          message_text: 'QA passed: `tsc --noEmit` 0 errors, 60.0fps steady pacing, 0 console errors.',
+          tool_name: 'run_qa_verification',
+          tool_args_json: { cmd: 'npm run build', check_fps: true },
+          tool_output_json: { exit_code: 0, avg_fps: 60, console_errors: 0 },
+          duration_ms: 46200,
+          tokens_in: 9550,
+          tokens_cached: 6300,
+          tokens_thinking: 1190,
+          tokens_out: 1900,
+          cost_usd: 0.0217,
+          created_at: isoMinus(44, 42),
+        },
+      ],
+      run_hist_cmo_2: [
+        {
+          id: 'stp_hist_cmo2_1',
+          user_id: null,
+          run_id: 'run_hist_cmo_2',
+          step_index: 1,
+          step_type: 'LLM_INFERENCE',
+          model_used: 'muse-spark-1.3',
+          thinking_text: 'Structuring AI Answer Engine positioning and Schema.org VideoGame entity attributes before delegating to @seo_aeo_head.',
+          message_text: 'Defined high-intent query targets and entity graph attributes for `@seo_aeo_head`.',
+          tool_name: null,
+          tool_args_json: null,
+          tool_output_json: null,
+          duration_ms: 5400,
+          tokens_in: 3800,
+          tokens_cached: 2500,
+          tokens_thinking: 560,
+          tokens_out: 720,
+          cost_usd: 0.0089,
+          created_at: isoMinus(28, 40),
+        },
+        {
+          id: 'stp_hist_cmo2_2',
+          user_id: null,
+          run_id: 'run_hist_cmo_2',
+          step_index: 2,
+          step_type: 'SUBAGENT_CALL',
+          model_used: 'muse-spark-1.3',
+          thinking_text: 'Spawning @seo_aeo_head to author /llms.txt and JSON-LD schema.',
+          message_text: 'Spawned `@seo_aeo_head` (`run_hist_seo_2`) to ship `/llms.txt` & JSON-LD.',
+          tool_name: 'spawn_subagent',
+          tool_args_json: { target_agent: '@seo_aeo_head', task: 'Ship /llms.txt & VideoGame FAQ JSON-LD Schema' },
+          tool_output_json: { child_run_id: 'run_hist_seo_2', status: 'COMPLETED', commit: '7f3b891' },
+          duration_ms: 35800,
+          tokens_in: 4090,
+          tokens_cached: 2700,
+          tokens_thinking: 560,
+          tokens_out: 820,
+          cost_usd: 0.0095,
+          created_at: isoMinus(26, 20),
+        },
+      ],
+      run_hist_seo_2: [
+        {
+          id: 'stp_hist_seo2_1',
+          user_id: null,
+          run_id: 'run_hist_seo_2',
+          step_index: 1,
+          step_type: 'TOOL_CALL',
+          model_used: 'muse-spark-1.3',
+          thinking_text: 'Writing public/llms.txt and embedding Schema.org VideoGame + FAQPage JSON-LD in index.html.',
+          message_text: 'Created `public/llms.txt` and injected structured `VideoGame` + `FAQPage` JSON-LD script block.',
+          tool_name: 'write_file',
+          tool_args_json: { path: 'public/llms.txt', schema: 'VideoGame+FAQPage' },
+          tool_output_json: { files_updated: ['public/llms.txt', 'index.html'], status: 'ok' },
+          duration_ms: 39100,
+          tokens_in: 7420,
+          tokens_cached: 4900,
+          tokens_thinking: 980,
+          tokens_out: 1620,
+          cost_usd: 0.0168,
+          created_at: isoMinus(27, 25),
+        },
+        {
+          id: 'stp_hist_seo2_2',
+          user_id: null,
+          run_id: 'run_hist_seo_2',
+          step_index: 2,
+          step_type: 'QA_CHECK',
+          model_used: 'muse-spark-1.3',
+          thinking_text: 'Validating JSON-LD syntax and OpenGraph/canonical tags in build output.',
+          message_text: 'Verified valid JSON-LD graph and `/llms.txt` 200 OK response.',
+          tool_name: 'validate_seo_schema',
+          tool_args_json: { targets: ['index.html', 'public/llms.txt'] },
+          tool_output_json: { valid: true, entities: ['VideoGame', 'FAQPage'] },
+          duration_ms: 24400,
+          tokens_in: 6900,
+          tokens_cached: 4700,
+          tokens_thinking: 870,
+          tokens_out: 1320,
+          cost_usd: 0.0151,
+          created_at: isoMinus(26, 32),
+        },
+      ],
+      run_hist_cto_3: [
+        {
+          id: 'stp_hist_cto3_1',
+          user_id: null,
+          run_id: 'run_hist_cto_3',
+          step_index: 1,
+          step_type: 'SUBAGENT_CALL',
+          model_used: 'muse-spark-1.3',
+          thinking_text: 'Assigning @designer to produce vector rank badges and lock the neon arcade color tokens.',
+          message_text: 'Spawned `@designer` (`run_hist_des_3`) for SVG badge set & neon palette lock.',
+          tool_name: 'spawn_subagent',
+          tool_args_json: { target_agent: '@designer', task: 'Arcade Badge Icon Set & Neon Palette Lock' },
+          tool_output_json: { child_run_id: 'run_hist_des_3', status: 'COMPLETED', commit: 'd92e41b' },
+          duration_ms: 36800,
+          tokens_in: 8150,
+          tokens_cached: 5400,
+          tokens_thinking: 1090,
+          tokens_out: 1490,
+          cost_usd: 0.0179,
+          created_at: isoMinus(12, 22),
+        },
+      ],
+      run_hist_des_3: [
+        {
+          id: 'stp_hist_des3_1',
+          user_id: null,
+          run_id: 'run_hist_des_3',
+          step_index: 1,
+          step_type: 'TOOL_CALL',
+          model_used: 'muse-light',
+          thinking_text: 'Crafting crisp inline SVG rank badges (Bronze, Silver, Gold, Cyber) and neon glow CSS variables.',
+          message_text: 'Authored `ArcadeBadges.tsx` SVG sprite sheet and updated `--neon-cyan`, `--neon-magenta`, and `--neon-emerald` palette variables.',
+          tool_name: 'write_file',
+          tool_args_json: { path: 'src/components/ArcadeBadges.tsx' },
+          tool_output_json: { svgs_created: 4, status: 'ok' },
+          duration_ms: 36400,
+          tokens_in: 6800,
+          tokens_cached: 4300,
+          tokens_thinking: 820,
+          tokens_out: 1540,
+          cost_usd: 0.0154,
+          created_at: isoMinus(13, 30),
+        },
+        {
+          id: 'stp_hist_des3_2',
+          user_id: null,
+          run_id: 'run_hist_des_3',
+          step_index: 2,
+          step_type: 'QA_CHECK',
+          model_used: 'muse-light',
+          thinking_text: 'Checking contrast ratios and verifying clean Vite asset build.',
+          message_text: 'QA passed: all 4 SVG badges render crisply at 16px–64px with zero build warnings.',
+          tool_name: 'run_qa_verification',
+          tool_args_json: { cmd: 'npm run build' },
+          tool_output_json: { exit_code: 0, contrast_aa: true },
+          duration_ms: 22500,
+          tokens_in: 5880,
+          tokens_cached: 3800,
+          tokens_thinking: 700,
+          tokens_out: 1140,
+          cost_usd: 0.0133,
+          created_at: isoMinus(12, 36),
+        },
+      ],
+    };
+
+    for (const run of historicalRuns) {
+      this.runs.set(run.id, run);
+      this.stepsByRun.set(run.id, stepsByRunId[run.id] || []);
+      const ag = this.agents.get(run.agent_id);
+      if (ag) {
+        const runTokens = run.tokens_in + run.tokens_out + run.tokens_thinking;
+        ag.total_runs += 1;
+        ag.total_work_time_ms += run.active_duration_ms;
+        ag.today_work_time_ms += run.active_duration_ms;
+        ag.today_tokens_used += runTokens;
+        ag.total_tokens_in += run.tokens_in;
+        ag.total_tokens_cached += run.tokens_cached;
+        ag.total_tokens_thinking += run.tokens_thinking;
+        ag.total_tokens_out += run.tokens_out;
+        ag.total_cost_usd = Number((ag.total_cost_usd + run.cost_usd).toFixed(4));
+        if (!run.child_run_ids || run.child_run_ids.length === 0) {
+          ag.total_commits += 1;
+        }
+        this.agents.set(ag.id, ag);
+      }
     }
   }
 
@@ -1325,7 +1958,10 @@ export class OrchestratorStore {
   }
 
   public getAllAgents(): AgentRecord[] {
-    return Array.from(this.agents.values()).sort(
+    const list = Array.from(this.agents.values()).filter((a) =>
+      this.seedSource === 'generic' ? isCoreOrActiveDemoAgent(a) : true
+    );
+    return list.sort(
       (a, b) => a.hierarchy_level - b.hierarchy_level || a.id.localeCompare(b.id)
     );
   }
@@ -1553,7 +2189,8 @@ export class OrchestratorStore {
     const dbDepartments = new Set([
       'executive', 'tech', 'infra', 'marketing', 'sales', 'hr', 'ops', 'support', 'finance', 'product',
     ]);
-    const deptRaw = String(record.department || 'tech').toLowerCase();
+    const lowered = String(record.department || 'tech').toLowerCase();
+    const deptRaw = lowered === 'operations' ? 'ops' : lowered;
     const level = Math.max(-1, Math.min(3, Math.round(record.hierarchy_level)));
     const parent =
       record.parent_agent_id && this.dbAgentIds.has(record.parent_agent_id)
@@ -2331,6 +2968,14 @@ export class OrchestratorStore {
       ...existing,
       ...patch,
       id: existing.id,
+      active_duration_ms:
+        patch.active_duration_ms !== undefined
+          ? Number(patch.active_duration_ms || 0)
+          : Number(existing.active_duration_ms || 0),
+      pause_duration_ms:
+        patch.pause_duration_ms !== undefined
+          ? Number(patch.pause_duration_ms || 0)
+          : Number(existing.pause_duration_ms || 0),
     };
     this.runs.set(runId, updated);
     this.broadcast('run:updated', updated);
@@ -2384,8 +3029,10 @@ export class OrchestratorStore {
     input: Omit<InferenceStepRecord, 'id' | 'created_at' | 'step_index'>
   ): InferenceStepRecord {
     const list = this.stepsByRun.get(input.run_id) || [];
+    const stepDurationMs = Number(input.duration_ms || 0);
     const step: InferenceStepRecord = {
       ...input,
+      duration_ms: stepDurationMs,
       user_id: input.user_id ?? this.runs.get(input.run_id)?.user_id ?? null,
       id: `stp_${randomUUID().slice(0, 12)}`,
       step_index: list.length + 1,
@@ -2393,6 +3040,11 @@ export class OrchestratorStore {
     };
     list.push(step);
     this.stepsByRun.set(input.run_id, list);
+    const run = this.runs.get(input.run_id);
+    if (run && run.status === 'RUNNING') {
+      run.active_duration_ms = Number(run.active_duration_ms || 0) + stepDurationMs;
+      this.runs.set(run.id, run);
+    }
     this.broadcast('step:created', step);
     this.enqueueDbWrite('step', (dbStore) =>
       dbStore.appendInferenceStep({
@@ -2421,7 +3073,7 @@ export class OrchestratorStore {
   public getStepsForRun(runId: string, userId?: string | null): InferenceStepRecord[] {
     const steps = this.stepsByRun.get(runId) || [];
     if (userId === undefined) return steps;
-    return steps.filter((s) => (s.user_id ?? null) === (userId ?? null));
+    return steps.filter((s) => !userId || !s.user_id || s.user_id === userId);
   }
 
   public getRunsForAgent(
@@ -2433,7 +3085,7 @@ export class OrchestratorStore {
     for (const run of this.runs.values()) {
       if (
         (run.agent_id === agentId || run.agent_slug === `@${agentId}`) &&
-        (userId === undefined || (run.user_id ?? null) === (userId ?? null))
+        (!userId || !run.user_id || run.user_id === userId)
       ) {
         result.push(run);
       }
@@ -2539,6 +3191,10 @@ export class OrchestratorStore {
         m.is_pinned ||
         (projectScope && m.project_scope === projectScope)
     );
+  }
+
+  public getThread(threadId: string): ChatThreadRecord | undefined {
+    return this.threads.get(threadId);
   }
 
   public createThread(input: {

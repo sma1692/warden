@@ -21,7 +21,7 @@ import {
   type ConsultationLevel,
   type VerticalScope,
 } from './ConsultationKnob';
-import type { BacklogItem, ChatThread } from '../types/warden';
+import type { AgentRun, BacklogItem, ChatThread } from '../types/warden';
 import { DEMO_ORIGIN_THREAD_BY_BACKLOG, spawnThreadPrefix } from '../data/demoLinks';
 import { TrophyAssetPreview } from './TrophyAssetPreview';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -51,6 +51,8 @@ export interface PriorityDecisionItem {
   options: PriorityQuestionOption[];
   coArchitectFollowUp: string;
   coArchitectPills: string[];
+  isDynamicQuestion?: boolean;
+  backlogItemId?: string;
 }
 
 const PRIORITY_ITEMS: PriorityDecisionItem[] = [
@@ -271,6 +273,9 @@ function findMatchingBacklogItem(
   backlogItems?: BacklogItem[]
 ): BacklogItem | undefined {
   if (!backlogItems || backlogItems.length === 0) return undefined;
+  if (item.backlogItemId) {
+    return backlogItems.find((b) => b.id === item.backlogItemId);
+  }
   return backlogItems.find((b) => {
     const t = (b.title || '').toLowerCase();
     const id = (b.id || '').toLowerCase();
@@ -305,15 +310,140 @@ function findMatchingBacklogItem(
   });
 }
 
+function doesRunMatchPriorityItem(
+  run: AgentRun,
+  item: PriorityDecisionItem,
+  matchedBacklog?: BacklogItem
+): boolean {
+  if (matchedBacklog && run.backlog_item_id === matchedBacklog.id) return true;
+  if (item.backlogItemId && run.backlog_item_id === item.backlogItemId) return true;
+  if (run.backlog_item_id === item.id) return true;
+  const hay = `${run.backlog_item_id || ''} ${run.input_prompt || ''} ${run.output_summary || ''}`.toLowerCase();
+  if (item.id === 'prio_tech_lobby_bootstrap') {
+    return (
+      hay.includes('lobby_bootstrap') ||
+      hay.includes('lobby bootstrap') ||
+      hay.includes('lobby with play')
+    );
+  }
+  if (item.id === 'prio_tech_trophy_assets') {
+    return (
+      hay.includes('trophy_assets') ||
+      hay.includes('trophy asset batch') ||
+      hay.includes('generate trophy system art')
+    );
+  }
+  if (item.id === 'prio_tech_crash_patch') {
+    return (
+      hay.includes('crash_patch') ||
+      hay.includes('game crashes after the final move') ||
+      hay.includes('crashes after the final move')
+    );
+  }
+  if (item.id === 'prio_social_trophy_launch') {
+    return (
+      hay.includes('trophy_social') ||
+      hay.includes('trophy launch pack') ||
+      hay.includes('social visuals')
+    );
+  }
+  if (item.id === 'prio_seo_trophy_cluster') {
+    return (
+      hay.includes('trophy_seo') ||
+      hay.includes('trophy launch seo cluster') ||
+      hay.includes('seo cluster')
+    );
+  }
+  return false;
+}
+
+function buildDynamicQuestionItem(b: BacklogItem): PriorityDecisionItem {
+  const hay = `${b.project_slug || ''} ${b.assigned_agent_id || ''} ${b.title || ''} ${b.spec_md || ''}`.toLowerCase();
+  const vertical: 'TECH' | 'SEO_AEO' | 'SOCIAL' =
+    hay.includes('seo') || hay.includes('aeo')
+      ? 'SEO_AEO'
+      : hay.includes('social') || hay.includes('cmo')
+        ? 'SOCIAL'
+        : 'TECH';
+  const verticalLabel =
+    vertical === 'SEO_AEO' ? 'SEO/AEO' : vertical === 'SOCIAL' ? 'Social Media' : 'Tech';
+  const rawAgent = b.assigned_agent_id || b.pm_owner_id || '@warden';
+  const agentSlug = rawAgent.startsWith('@') ? rawAgent : `@${rawAgent}`;
+  const promptText = b.intervention_prompt || b.spec_md || b.title;
+  const isDungeonStyle =
+    hay.includes('dungeon') || hay.includes('style') || hay.includes('theme');
+
+  const options: PriorityQuestionOption[] = isDungeonStyle
+    ? [
+        {
+          id: `opt_${b.id}_1`,
+          label: 'A. Dark gritty dungeon style',
+          summary: 'Atmospheric dark fantasy aesthetic with torchlit stone textures.',
+          recommended: true,
+        },
+        {
+          id: `opt_${b.id}_2`,
+          label: 'B. Playful cartoon dungeon style',
+          summary: 'Vibrant arcade-style dungeon with bold outlines and readable silhouettes.',
+        },
+        {
+          id: `opt_${b.id}_3`,
+          label: 'C. Reply in custom input below',
+          summary: 'Use your custom note below as the exact instruction for @warden.',
+        },
+      ]
+    : [
+        {
+          id: `opt_${b.id}_1`,
+          label: 'A. Proceed with recommended scope',
+          summary: 'Unblock @warden and execute the cleanest production path immediately.',
+          recommended: true,
+        },
+        {
+          id: `opt_${b.id}_2`,
+          label: 'B. Keep minimal & fast-ship',
+          summary: 'Ship the smallest working slice first and iterate.',
+        },
+        {
+          id: `opt_${b.id}_3`,
+          label: 'C. Reply in custom input below',
+          summary: 'Use your custom note below as the exact answer for @warden.',
+        },
+      ];
+
+  return {
+    id: b.id,
+    backlogItemId: b.id,
+    isDynamicQuestion: true,
+    vertical,
+    verticalLabel,
+    projectSlug: b.project_slug || 'demo-project',
+    agentSlug,
+    agentRole: 'Clarifying Question • Needs CEO Input',
+    priority: b.priority === 'P1' ? 'P1' : 'P0',
+    impactBadge: 'Agent Question',
+    decisiveTitle: b.title,
+    decisiveSummary: promptText,
+    decisiveCtaLabel: 'Answer',
+    questionTitle: 'Clarifying Question from Agent',
+    questionPrompt: promptText,
+    principleTag: 'CEO Input',
+    options,
+    coArchitectFollowUp: 'Execution Mode',
+    coArchitectPills: ['Resume agent run immediately', 'Post answer to @warden chat'],
+  };
+}
+
 interface HomePriorityWindowProps {
   activeVertical?: VerticalScope;
   knobConfig?: ConsultationKnobConfig;
   backlogItems?: BacklogItem[];
+  runs?: AgentRun[];
   threads?: ChatThread[];
   onApproveBacklogItem?: (itemId: string, summary: string) => Promise<void> | void;
   onOpenAgentTab?: (agentSlug: string) => void;
   onOpenBacklogsTab?: () => void;
-  onOpenActivityTab?: () => void;
+  onOpenActivityTab?: (backlogItemId?: string) => void;
   onOpenThread?: (threadId: string) => void;
   onDecisionRecorded?: (summary: string) => void;
 }
@@ -322,6 +452,7 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
   activeVertical = 'ALL',
   knobConfig: externalKnobConfig,
   backlogItems,
+  runs,
   threads,
   onApproveBacklogItem,
   onOpenAgentTab,
@@ -383,48 +514,83 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
       window.removeEventListener('warden:consultation-knob-change', onKnobChange);
   }, []);
 
+  const dynamicQuestionItems = useMemo(() => {
+    if (!backlogItems || backlogItems.length === 0) return [];
+    return backlogItems
+      .filter(
+        (b) =>
+          (b.stage === 'NEEDS_CEO' || b.requires_human_intervention) &&
+          b.stage !== 'DONE' &&
+          !PRIORITY_ITEMS.some((p) => Boolean(findMatchingBacklogItem(p, [b])))
+      )
+      .map((b) => buildDynamicQuestionItem(b));
+  }, [backlogItems]);
+
+  const allPriorityItems = useMemo(
+    () => [...dynamicQuestionItems, ...PRIORITY_ITEMS],
+    [dynamicQuestionItems]
+  );
+
   const visibleItems = useMemo(() => {
-    if (activeVertical === 'ALL') return PRIORITY_ITEMS;
-    return PRIORITY_ITEMS.filter((item) => item.vertical === activeVertical);
-  }, [activeVertical]);
+    if (activeVertical === 'ALL') return allPriorityItems;
+    return allPriorityItems.filter((item) => item.vertical === activeVertical);
+  }, [activeVertical, allPriorityItems]);
 
   const activeModalItem = useMemo(
-    () => PRIORITY_ITEMS.find((i) => i.id === activeModalItemId) || null,
-    [activeModalItemId]
+    () => allPriorityItems.find((i) => i.id === activeModalItemId) || null,
+    [activeModalItemId, allPriorityItems]
   );
 
   const getResolvedState = (item: PriorityDecisionItem) => {
     const matched = findMatchingBacklogItem(item, backlogItems);
-    if (matched && matched.stage === 'DONE') {
-      return {
-        decisionText:
-          matched.last_movement_note ||
-          matched.human_resolution ||
-          `Approved "${item.decisiveTitle}"`,
-        resolvedAt: matched.completed_at
-          ? new Date(matched.completed_at).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          : 'Completed',
-        levelUsed: 1 as ConsultationLevel,
-        running: false,
-      };
-    }
+    const matchingRuns = (runs || []).filter((r) =>
+      doesRunMatchPriorityItem(r, item, matched)
+    );
+    const activeRun = matchingRuns.find(
+      (r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA'
+    );
+    const completedRun = matchingRuns.find((r) => r.status === 'COMPLETED');
+
     if (
-      matched &&
-      (matched.stage === 'IN_PROGRESS' || matched.stage === 'QA_REVIEW')
+      activeRun ||
+      (matched &&
+        (matched.stage === 'IN_PROGRESS' || matched.stage === 'QA_REVIEW'))
     ) {
       return {
         decisionText:
-          matched.last_movement_note ||
-          matched.human_resolution ||
+          matched?.last_movement_note ||
+          matched?.human_resolution ||
+          activeRun?.output_summary ||
           `Approved "${item.decisiveTitle}"`,
         resolvedAt: 'Running',
         levelUsed: 1 as ConsultationLevel,
         running: true,
       };
     }
+
+    if ((matched && matched.stage === 'DONE') || completedRun) {
+      return {
+        decisionText:
+          matched?.last_movement_note ||
+          matched?.human_resolution ||
+          completedRun?.output_summary ||
+          `Completed "${item.decisiveTitle}"`,
+        resolvedAt: matched?.completed_at
+          ? new Date(matched.completed_at).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : completedRun?.ended_at
+            ? new Date(completedRun.ended_at).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : 'Completed',
+        levelUsed: 1 as ConsultationLevel,
+        running: false,
+      };
+    }
+
     if (resolvedById[item.id]) {
       return resolvedById[item.id];
     }
@@ -438,10 +604,15 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
     const cleanDecisionLabel = chosenOpt.label.replace(/^[A-C]\.\s*/, '');
     const deliveryTarget = selectedCoPillById[item.id] || item.coArchitectPills[0];
     const rawNote = customNoteById[item.id]?.trim() || '';
-    const basePlan = `Approved Plan for "${item.decisiveTitle}": ${cleanDecisionLabel} (${chosenOpt.summary}) • Delivery: ${deliveryTarget}`;
-    const summary = rawNote
-      ? `${basePlan}\nCEO Note for @warden: "${rawNote}"`
-      : basePlan;
+    const summary = item.isDynamicQuestion
+      ? rawNote && cleanDecisionLabel.toLowerCase().includes('custom')
+        ? rawNote
+        : rawNote
+          ? `${cleanDecisionLabel} — ${rawNote}`
+          : cleanDecisionLabel
+      : rawNote
+        ? `Approved Plan for "${item.decisiveTitle}": ${cleanDecisionLabel} (${chosenOpt.summary}) • Delivery: ${deliveryTarget}\nCEO Note for @warden: "${rawNote}"`
+        : `Approved Plan for "${item.decisiveTitle}": ${cleanDecisionLabel} (${chosenOpt.summary}) • Delivery: ${deliveryTarget}`;
 
     setResolvedById((prev) => ({
       ...prev,
@@ -772,7 +943,7 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
                           type="button"
                           onClick={() => {
                             setActiveModalItemId(null);
-                            onOpenActivityTab();
+                            onOpenActivityTab(matchedBacklog?.id || activeModalItem.id);
                           }}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-accent-gold)]/40 bg-[var(--surface-accent-gold)]/15 hover:bg-[var(--surface-accent-gold)]/25 px-3 py-1.5 text-xs font-semibold text-[var(--surface-accent-gold)] transition cursor-pointer"
                         >
@@ -807,53 +978,93 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
                 </div>
               ) : (
               <>
-              {/* Read-Only Proposed Plan & Final Decisions */}
+              {/* Read-Only Proposed Plan & Final Decisions (or Interactive Options for Dynamic Questions) */}
               <div className="space-y-3 pt-1">
                 <div className="rounded-xl border border-[var(--surface-accent-gold)]/35 bg-[var(--surface-accent-gold)]/8 p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--surface-accent-gold)]">
-                      <Sparkles className="h-3.5 w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
-                      <span>Proposed Execution Plan &amp; Final Decisions</span>
+                      {activeModalItem.isDynamicQuestion ? (
+                        <HelpCircle className="h-3.5 w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
+                      )}
+                      <span>
+                        {activeModalItem.isDynamicQuestion
+                          ? 'Select Your Answer for @warden'
+                          : 'Proposed Execution Plan & Final Decisions'}
+                      </span>
                     </div>
                     <span className="rounded bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/30 px-2 py-0.5 text-[10px] font-mono text-[var(--surface-accent-gold)]">
                       {activeModalItem.principleTag}
                     </span>
                   </div>
 
-                  <div className="space-y-2 text-xs text-[var(--surface-text)] leading-relaxed">
-                    <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-2.5 space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--surface-text-muted)]">
-                          Locked Scope ({activeModalItem.questionTitle})
+                  {activeModalItem.isDynamicQuestion ? (
+                    <div className="space-y-2">
+                      {activeModalItem.options.map((opt) => {
+                        const isChosen = opt.id === selectedOptId;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() =>
+                              setSelectedOptionById((prev) => ({
+                                ...prev,
+                                [activeModalItem.id]: opt.id,
+                              }))
+                            }
+                            className={`w-full text-left rounded-lg border p-2.5 transition cursor-pointer ${
+                              isChosen
+                                ? 'border-[var(--surface-accent-gold)] bg-[var(--surface-accent-gold)]/15'
+                                : 'border-[var(--surface-border)] bg-[var(--surface-panel)] hover:border-[var(--surface-accent-gold)]/50'
+                            }`}
+                          >
+                            <div className="text-xs font-bold text-[var(--surface-text)]">
+                              {opt.label}
+                            </div>
+                            <div className="text-[11px] text-[var(--surface-text-secondary)] mt-0.5">
+                              {opt.summary}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 text-xs text-[var(--surface-text)] leading-relaxed">
+                      <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-2.5 space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--surface-text-muted)]">
+                            Locked Scope ({activeModalItem.questionTitle})
+                          </span>
+                          <span className="rounded bg-[var(--surface-accent-gold)]/20 border border-[var(--surface-accent-gold)]/40 px-1.5 py-0.2 text-[9px] font-mono font-bold text-[var(--surface-accent-gold)]">
+                            Final Decision
+                          </span>
+                        </div>
+                        <p className="font-bold text-[var(--surface-text)]">
+                          {chosenOpt.label.replace(/^[A-C]\.\s*/, '')}
+                        </p>
+                        <p className="text-[11px] text-[var(--surface-text-secondary)]">
+                          {chosenOpt.summary}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-2.5 space-y-1">
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--surface-text-muted)] block">
+                          {activeModalItem.coArchitectFollowUp}
                         </span>
-                        <span className="rounded bg-[var(--surface-accent-gold)]/20 border border-[var(--surface-accent-gold)]/40 px-1.5 py-0.2 text-[9px] font-mono font-bold text-[var(--surface-accent-gold)]">
-                          Final Decision
+                        <p className="font-semibold text-[var(--surface-text)]">
+                          {selectedCoPill}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-0.5 text-[11px] font-mono text-[var(--surface-text-secondary)]">
+                        <span>Execution Chain:</span>
+                        <span className="text-[var(--surface-accent-gold)] font-semibold">
+                          @warden → {activeModalItem.vertical === 'TECH' ? '@cto' : '@cmo'} → {activeModalItem.agentSlug}
                         </span>
                       </div>
-                      <p className="font-bold text-[var(--surface-text)]">
-                        {chosenOpt.label.replace(/^[A-C]\.\s*/, '')}
-                      </p>
-                      <p className="text-[11px] text-[var(--surface-text-secondary)]">
-                        {chosenOpt.summary}
-                      </p>
                     </div>
-
-                    <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-2.5 space-y-1">
-                      <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--surface-text-muted)] block">
-                        {activeModalItem.coArchitectFollowUp}
-                      </span>
-                      <p className="font-semibold text-[var(--surface-text)]">
-                        {selectedCoPill}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-0.5 text-[11px] font-mono text-[var(--surface-text-secondary)]">
-                      <span>Execution Chain:</span>
-                      <span className="text-[var(--surface-accent-gold)] font-semibold">
-                        @warden → {activeModalItem.vertical === 'TECH' ? '@cto' : '@cmo'} → {activeModalItem.agentSlug}
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="relative">
@@ -867,7 +1078,11 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
                         [activeModalItem.id]: e.target.value,
                       }))
                     }
-                    placeholder="Add custom note for @warden (optional, appended to kickoff chat)..."
+                    placeholder={
+                      activeModalItem.isDynamicQuestion
+                        ? 'Type your custom answer or instructions for @warden...'
+                        : 'Add custom note for @warden (optional, appended to kickoff chat)...'
+                    }
                     className="w-full rounded-xl bg-[var(--surface-muted)] border border-[var(--surface-border)] pl-8 pr-3 py-2 text-xs text-[var(--surface-text)] placeholder:text-[var(--surface-text-muted)] focus:outline-none focus:border-[var(--surface-accent)]"
                   />
                 </div>
@@ -906,7 +1121,13 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
                       className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-accent-gold)] hover:brightness-110 text-black px-4 py-2 text-xs font-bold shadow-md transition cursor-pointer"
                     >
                       <Send className="h-3.5 w-3.5" />
-                      <span>{resolved ? 'Update Approval' : 'Approve & spawn team'}</span>
+                      <span>
+                        {resolved
+                          ? 'Update Approval'
+                          : activeModalItem.isDynamicQuestion
+                            ? 'Send Answer & Resume'
+                            : 'Approve & spawn team'}
+                      </span>
                     </button>
                   )}
                 </div>

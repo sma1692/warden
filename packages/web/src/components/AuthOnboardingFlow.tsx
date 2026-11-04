@@ -38,7 +38,7 @@ import {
   type OnboardingBacklogDraft,
   type SuggestedAgentNode,
 } from '../data/onboardingPresets';
-import { authRequest, saveOnboarding, setToken, type AuthUser } from '../api/auth';
+import { authRequest, fetchDemoWorkspace, saveOnboarding, setToken, type AuthUser } from '../api/auth';
 import { AsyncButton, ToastHost, useToasts, type ActionOutcome } from './AsyncButton';
 import {
   authStepForPath,
@@ -199,6 +199,10 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   // Product Mode sends a real code via /api/auth/email/*; Demo Mode keeps the 123123 preset.
   const liveOtp = !demoMode;
   // Button spinners are owned by AsyncButton while each API call settles.
+  // Provisioning swaps the OTP form for a full loader panel while the
+  // server-side demo provision (including the Cloudflare deploy) finishes.
+  const [provisioning, setProvisioning] = useState<boolean>(false);
+  const [provisionMsgIdx, setProvisionMsgIdx] = useState<number>(0);
   const [resendAt, setResendAt] = useState<number>(0);
   const [nowTick, setNowTick] = useState<number>(Date.now());
   const resendInSec = Math.max(0, Math.ceil((resendAt - nowTick) / 1000));
@@ -208,6 +212,15 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     const id = window.setInterval(() => setNowTick(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [resendAt]);
+
+  useEffect(() => {
+    if (!provisioning) return;
+    setProvisionMsgIdx(0);
+    const id = window.setInterval(() => {
+      setProvisionMsgIdx((prev) => (prev + 1) % S2_DEPLOY_MESSAGES.length);
+    }, 2200);
+    return () => window.clearInterval(id);
+  }, [provisioning]);
 
   // Track 1 state — live product starts blank so founders enter their own
   // company; gallery/demo keeps the NovaPulse preset for the sandbox tour.
@@ -505,22 +518,43 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     routeAfterOtpVerification();
   };
 
+  // Waits for the server-side provision to land the workspace row (the
+  // initial Cloudflare deploy takes ~15-20s). Always resolves: on timeout the
+  // dashboard opens anyway and shows the workspace once it lands.
+  const waitForDemoWorkspace = async () => {
+    const deadline = Date.now() + 120_000;
+    for (;;) {
+      const ws = await fetchDemoWorkspace();
+      if (ws) return;
+      if (Date.now() >= deadline) return;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  };
+
   const completeSignIn = async (data: { token: string; user: AuthUser }) => {
     setToken(data.token);
     // DEMO SHORTCUT (deadline): skip onboarding tracks — every live sign-in
     // lands straight in the demo dashboard. Remove after judging.
     if (isLive && data.user.onboarding.status !== 'COMPLETE') {
-      const saved = await saveOnboarding({
-        status: 'COMPLETE',
-        form: { demo: true, mode: 'demo', chosenMode: 'demo', exploreDemo: true },
-      });
-      if (!saved) {
-        notifyError('Signed in, but demo setup could not be saved. Please retry.');
-        return;
+      // Loader first: the PATCH returns fast (provisioning continues
+      // server-side), then poll until the workspace is ready.
+      setProvisioning(true);
+      try {
+        const saved = await saveOnboarding({
+          status: 'COMPLETE',
+          form: { demo: true, mode: 'demo', chosenMode: 'demo', exploreDemo: true },
+        });
+        if (!saved) {
+          notifyError('Signed in, but demo setup could not be saved. Please retry.');
+          return;
+        }
+        await waitForDemoWorkspace();
+        setSignedIn(true);
+        onSignedIn?.(saved);
+        routeAfterOtpVerification(saved);
+      } finally {
+        setProvisioning(false);
       }
-      setSignedIn(true);
-      onSignedIn?.(saved);
-      routeAfterOtpVerification(saved);
       return;
     }
     if (isLive) {
@@ -567,6 +601,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
 
   // Explore-live-demo: S1 -> S2 (at least ~1.2s while backend provisions + deploys to Cloudflare) -> S3.
   const handleExploreDemo = async () => {
+    if (exploreBooting) return;
     setF1Phase('s2');
     setExploreBooting(true);
     setS2Progress(18);
@@ -604,6 +639,18 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       setExploreBooting(false);
       setF1Phase('s3');
     }
+  };
+
+  const handleJoinAlpha = async (): Promise<ActionOutcome> => {
+    setLockedFullMode(true);
+    if (isLive) {
+      void saveOnboarding({
+        status: 'IN_PROGRESS',
+        step: 'f1',
+        form: { ...formSnapshot, mode: 'full', chosenMode: 'full', demo: false },
+      });
+    }
+    setF1Phase('tracks');
   };
 
   // Landing "explore" goes through login first, then auto-freezes onto the demo path.
@@ -1173,6 +1220,39 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
 
         {/* STEP 2.1: OTP VERIFICATION SCREEN (Divergent Routing by ReturnUserPersona) */}
         {step === 'otp' && (
+          provisioning ? (
+            <div className="max-w-md w-full rounded-3xl border border-[#C6A664]/40 bg-[#101216] p-8 sm:p-10 text-center space-y-6 shadow-2xl" aria-busy="true">
+              <div className="relative mx-auto flex h-28 w-28 items-center justify-center">
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 rounded-full border-[3px] border-[#C6A664]/15 border-t-[#D4B475] border-r-[#C6A664] animate-spin"
+                />
+                <span
+                  aria-hidden="true"
+                  style={{ animationDirection: 'reverse', animationDuration: '2.2s' }}
+                  className="absolute inset-2 rounded-full border-2 border-dashed border-[#D4B475]/35 animate-spin"
+                />
+                <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-[#D4B475]/20 via-[#162030] to-[#0B121C] border border-[#C6A664]/45 p-2 shadow-xl">
+                  <img
+                    src="/warden-logo.webp" decoding="async"
+                    alt="WARDEN Logo"
+                    className="h-full w-full object-contain rounded-xl"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-lg font-black text-white">
+                  Setting up your live demo…
+                </h2>
+                <p className="text-xs font-mono text-[#D4B475] min-h-8">
+                  {S2_DEPLOY_MESSAGES[provisionMsgIdx]}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Verified. Provisioning your workspace and deploying the live build — this takes about 20 seconds.
+                </p>
+              </div>
+            </div>
+          ) : (
           <div className="max-w-md w-full rounded-3xl border border-[#22262E] bg-[#14161A] p-6 sm:p-7 shadow-2xl space-y-5">
             <div className="flex items-center justify-between">
               <div>
@@ -1248,7 +1328,9 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                     if (e.key === 'Backspace' && !digit && idx > 0) {
                       document.querySelectorAll<HTMLInputElement>('input[data-otp-digit]')[idx - 1]?.focus();
                     } else if (e.key === 'Enter') {
-                      handleVerifyOtp();
+                      // Route through the button so AsyncButton's pending
+                      // guard blocks double submits from repeated Enter keys.
+                      document.getElementById('otp-verify-btn')?.click();
                     }
                   }}
                   aria-label={`OTP Digit ${idx + 1}`}
@@ -1284,6 +1366,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
 
             <AsyncButton
               type="button"
+              id="otp-verify-btn"
               action={handleVerifyOtp}
               onError={notifyError}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 py-3 text-xs transition cursor-pointer"
@@ -1292,6 +1375,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               <span>{liveOtp ? 'Verify Code & Continue' : 'Verify OTP (123123) & Continue'}</span>
             </AsyncButton>
           </div>
+          )
         )}
 
         {/* STEP F1: S1 (Logo + Live Demo / Full Flow) -> S2 (Loading + Cloudflare Deploy) -> S3 (Company Guide) */}
@@ -1343,9 +1427,10 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                       </div>
 
                       {/* Primary Catchy Live Demo CTA */}
-                      <button
+                      <AsyncButton
                         type="button"
-                        onClick={() => void handleExploreDemo()}
+                        action={handleExploreDemo}
+                        onError={notifyError}
                         className="w-full rounded-2xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] border border-[#D4B475] shadow-[0_8px_30px_rgba(198,166,100,0.32)] hover:brightness-110 px-6 py-4 transition cursor-pointer flex flex-col items-center justify-center gap-1"
                       >
                         <span className="inline-flex items-center gap-2 text-sm sm:text-base font-black tracking-wider uppercase">
@@ -1356,27 +1441,18 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                         <span className="text-[11px] font-mono font-semibold text-[#0B121C]/80">
                           Take command as CEO • Instant live environment
                         </span>
-                      </button>
+                      </AsyncButton>
 
                       {/* Smaller Secondary Button Underneath: Alpha / Community Full Onboarding Flow */}
                       <div className="pt-1">
-                        <button
+                        <AsyncButton
                           type="button"
-                          onClick={() => {
-                            setLockedFullMode(true);
-                            if (isLive) {
-                              void saveOnboarding({
-                                status: 'IN_PROGRESS',
-                                step: 'f1',
-                                form: { ...formSnapshot, mode: 'full', chosenMode: 'full', demo: false },
-                              });
-                            }
-                            setF1Phase('tracks');
-                          }}
+                          action={handleJoinAlpha}
+                          onError={notifyError}
                           className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#2D3440] bg-[#101216] hover:border-[#C6A664]/50 hover:text-[#D4B475] px-4 py-2.5 text-xs font-semibold text-slate-300 transition cursor-pointer"
                         >
                           <span>Join Alpha Community — Onboard My Own Company →</span>
-                        </button>
+                        </AsyncButton>
                       </div>
                     </div>
                   </div>

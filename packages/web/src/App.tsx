@@ -5,11 +5,13 @@ import {
   Bell,
   Bot,
   CheckCheck,
+  CheckCircle2,
   Cpu,
   FileText,
   Globe,
   Home,
   Kanban,
+  Loader2,
   LogOut,
   MessageSquare,
   Moon,
@@ -84,6 +86,7 @@ import type {
   ChatMessage,
   ChatThread,
   DepartmentUnit,
+  InferenceStep,
   InterventionCategory,
   ModelProvider,
   PermissionTier,
@@ -117,45 +120,6 @@ interface AppNotificationItem {
   unread: boolean;
   targetTab: PrimaryTabId;
 }
-
-const INITIAL_NOTIFICATIONS: AppNotificationItem[] = [
-  {
-    id: 'notif-1',
-    title: 'NovaPulse Checkout Sync & Edge Bundle Gate',
-    body: '@tech_lead queued architecture & deployment sign-off in Priority Window.',
-    vertical: 'TECH',
-    timeAgo: '4m ago',
-    unread: true,
-    targetTab: 'home',
-  },
-  {
-    id: 'notif-2',
-    title: 'AEO Citation Share Reached 34.8% (+9.2%)',
-    body: '@aeo_lead completed Meta AI citation audit and /llms.txt draft.',
-    vertical: 'SEO_AEO',
-    timeAgo: '14m ago',
-    unread: true,
-    targetTab: 'reports',
-  },
-  {
-    id: 'notif-3',
-    title: 'AI Checkout 9:16 Hook Hit 68.4% 3s Hold',
-    body: '@social_lead requests approval on 5 short-form product cuts for peak US/EU slots.',
-    vertical: 'SOCIAL',
-    timeAgo: '26m ago',
-    unread: true,
-    targetTab: 'home',
-  },
-  {
-    id: 'notif-4',
-    title: 'Bottom-Heavy Token Firewall Saved 94.2%',
-    body: 'Session consumed 11.1K net payload tokens vs 192.5K raw repo baseline.',
-    vertical: 'TECH',
-    timeAgo: '39m ago',
-    unread: true,
-    targetTab: 'reports',
-  },
-];
 
 export type { ThemeMode } from './hooks/useTheme';
 
@@ -244,9 +208,9 @@ export const App: React.FC<AppProps> = ({
     loadConsultationKnobConfig()
   );
 
-  // Notifications popover state
+  // Notifications popover state (starts empty; populated by live runtime events)
   const [notifications, setNotifications] =
-    useState<AppNotificationItem[]>(INITIAL_NOTIFICATIONS);
+    useState<AppNotificationItem[]>([]);
   const [notifOpen, setNotifOpen] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
@@ -273,6 +237,17 @@ export const App: React.FC<AppProps> = ({
   );
   const [homeChatDraft, setHomeChatDraft] = useState<string | null>(null);
   const [focusedBacklogItemId, setFocusedBacklogItemId] = useState<string | null>(null);
+  const [focusedRunId, setFocusedRunId] = useState<string | null>(null);
+  const [liveBrainStatus, setLiveBrainStatus] = useState<{
+    runId: string;
+    backlogItemId?: string;
+    taskTitle?: string;
+    agentSlug?: string;
+    stepIndex?: number;
+    totalSteps?: number;
+    summary?: string;
+    updatedAt: number;
+  } | null>(null);
   const [inspectedAgent, setInspectedAgent] = useState<Agent | null>(null);
   const [inspectorSubTab, setInspectorSubTab] = useState<'runs' | 'trace' | 'config'>(
     'runs'
@@ -280,16 +255,27 @@ export const App: React.FC<AppProps> = ({
   const [inspectorRunId, setInspectorRunId] = useState<string | null>(null);
 
   // Toast notification banner (info for confirmations, error for API failures).
-  // A threadId makes the banner clickable: tapping it opens that chat thread.
+  // A threadId or onClick makes the banner clickable.
   const [toast, setToast] = useState<{
     text: string;
     tone: 'info' | 'error';
     threadId?: string;
+    label?: string;
+    onClick?: () => void;
   } | null>(null);
 
-  const showToast = useCallback((msg: string, opts?: { threadId?: string }) => {
-    setToast({ text: msg, tone: 'info', threadId: opts?.threadId });
-  }, []);
+  const showToast = useCallback(
+    (msg: string, opts?: { threadId?: string; label?: string; onClick?: () => void }) => {
+      setToast({
+        text: msg,
+        tone: 'info',
+        threadId: opts?.threadId,
+        label: opts?.label,
+        onClick: opts?.onClick,
+      });
+    },
+    []
+  );
 
   const showError = useCallback((msg: string) => {
     setToast({ text: msg, tone: 'error' });
@@ -297,7 +283,12 @@ export const App: React.FC<AppProps> = ({
 
   useEffect(() => {
     if (!toast) return;
-    const ttl = toast.tone === 'error' ? 6000 : toast.threadId ? 8000 : 4000;
+    const ttl =
+      toast.tone === 'error'
+        ? 6000
+        : toast.threadId || toast.onClick
+          ? 8000
+          : 4000;
     const t = window.setTimeout(() => setToast(null), ttl);
     return () => window.clearTimeout(t);
   }, [toast]);
@@ -483,6 +474,65 @@ export const App: React.FC<AppProps> = ({
 
   useEffect(() => {
     const unsubscribe = apiClient.subscribe((evt) => {
+      if (evt.type === 'BRAIN_STATUS' && evt.data) {
+        const data = evt.data as {
+          runId?: string;
+          backlogItemId?: string;
+          taskTitle?: string;
+          agentSlug?: string;
+          stepIndex?: number;
+          totalSteps?: number;
+          summary?: string;
+        };
+        if (data.runId) {
+          setLiveBrainStatus({
+            runId: data.runId,
+            backlogItemId: data.backlogItemId,
+            taskTitle: data.taskTitle,
+            agentSlug: data.agentSlug,
+            stepIndex: data.stepIndex,
+            totalSteps: data.totalSteps,
+            summary: data.summary,
+            updatedAt: Date.now(),
+          });
+        }
+      } else if (evt.type === 'STEP_CREATED' && evt.data) {
+        const step = evt.data as InferenceStep;
+        if (step.run_id) {
+          setLiveBrainStatus((prev) => ({
+            runId: step.run_id,
+            backlogItemId: prev?.backlogItemId,
+            taskTitle: prev?.taskTitle,
+            agentSlug: prev?.agentSlug,
+            stepIndex: step.step_index || prev?.stepIndex,
+            totalSteps: prev?.totalSteps || 4,
+            summary:
+              step.message_text ||
+              step.thinking_text?.slice(0, 120) ||
+              (step.tool_name ? `Running ${step.tool_name}` : prev?.summary),
+            updatedAt: Date.now(),
+          }));
+        }
+      } else if (evt.type === 'RUN_UPDATED' && evt.data) {
+        const run = evt.data as AgentRun;
+        if (run.id) {
+          setRuns((prev) => [run, ...prev.filter((r) => r.id !== run.id)]);
+          if (run.status === 'RUNNING' || run.status === 'VERIFYING_QA') {
+            const slug = run.agent_id?.startsWith('@')
+              ? run.agent_id
+              : `@${run.agent_id}`;
+            setLiveBrainStatus((prev) => ({
+              runId: run.id,
+              backlogItemId: run.backlog_item_id || prev?.backlogItemId,
+              agentSlug: slug,
+              stepIndex: prev?.runId === run.id ? prev.stepIndex : 1,
+              totalSteps: prev?.totalSteps || 4,
+              summary: run.output_summary || run.input_prompt,
+              updatedAt: Date.now(),
+            }));
+          }
+        }
+      }
       if (evt.type === 'BUDGET_EXCEEDED') {
         const payload = (evt.data || {}) as { error?: string; budget?: UserBudget };
         if (payload.budget) {
@@ -512,9 +562,45 @@ export const App: React.FC<AppProps> = ({
         return;
       }
       if (evt.type === 'BACKLOG_UPDATED' && evt.data) {
-        const item = evt.data as BacklogItem;
-        if (item.stage === 'DONE' && item.title) {
-          showToast(`✅ Task completed: "${item.title}"`);
+        const updated = evt.data as BacklogItem;
+        if (updated.stage === 'DONE' && updated.title) {
+          setNotifications((prev) => [
+            {
+              id: `notif_done_${updated.id}_${Date.now()}`,
+              title: 'Task Completed',
+              body: `${updated.title} finished execution.`,
+              vertical: 'TECH',
+              timeAgo: 'Just now',
+              unread: true,
+              targetTab: 'reports',
+            },
+            ...prev,
+          ]);
+          showToast(`✅ Task Completed: ${updated.title}`, {
+            label: 'View Activity',
+            onClick: () => setActiveTab('reports'),
+          });
+        } else if (
+          updated.stage === 'NEEDS_CEO' &&
+          updated.requires_human_intervention &&
+          updated.title
+        ) {
+          setNotifications((prev) => [
+            {
+              id: `notif_q_${updated.id}_${Date.now()}`,
+              title: 'Action Required from CEO',
+              body: updated.title,
+              vertical: 'TECH',
+              timeAgo: 'Just now',
+              unread: true,
+              targetTab: 'home',
+            },
+            ...prev,
+          ]);
+          showToast(`⚠️ Needs Your Input: ${updated.title}`, {
+            label: 'View in Needs Action',
+            onClick: () => setActiveTab('home'),
+          });
         }
         return;
       }
@@ -522,12 +608,36 @@ export const App: React.FC<AppProps> = ({
       const msg = evt.data as ChatMessage;
       if (msg.sender_type !== 'AGENT' || !msg.thread_id || !msg.id) return;
       if (lastReplyToastMsgId.current === msg.id) return;
+      lastReplyToastMsgId.current = msg.id;
+      const whoClean = (msg.sender_agent_id || 'warden').replace(/^@/, '');
+      const who = `@${whoClean}`;
+      if (String(msg.content || '').includes('?')) {
+        setNotifications((prev) => [
+          {
+            id: `notif_chat_q_${msg.id}`,
+            title: `${who} asked you a question`,
+            body: String(msg.content).slice(0, 110),
+            vertical: 'TECH',
+            timeAgo: 'Just now',
+            unread: true,
+            targetTab: 'home',
+          },
+          ...prev,
+        ]);
+        showToast(
+          `💬 ${who} needs your answer: ${String(msg.content).slice(0, 75)}...`,
+          {
+            threadId: msg.thread_id,
+            label: 'Reply in Chat',
+            onClick: () => handleOpenAgentWindowTab(who),
+          }
+        );
+        return;
+      }
       const viewingThisThread =
         activeTabRef.current.startsWith('win-agent-') &&
         selectedThreadIdRef.current === msg.thread_id;
       if (viewingThisThread) return;
-      lastReplyToastMsgId.current = msg.id;
-      const who = msg.sender_agent_id ? `@${msg.sender_agent_id}` : '@warden';
       showToast(`🤖 ${who} finished replying — Click to view`, {
         threadId: msg.thread_id,
       });
@@ -732,12 +842,80 @@ export const App: React.FC<AppProps> = ({
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
   };
 
-  const activeRunsCount = useMemo(
+  const activeRuns = useMemo(
     () =>
-      runs.filter((r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA')
-        .length,
+      runs.filter((r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA'),
     [runs]
   );
+
+  const activeRunsCount = activeRuns.length;
+
+  const activeRun = useMemo(() => {
+    if (liveBrainStatus?.runId) {
+      const matched = activeRuns.find((r) => r.id === liveBrainStatus.runId);
+      if (matched) return matched;
+    }
+    return activeRuns[0] || null;
+  }, [activeRuns, liveBrainStatus]);
+
+  const activeRunSlug = useMemo(() => {
+    if (!activeRun) return '@warden';
+    const ag = agents.find(
+      (a) =>
+        a.id === activeRun.agent_id ||
+        a.slug === activeRun.agent_id ||
+        a.slug === `@${activeRun.agent_id}`
+    );
+    return (
+      ag?.slug ||
+      (activeRun.agent_id.startsWith('@')
+        ? activeRun.agent_id
+        : `@${activeRun.agent_id}`)
+    );
+  }, [activeRun, agents]);
+
+  const latestRun = useMemo(() => {
+    if (runs.length === 0) return null;
+    return [...runs].sort((a, b) =>
+      (b.started_at || '').localeCompare(a.started_at || '')
+    )[0];
+  }, [runs]);
+
+  const latestRunSlug = useMemo(() => {
+    if (!latestRun) return '@warden';
+    const ag = agents.find(
+      (a) =>
+        a.id === latestRun.agent_id ||
+        a.slug === latestRun.agent_id ||
+        a.slug === `@${latestRun.agent_id}`
+    );
+    return (
+      ag?.slug ||
+      (latestRun.agent_id.startsWith('@')
+        ? latestRun.agent_id
+        : `@${latestRun.agent_id}`)
+    );
+  }, [latestRun, agents]);
+
+  const hasInProgressBacklog = useMemo(
+    () => backlogItems.some((b) => b.stage === 'IN_PROGRESS'),
+    [backlogItems]
+  );
+
+  useEffect(() => {
+    if (activeRunsCount === 0 && !hasInProgressBacklog) return;
+    const id = window.setInterval(async () => {
+      const [loadedRuns, loadedAgents, loadedBacklog] = await Promise.all([
+        apiClient.getAgentRuns(),
+        apiClient.getAgents(),
+        apiClient.getBacklogItems(),
+      ]);
+      setRuns(loadedRuns);
+      setAgents(loadedAgents);
+      setBacklogItems(loadedBacklog);
+    }, 2000);
+    return () => window.clearInterval(id);
+  }, [activeRunsCount, hasInProgressBacklog]);
 
   const pinnedTabs: {
     id: PrimaryTabId;
@@ -769,14 +947,19 @@ export const App: React.FC<AppProps> = ({
       {toast && (
         <div
           onClick={
-            toast.threadId
+            toast.onClick
               ? () => {
-                  handleOpenThread(toast.threadId!);
+                  toast.onClick!();
                   setToast(null);
                 }
-              : undefined
+              : toast.threadId
+                ? () => {
+                    handleOpenThread(toast.threadId!);
+                    setToast(null);
+                  }
+                : undefined
           }
-          className={`fixed bottom-16 md:bottom-5 right-4 z-50 max-w-md rounded-xl border bg-[#FCF9F2]/95 dark:bg-[#0F1824]/95 px-4 py-2.5 text-xs font-medium text-[#0F1622] dark:text-[#F5F0E6] shadow-2xl flex items-center gap-2.5 backdrop-blur ${toast.tone === 'error' ? 'border-red-400/60' : 'border-[#C6A664]/50'} ${toast.threadId ? 'cursor-pointer hover:border-[#C6A664]' : ''}`}
+          className={`fixed bottom-16 md:bottom-5 right-4 z-50 max-w-md rounded-xl border bg-[#FCF9F2]/95 dark:bg-[#0F1824]/95 px-4 py-2.5 text-xs font-medium text-[#0F1622] dark:text-[#F5F0E6] shadow-2xl flex items-center gap-2.5 backdrop-blur ${toast.tone === 'error' ? 'border-red-400/60' : 'border-[#C6A664]/50'} ${toast.threadId || toast.onClick ? 'cursor-pointer hover:border-[#C6A664]' : ''}`}
         >
           {toast.tone === 'error' ? (
             <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400 shrink-0" />
@@ -784,6 +967,11 @@ export const App: React.FC<AppProps> = ({
             <Sparkles className="h-4 w-4 text-[#C6A664] shrink-0" />
           )}
           <span className="flex-1">{toast.text}</span>
+          {toast.label && (
+            <span className="rounded-lg bg-[#C6A664]/20 border border-[#C6A664]/40 px-2 py-0.5 text-[10px] font-mono font-bold text-[#C6A664] shrink-0">
+              {toast.label}
+            </span>
+          )}
           <button
             type="button"
             onClick={(e) => {
@@ -920,15 +1108,29 @@ export const App: React.FC<AppProps> = ({
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* MOBILE TOP BAR */}
         <header className="md:hidden flex items-center justify-between p-3 border-b border-[#C6A664]/30 dark:border-[#C6A664]/20 bg-[#FCF9F2]/95 dark:bg-[#0F1824]/95 backdrop-blur-md z-30">
-          <div className="flex items-center gap-2">
-            <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-[#C6A664]/10 dark:bg-[#C6A664]/15 border border-[#C6A664]/30 p-0.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#C6A664]/10 dark:bg-[#C6A664]/15 border border-[#C6A664]/30 p-0.5">
               <StrictOverseerLogo className="h-6 w-6" />
             </div>
             <span className="font-sans text-sm font-black tracking-widest text-[#0F1622] dark:text-[#F5F0E6]">
               WARDEN
             </span>
+            {activeRunsCount > 0 && activeRun && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFocusedRunId(liveBrainStatus?.runId || activeRun.id);
+                  setActiveTab('reports');
+                }}
+                className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-500 truncate max-w-[140px] cursor-pointer"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <Loader2 className="h-2.5 w-2.5 animate-spin shrink-0" />
+                <span className="truncate">{activeRunsCount} LIVE</span>
+              </button>
+            )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <select
               value={activeVertical}
               onChange={(e) => setActiveVertical(e.target.value as VerticalScope)}
@@ -962,12 +1164,20 @@ export const App: React.FC<AppProps> = ({
         </header>
 
         {/* TOP HEADER BAR (PC ONLY) */}
-        <header className="hidden md:flex h-14 border-b border-[#C6A664]/30 dark:border-[#C6A664]/20 bg-[#FCF9F2]/95 dark:bg-[#0F1824]/95 backdrop-blur-md z-30 px-4 items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-sm font-bold text-[#0F1622] dark:text-[#F5F0E6] capitalize">
-              {activeTab === 'home' ? 'Overview' : activeTab}
+        <header className="hidden md:flex h-14 border-b border-[#C6A664]/30 dark:border-[#C6A664]/20 bg-[#FCF9F2]/95 dark:bg-[#0F1824]/95 backdrop-blur-md z-30 px-4 items-center justify-between gap-3">
+          <div className="flex items-center gap-4 min-w-0">
+            <h1 className="text-sm font-bold text-[#0F1622] dark:text-[#F5F0E6] capitalize shrink-0">
+              {activeTab === 'home'
+                ? 'Overview'
+                : activeTab === 'reports'
+                  ? 'Activity'
+                  : activeTab === 'agents'
+                    ? 'Team'
+                    : activeTab === 'seo'
+                      ? 'SEO & AEO'
+                      : activeTab}
             </h1>
-            <div className="flex items-center gap-1 pl-4 border-l border-[#C6A664]/30 dark:border-[#C6A664]/20">
+            <div className="flex items-center gap-1 pl-4 border-l border-[#C6A664]/30 dark:border-[#C6A664]/20 overflow-x-auto">
               {dynamicTabs.map((dTab) => {
                 const isSelected = activeTab === dTab.id;
                 return (
@@ -975,7 +1185,7 @@ export const App: React.FC<AppProps> = ({
                     key={dTab.id}
                     type="button"
                     onClick={() => setActiveTab(dTab.id)}
-                    className={`group relative inline-flex items-center gap-1.5 rounded-t-lg px-3 py-1.5 text-xs font-mono transition border-t border-x cursor-pointer ${
+                    className={`group relative inline-flex items-center gap-1.5 rounded-t-lg px-3 py-1.5 text-xs font-mono transition border-t border-x cursor-pointer shrink-0 ${
                       isSelected
                         ? 'bg-[#F7F3E8] dark:bg-[#0B121C] text-[#0F1622] dark:text-[#F5F0E6] border-[#C6A664]/40'
                         : 'bg-[#EFE9D8]/50 dark:bg-[#162030]/50 text-[#5C5343] dark:text-[#8A94A6] border-transparent hover:bg-[#EFE9D8] dark:hover:bg-[#162030]'
@@ -1000,8 +1210,65 @@ export const App: React.FC<AppProps> = ({
               })}
             </div>
           </div>
+
+          {/* Runtime Activity Pill */}
+          <div className="flex-1 flex justify-center min-w-0 px-2">
+            {activeRunsCount > 0 && activeRun ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setFocusedRunId(liveBrainStatus?.runId || activeRun.id);
+                  setActiveTab('reports');
+                }}
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-500/45 bg-emerald-500/12 hover:bg-emerald-500/20 px-3.5 py-1.5 text-xs font-mono transition cursor-pointer max-w-xl shadow-xs"
+              >
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-bold text-emerald-500 shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>{activeRunsCount} LIVE</span>
+                </span>
+                <span className="truncate text-[#0F1622] dark:text-[#F5F0E6] font-semibold">
+                  <span className="text-[#C6A664] font-bold">
+                    {liveBrainStatus?.agentSlug || activeRunSlug}:
+                  </span>{' '}
+                  {(
+                    liveBrainStatus?.summary ||
+                    activeRun.output_summary ||
+                    activeRun.input_prompt
+                  ).slice(0, 64)}
+                </span>
+                {liveBrainStatus?.stepIndex && (
+                  <span className="rounded bg-[#EFE9D8] dark:bg-[#162030] border border-[#C6A664]/30 px-1.5 py-0.5 text-[10px] text-[#C6A664] shrink-0">
+                    Step {liveBrainStatus.stepIndex}/{liveBrainStatus.totalSteps || 4}
+                  </span>
+                )}
+                <span className="text-[11px] font-bold text-emerald-500 shrink-0">
+                  Brain Trace →
+                </span>
+              </button>
+            ) : latestRun ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setFocusedRunId(latestRun.id);
+                  setActiveTab('reports');
+                }}
+                className="inline-flex items-center gap-2 rounded-full border border-[#C6A664]/30 bg-[#EFE9D8]/60 dark:bg-[#162030]/60 hover:border-[#C6A664]/60 px-3 py-1 text-[11px] font-mono text-[#5C5343] dark:text-[#8A94A6] hover:text-[#0F1622] dark:hover:text-[#F5F0E6] transition cursor-pointer max-w-lg"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                <span className="truncate">
+                  Last Activity:{' '}
+                  <strong className="text-[#C6A664]">{latestRunSlug}</strong> •{' '}
+                  {latestRun.input_prompt.slice(0, 38)}…
+                </span>
+                <span className="text-[#C6A664] font-semibold shrink-0">
+                  Brain Trace →
+                </span>
+              </button>
+            ) : null}
+          </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             {onSignOut && (
               <button
                 type="button"
@@ -1045,30 +1312,36 @@ export const App: React.FC<AppProps> = ({
                       </button>
                     </div>
                     <div className="space-y-2 max-h-80 overflow-y-auto">
-                      {notifications.map((n) => (
-                        <div
-                          key={n.id}
-                          onClick={() => {
-                            setNotifications((prev) =>
-                              prev.map((item) => (item.id === n.id ? { ...item, unread: false } : item))
-                            );
-                            setActiveTab(n.targetTab);
-                            setNotifOpen(false);
-                          }}
-                          className={`rounded-xl border p-2.5 cursor-pointer ${
-                            n.unread
-                              ? 'border-[#C6A664]/50 bg-[#C6A664]/10'
-                              : 'border-[#C6A664]/20 bg-[#EFE9D8]/40 dark:bg-[#162030]'
-                          }`}
-                        >
-                          <div className="text-[10px] font-mono text-[#5C5343] dark:text-[#8A94A6] flex justify-between">
-                            <span>{n.vertical}</span>
-                            <span>{n.timeAgo}</span>
-                          </div>
-                          <div className="text-xs font-bold text-[#0F1622] dark:text-[#F5F0E6] mt-1">{n.title}</div>
-                          <p className="text-[11px] text-[#5C5343] dark:text-[#8A94A6] mt-0.5">{n.body}</p>
+                      {notifications.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-[#5C5343] dark:text-[#8A94A6]">
+                          No new notifications yet.
                         </div>
-                      ))}
+                      ) : (
+                        notifications.map((n) => (
+                          <div
+                            key={n.id}
+                            onClick={() => {
+                              setNotifications((prev) =>
+                                prev.map((item) => (item.id === n.id ? { ...item, unread: false } : item))
+                              );
+                              setActiveTab(n.targetTab);
+                              setNotifOpen(false);
+                            }}
+                            className={`rounded-xl border p-2.5 cursor-pointer ${
+                              n.unread
+                                ? 'border-[#C6A664]/50 bg-[#C6A664]/10'
+                                : 'border-[#C6A664]/20 bg-[#EFE9D8]/40 dark:bg-[#162030]'
+                            }`}
+                          >
+                            <div className="text-[10px] font-mono text-[#5C5343] dark:text-[#8A94A6] flex justify-between">
+                              <span>{n.vertical}</span>
+                              <span>{n.timeAgo}</span>
+                            </div>
+                            <div className="text-xs font-bold text-[#0F1622] dark:text-[#F5F0E6] mt-1">{n.title}</div>
+                            <p className="text-[11px] text-[#5C5343] dark:text-[#8A94A6] mt-0.5">{n.body}</p>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </>
@@ -1129,6 +1402,7 @@ export const App: React.FC<AppProps> = ({
                     activeVertical={activeVertical}
                     knobConfig={knobConfig}
                     backlogItems={backlogItems}
+                    runs={runs}
                     threads={threads}
                     onApproveBacklogItem={async (itemId, summary) => {
                       const spawned = await apiClient.spawnDemoTaskRun(itemId, summary);
@@ -1138,15 +1412,44 @@ export const App: React.FC<AppProps> = ({
                           spawned.thread,
                           ...prev.filter((t) => t.id !== spawned.thread.id),
                         ]);
-                        handleOpenThreadByObject(spawned.thread);
+                        const slug = normalizeSlug(spawned.thread.target_agent_id);
+                        const tab = chatTabForSlug(slug);
+                        setDynamicTabs((prev) =>
+                          prev.some((t) => t.id === tab.id) ? prev : [...prev, tab]
+                        );
+                        setPreferredTargetAgentSlug(slug);
+                        setSelectedThreadId(spawned.thread.id);
+                        setHighlightedGateId(null);
+                        if (spawned.run) {
+                          setFocusedRunId(spawned.run.id);
+                          setLiveBrainStatus({
+                            runId: spawned.run.id,
+                            backlogItemId: spawned.item.id,
+                            taskTitle: spawned.item.title,
+                            agentSlug: '@warden',
+                            stepIndex: 1,
+                            totalSteps: 4,
+                            summary:
+                              spawned.run.output_summary ||
+                              spawned.run.input_prompt ||
+                              spawned.item.title,
+                            updatedAt: Date.now(),
+                          });
+                        } else {
+                          setFocusedBacklogItemId(spawned.item.id);
+                        }
                         showToast(
-                          `Spawning team for "${spawned.item.title}" in @warden chat & Activity.`
+                          `Spawning team for "${spawned.item.title}" — watch live in Top Bar or Activity!`,
+                          { threadId: spawned.thread.id }
                         );
                       }
                     }}
                     onOpenAgentTab={(slug) => handleOpenAgentWindowTab(slug)}
                     onOpenBacklogsTab={() => setActiveTab('backlogs')}
-                    onOpenActivityTab={() => setActiveTab('reports')}
+                    onOpenActivityTab={(itemId) => {
+                      if (itemId) setFocusedBacklogItemId(itemId);
+                      setActiveTab('reports');
+                    }}
                     onOpenThread={handleOpenThread}
                     onDecisionRecorded={(summary) => showToast(summary)}
                   />
@@ -1180,7 +1483,15 @@ export const App: React.FC<AppProps> = ({
               <ReportsView
                 activeVertical={activeVertical}
                 agents={agents}
+                runs={runs}
                 backlogItems={backlogItems}
+                focusedRunId={focusedRunId}
+                focusedBacklogItemId={focusedBacklogItemId}
+                onFocusConsumed={() => {
+                  setFocusedRunId(null);
+                  setFocusedBacklogItemId(null);
+                }}
+                liveBrainStatus={liveBrainStatus}
                 onTriggerStandupNow={handleTriggerStandup}
                 onOpenBacklog={() => setActiveTab('backlogs')}
                 onOpenBacklogItem={handleOpenBacklogItem}

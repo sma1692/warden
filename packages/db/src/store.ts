@@ -60,6 +60,7 @@ import {
   SEED_ROUTING_PROFILES,
 } from './seed-agents.ts';
 import { getDeploymentProfile } from './privateData.ts';
+import { normalizeDepartment } from './schema.ts';
 
 export interface DatabaseSnapshot {
   version: string;
@@ -158,6 +159,9 @@ export class DatabaseStore {
                 const seed = seedById.get(a.id);
                 return {
                   ...a,
+                  department: normalizeDepartment(
+                    (a as { department?: unknown }).department
+                  ),
                   fallback_provider:
                     a.fallback_provider || seed?.fallback_provider || 'meta_muse',
                   fallback_model_id:
@@ -385,6 +389,8 @@ export class DatabaseStore {
     await this.pg.query(`
       ALTER TABLE agents ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT FALSE;
       ALTER TABLE agents DROP CONSTRAINT IF EXISTS agents_department_check;
+      UPDATE agents SET department = CASE LOWER(department) WHEN 'operations' THEN 'ops' ELSE LOWER(department) END;
+      UPDATE agents SET department = 'tech' WHERE department NOT IN ('executive', 'tech', 'infra', 'marketing', 'sales', 'hr', 'ops', 'support', 'finance', 'product');
       ALTER TABLE agents ADD CONSTRAINT agents_department_check
         CHECK (department IN ('executive', 'tech', 'infra', 'marketing', 'sales', 'hr', 'ops', 'support', 'finance', 'product'));
       ALTER TABLE sprints ADD COLUMN IF NOT EXISTS week_label TEXT;
@@ -498,7 +504,7 @@ export class DatabaseStore {
           agent.id,
           agent.slug,
           agent.name,
-          agent.department,
+          normalizeDepartment(agent.department),
           agent.hierarchy_level,
           agent.parent_agent_id,
           agent.project_scope,
@@ -634,7 +640,7 @@ export class DatabaseStore {
           agent.id,
           agent.slug,
           agent.name,
-          agent.department,
+          normalizeDepartment(agent.department),
           agent.hierarchy_level,
           agent.parent_agent_id,
           agent.project_scope,
@@ -887,7 +893,9 @@ export class DatabaseStore {
       id,
       slug: input.slug || existing?.slug || `@${id}`,
       name: input.name || existing?.name || id,
-      department: input.department || existing?.department || 'tech',
+      department: normalizeDepartment(
+        input.department || existing?.department || 'tech'
+      ),
       hierarchy_level:
         input.hierarchy_level !== undefined
           ? input.hierarchy_level
@@ -1680,12 +1688,12 @@ export class DatabaseStore {
       qa_screenshot_url: input.qa_screenshot_url ?? null,
       started_at: input.started_at || now,
       ended_at: input.ended_at ?? null,
-      active_duration_ms: input.active_duration_ms ?? 0,
-      pause_duration_ms: input.pause_duration_ms ?? 0,
-      tokens_in: input.tokens_in ?? 0,
-      tokens_cached: input.tokens_cached ?? 0,
-      tokens_thinking: input.tokens_thinking ?? 0,
-      tokens_out: input.tokens_out ?? 0,
+      active_duration_ms: Number(input.active_duration_ms ?? 0),
+      pause_duration_ms: Number(input.pause_duration_ms ?? 0),
+      tokens_in: Number(input.tokens_in ?? 0),
+      tokens_cached: Number(input.tokens_cached ?? 0),
+      tokens_thinking: Number(input.tokens_thinking ?? 0),
+      tokens_out: Number(input.tokens_out ?? 0),
       cost_usd: Number(input.cost_usd ?? 0),
     };
 
@@ -1829,7 +1837,7 @@ export class DatabaseStore {
     const endedAt = new Date().toISOString();
     const durationMs = Math.max(
       100,
-      Date.parse(endedAt) - Date.parse(existing.started_at) - (existing.pause_duration_ms || 0)
+      Date.parse(endedAt) - Date.parse(existing.started_at) - Number(existing.pause_duration_ms || 0)
     );
 
     const updated = await this.updateAgentRun(id, {
@@ -1841,7 +1849,7 @@ export class DatabaseStore {
       qa_passed: result.qa_passed ?? existing.qa_passed,
       qa_screenshot_url: result.qa_screenshot_url ?? existing.qa_screenshot_url,
       ended_at: endedAt,
-      active_duration_ms: existing.active_duration_ms || durationMs,
+      active_duration_ms: Number(existing.active_duration_ms) || durationMs,
       tokens_in: result.tokens_in ?? existing.tokens_in,
       tokens_cached: result.tokens_cached ?? existing.tokens_cached,
       tokens_thinking: result.tokens_thinking ?? existing.tokens_thinking,
@@ -2459,6 +2467,19 @@ export class DatabaseStore {
       existingIdx >= 0 ? this.state.backlog_items[existingIdx] : undefined;
 
     const stage: BacklogStage = input.stage || existing?.stage || 'INBOX';
+    const cleanAgentId = (id?: string | null): string | null => {
+      if (!id) return null;
+      const stripped = normalizeAgentKey(id).replace(/^@/, '');
+      const found = this.state.agents.find(
+        (a) => a.id === stripped || a.slug === stripped || a.slug === `@${stripped}`
+      );
+      return found ? found.id : null;
+    };
+    const cleanSprintId = (id?: string | null): string | null => {
+      if (!id) return null;
+      return this.state.sprints.some((s) => s.id === id) ? id : null;
+    };
+
     const item: BacklogItemRow = {
       id: input.id || existing?.id || crypto.randomUUID(),
       user_id: input.user_id ?? existing?.user_id ?? null,
@@ -2466,14 +2487,14 @@ export class DatabaseStore {
       spec_md: input.spec_md ?? existing?.spec_md ?? '',
       stage,
       priority: input.priority || existing?.priority || 'P1',
-      department: input.department || existing?.department || 'tech',
+      department: normalizeDepartment(input.department || existing?.department || 'tech'),
       project_slug: input.project_slug ?? existing?.project_slug ?? getDeploymentProfile().defaultProject,
       assigned_agent_id: input.assigned_agent_id
-        ? normalizeAgentKey(input.assigned_agent_id)
-        : (existing?.assigned_agent_id ?? null),
+        ? normalizeAgentKey(input.assigned_agent_id).replace(/^@/, '')
+        : (existing?.assigned_agent_id ? existing.assigned_agent_id.replace(/^@/, '') : null),
       pm_owner_id: input.pm_owner_id
-        ? normalizeAgentKey(input.pm_owner_id)
-        : (existing?.pm_owner_id ?? null),
+        ? normalizeAgentKey(input.pm_owner_id).replace(/^@/, '')
+        : (existing?.pm_owner_id ? existing.pm_owner_id.replace(/^@/, '') : null),
       sprint_id: input.sprint_id ?? existing?.sprint_id ?? null,
       target_week: input.target_week ?? existing?.target_week ?? null,
       requires_human_intervention:
@@ -2490,8 +2511,8 @@ export class DatabaseStore {
         input.required_env_keys ?? existing?.required_env_keys ?? [],
       human_response: input.human_response ?? existing?.human_response ?? null,
       requested_by_agent_id: input.requested_by_agent_id
-        ? normalizeAgentKey(input.requested_by_agent_id)
-        : (existing?.requested_by_agent_id ?? null),
+        ? normalizeAgentKey(input.requested_by_agent_id).replace(/^@/, '')
+        : (existing?.requested_by_agent_id ? existing.requested_by_agent_id.replace(/^@/, '') : null),
       last_moved_at: input.last_moved_at ?? existing?.last_moved_at ?? now,
       last_movement_note:
         input.last_movement_note ?? existing?.last_movement_note ?? null,
@@ -2554,16 +2575,16 @@ export class DatabaseStore {
           item.priority,
           item.department,
           item.project_slug,
-          item.assigned_agent_id,
-          item.pm_owner_id ?? null,
-          item.sprint_id,
+          cleanAgentId(item.assigned_agent_id),
+          cleanAgentId(item.pm_owner_id),
+          cleanSprintId(item.sprint_id),
           item.target_week ?? null,
           Boolean(item.requires_human_intervention),
           item.intervention_type ?? null,
           item.intervention_prompt ?? null,
           JSON.stringify(item.required_env_keys || []),
           item.human_response ?? null,
-          item.requested_by_agent_id ?? null,
+          cleanAgentId(item.requested_by_agent_id),
           item.last_moved_at ?? null,
           item.last_movement_note ?? null,
           item.created_at,

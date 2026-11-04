@@ -330,7 +330,28 @@ class WardenApiClient {
     const remote = await this.safeFetch<AgentRun[]>(`/runs${query}`);
     if (Array.isArray(remote)) {
       if (!agentId) {
-        this.runs = remote;
+        const seeds = await import('./seedData').catch(() => null);
+        const seedRuns = seeds?.INITIAL_AGENT_RUNS || [];
+        const remoteIds = new Set(remote.map((r) => r.id));
+        const historical = seedRuns
+          .filter((sr) => !remoteIds.has(sr.id))
+          .map((sr) => ({
+            ...sr,
+            status: 'COMPLETED' as const,
+            ended_at: sr.ended_at || sr.started_at,
+          }));
+        const isActive = (s: AgentRun['status']) =>
+          s === 'RUNNING' || s === 'VERIFYING_QA';
+        const merged = [...remote, ...historical].sort((a, b) => {
+          const aActive = isActive(a.status) ? 1 : 0;
+          const bActive = isActive(b.status) ? 1 : 0;
+          if (aActive !== bActive) return bActive - aActive;
+          return (
+            new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+          );
+        });
+        this.runs = merged;
+        return merged;
       }
       return remote;
     }
@@ -341,15 +362,40 @@ class WardenApiClient {
 
   public async getInferenceSteps(runId: string): Promise<InferenceStep[]> {
     const remote = await this.safeFetch<InferenceStep[]>(`/runs/${encodeURIComponent(runId)}/steps`);
-    if (Array.isArray(remote)) {
+    if (Array.isArray(remote) && remote.length > 0) {
       this.stepsByRun[runId] = remote;
       return remote;
     }
-    if (this.stepsByRun[runId]) {
+    if (this.stepsByRun[runId] && this.stepsByRun[runId].length > 0) {
       return [...this.stepsByRun[runId]];
     }
     // Synthesize deterministic trace if inspecting a run without pre-seeded steps
     const run = this.runs.find((r) => r.id === runId);
+    if (run?.status === 'RUNNING' || run?.status === 'VERIFYING_QA') {
+      const runningStep: InferenceStep[] = [
+        {
+          id: `step_${runId}_1`,
+          run_id: runId,
+          step_index: 1,
+          step_type: 'LLM_INFERENCE',
+          model_used: 'meta_muse/muse-spark-1.3',
+          thinking_text: 'Initializing agent brain & inspecting workspace context...',
+          message_text:
+            run?.input_prompt ||
+            'Initializing agent brain & inspecting workspace context...',
+          tool_name: null,
+          tool_args_json: null,
+          tool_output_json: null,
+          duration_ms: 850,
+          tokens_in: Math.max(420, run?.tokens_in || 0),
+          tokens_cached: run?.tokens_cached || 0,
+          tokens_thinking: Math.max(180, run?.tokens_thinking || 0),
+          tokens_out: run?.tokens_out || 0,
+          created_at: run?.started_at || new Date().toISOString(),
+        },
+      ];
+      return runningStep;
+    }
     const fallbackSteps: InferenceStep[] = [
       {
         id: `step_${runId}_1`,
