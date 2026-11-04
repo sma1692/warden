@@ -30,18 +30,18 @@
     --surface-border-subtle: rgba(198, 166, 100, 0.25);
     --surface-border-strong: #C6A664;
 
-    /* Executive Brand & Overseer Accents */
-    --surface-accent: #C6A664; /* Champagne Gold Accent */
-    --surface-accent-hover: #D4B475;
-    --surface-accent-gold: #C6A664; /* Brushed Champagne Gold */
-    --surface-accent-gold-hover: #D4B475;
+    /* Executive Brand & Overseer Accents (High-contrast burnished bronze on warm ivory) */
+    --surface-accent: #7A5C1E; /* Burnished Bronze Accent */
+    --surface-accent-hover: #5E4514;
+    --surface-accent-gold: #7A5C1E; /* High-Contrast Deep Gold */
+    --surface-accent-gold-hover: #5E4514;
 
     /* Semantic Indicators (Monochromatic Luxury Duotone) */
-    --semantic-success: #C6A664;
-    --semantic-action: #C6A664;
-    --semantic-warning: #C6A664;
-    --semantic-alert: #C6A664;
-    --semantic-info: #C6A664;
+    --semantic-success: #7A5C1E;
+    --semantic-action: #7A5C1E;
+    --semantic-warning: #7A5C1E;
+    --semantic-alert: #9E3B24;
+    --semantic-info: #7A5C1E;
 
     /* Strict Overseer Decorative & Focus Tokens */
     --overseer-shield: #FCF9F2;

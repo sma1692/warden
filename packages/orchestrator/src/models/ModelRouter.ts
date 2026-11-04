@@ -2006,6 +2006,10 @@ export class ModelRouter {
         completion_tokens?: number;
         reasoning_tokens?: number;
         total_tokens?: number;
+        cached_tokens?: number;
+        prompt_tokens_details?: {
+          cached_tokens?: number;
+        };
       };
     };
 
@@ -2041,6 +2045,12 @@ export class ModelRouter {
 
     const tokensIn =
       data.usage?.prompt_tokens ?? estimateTokens(systemInstruction + JSON.stringify(turns));
+    const providerCachedTokens =
+      data.usage?.prompt_tokens_details?.cached_tokens ?? data.usage?.cached_tokens;
+    const effectiveCachedTokens = Math.min(
+      tokensIn,
+      providerCachedTokens !== undefined ? providerCachedTokens : cacheHitTokens
+    );
     const tokensThinking = data.usage?.reasoning_tokens ?? estimateTokens(thinkingText);
     const tokensOut = data.usage?.completion_tokens ?? estimateTokens(messageText);
     const durationMs = Math.max(1, Date.now() - startMs);
@@ -2050,7 +2060,7 @@ export class ModelRouter {
       agentId: req.agentId,
       modelId,
       tokens_in: tokensIn,
-      tokens_cached: Math.min(tokensIn, cacheHitTokens),
+      tokens_cached: effectiveCachedTokens,
       tokens_thinking: tokensThinking,
       tokens_out: tokensOut,
       duration_ms: durationMs,
@@ -2071,7 +2081,7 @@ export class ModelRouter {
       usage: budgetCheck.stepUsage,
       usageMetadata: {
         promptTokenCount: tokensIn,
-        cachedContentTokenCount: Math.min(tokensIn, cacheHitTokens),
+        cachedContentTokenCount: effectiveCachedTokens,
         thoughtsTokenCount: tokensThinking,
         candidatesTokenCount: tokensOut,
         totalTokenCount: tokensIn + tokensThinking + tokensOut,

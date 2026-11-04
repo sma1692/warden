@@ -845,7 +845,7 @@ class WardenApiClient {
     this.messagesByThread[payload.thread_id] = [...existing, ceoMessage];
 
     // Attempt backend POST (HTTP 202: returns a run tracking handle, never blocks)
-    const remote = await this.safeFetch<{
+    let remote: {
       ceoMessage?: ChatMessage;
       agentReply?: ChatMessage;
       createdRun?: AgentRun;
@@ -857,14 +857,22 @@ class WardenApiClient {
       threadId?: string;
       status?: string;
       async?: boolean;
-    }>(`/threads/${encodeURIComponent(payload.thread_id)}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({
-        content: payload.content,
-        target_agent_id: payload.target_agent_id,
-        attachments_json: payload.attachments,
-      }),
-    });
+    } | null = null;
+    try {
+      remote = await this.safeFetch(`/threads/${encodeURIComponent(payload.thread_id)}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          content: payload.content,
+          target_agent_id: payload.target_agent_id,
+          attachments_json: payload.attachments,
+        }),
+      });
+    } catch (err) {
+      this.messagesByThread[payload.thread_id] = (
+        this.messagesByThread[payload.thread_id] || []
+      ).filter((m) => m.id !== ceoMessage.id);
+      throw err;
+    }
 
     // Async dispatch (HTTP 202): no reply yet — track via runId polling + WS push.
     if (remote && remote.runId && !remote.agentReply) {

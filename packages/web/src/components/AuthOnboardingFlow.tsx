@@ -141,10 +141,12 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
 
   const S2_DEPLOY_MESSAGES = [
     'Provisioning isolated demo workspace & PostgreSQL state…',
-    'Building Tic-Tac-Toe Arena v1 production bundle…',
+    'Seeding initial sprint backlog & agent memory vectors…',
+    'Compiling Tic-Tac-Toe Arena v1 production bundle…',
+    'Packing @designer 8-bit sprite atlas & trophy SVGs…',
     'Running Wrangler deploy to Cloudflare Pages edge network…',
-    'Configuring live HTTPS subdomain & edge asset routing…',
-    'Briefing @warden, @cto, @cmo, and 13 specialist agents…',
+    'Propagating live HTTPS subdomain & edge asset routing…',
+    'Waking up @warden, @cto, @cmo, and 13 specialist agents…',
     'Finalizing studio command center — almost ready…',
   ];
 
@@ -551,15 +553,15 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     setS2StatusIdx(0);
     const progressTimer = window.setInterval(() => {
       setS2Progress((prev) => {
-        if (prev < 68) return prev + 8;
-        if (prev < 88) return prev + 2;
+        if (prev < 65) return prev + 6;
+        if (prev < 85) return prev + 2;
         if (prev < 96) return prev + 1;
         return prev;
       });
-    }, 320);
+    }, 350);
     const statusTimer = window.setInterval(() => {
       setS2StatusIdx((prev) => (prev + 1) % S2_DEPLOY_MESSAGES.length);
-    }, 2400);
+    }, 1600);
     try {
       const minWait = new Promise((r) => setTimeout(r, 1250));
       if (isLive) {
@@ -1363,11 +1365,17 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
             {(f1Phase === 's2' || exploreBooting) && (
               <div className="flex-1 flex flex-col items-center justify-center p-6">
                 <div className="max-w-md w-full rounded-3xl border border-[#C6A664]/40 bg-[#101216] p-8 sm:p-10 text-center space-y-6 shadow-2xl">
-                  <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
-                    {/* Continuous circular spinner ring around the logo */}
+                  <div className="relative mx-auto flex h-28 w-28 items-center justify-center">
+                    {/* Outer glowing circular loader ring */}
                     <span
                       aria-hidden="true"
-                      className="absolute inset-0 rounded-full border-2 border-[#C6A664]/20 border-t-[#D4B475] border-r-[#C6A664] animate-spin"
+                      className="absolute inset-0 rounded-full border-[3px] border-[#C6A664]/15 border-t-[#D4B475] border-r-[#C6A664] animate-spin"
+                    />
+                    {/* Inner counter-rotating dashed circle loader */}
+                    <span
+                      aria-hidden="true"
+                      style={{ animationDirection: 'reverse', animationDuration: '2.2s' }}
+                      className="absolute inset-2 rounded-full border-2 border-dashed border-[#D4B475]/35 animate-spin"
                     />
                     <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-[#D4B475]/20 via-[#162030] to-[#0B121C] border border-[#C6A664]/45 p-2 shadow-xl">
                       <img
@@ -1378,8 +1386,8 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#D4B475]">
-                      <RefreshCw className="h-3 w-3 animate-spin" />
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[#C6A664]/35 bg-[#C6A664]/15 px-3 py-1 text-[10px] font-mono uppercase tracking-widest text-[#D4B475]">
+                      <span className="inline-block h-3 w-3 rounded-full border-2 border-[#D4B475]/30 border-t-[#D4B475] animate-spin shrink-0" />
                       <span>Deploying to Cloudflare Edge • {s2Progress}%</span>
                     </span>
                     <h1 className="text-xl sm:text-2xl font-black text-white">
@@ -1389,18 +1397,43 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                       Deploying v1 of <strong className="text-slate-200">Tic-Tac-Toe Arena</strong> to your unique subdomain and briefing your AI workforce.
                     </p>
                   </div>
-                  <div className="space-y-3">
-                    <div className="w-full h-2 rounded-full bg-[#14161A] overflow-hidden border border-[#C6A664]/30">
-                      <div
-                        className="h-full bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] transition-all duration-300"
-                        style={{ width: `${s2Progress}%` }}
+                  <div className="space-y-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-2.5 rounded-full bg-[#14161A] overflow-hidden border border-[#C6A664]/30">
+                        <div
+                          className="h-full bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] transition-all duration-300 animate-pulse"
+                          style={{ width: `${s2Progress}%` }}
+                        />
+                      </div>
+                      <span
+                        aria-label="Deployment in progress"
+                        className="inline-block h-5 w-5 rounded-full border-2 border-[#C6A664]/25 border-t-[#D4B475] border-r-[#C6A664] animate-spin shrink-0"
                       />
                     </div>
-                    <div className="flex items-center justify-center gap-2 text-xs font-mono text-[#D4B475]/90 min-h-[20px]">
-                      <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-[#D4B475]/30 border-t-[#D4B475] animate-spin shrink-0" />
-                      <span className="transition-opacity duration-300">
-                        {S2_DEPLOY_MESSAGES[s2StatusIdx]}
-                      </span>
+                    <div className="rounded-2xl border border-[#C6A664]/25 bg-[#14161A]/90 px-4 py-3 space-y-2">
+                      <div className="flex items-center justify-center gap-2.5 text-xs font-mono font-semibold text-[#D4B475] min-h-[20px]">
+                        <span className="inline-block h-4 w-4 rounded-full border-2 border-[#D4B475]/25 border-t-[#D4B475] animate-spin shrink-0" />
+                        <span key={s2StatusIdx} className="transition-opacity duration-300">
+                          {S2_DEPLOY_MESSAGES[s2StatusIdx]}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Setting up your isolated environment &amp; pushing live via Wrangler — hang tight, still working…
+                      </p>
+                      <div className="flex items-center justify-center gap-1.5 pt-0.5">
+                        {S2_DEPLOY_MESSAGES.map((_, i) => (
+                          <span
+                            key={i}
+                            className={`h-1.5 rounded-full transition-all duration-300 ${
+                              i === s2StatusIdx
+                                ? 'w-4 bg-[#D4B475]'
+                                : i < s2StatusIdx
+                                  ? 'w-1.5 bg-[#C6A664]/60'
+                                  : 'w-1.5 bg-[#22262E]'
+                            }`}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>

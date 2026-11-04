@@ -29,8 +29,10 @@ export interface UserTokenTelemetry {
   totalCostUsd: number;
   totalRuns: number;
   cachedHitPct: number;
+  totalImageGenerations: number;
   byVertical: {
     TECH: { tokens: number; costUsd: number; runs: number; sharePct: number };
+    DESIGN: { tokens: number; costUsd: number; runs: number; imageCount: number; sharePct: number };
     SEO_AEO: { tokens: number; costUsd: number; runs: number; sharePct: number };
     SOCIAL: { tokens: number; costUsd: number; runs: number; sharePct: number };
   };
@@ -110,7 +112,7 @@ export async function getUserUsage(userId: string): Promise<UserBudgetUsage> {
       ? Number(capRes.rows[0].token_cap)
       : defaultCapForMode('demo');
   const useRes = await pool.query<{ used: string | number; cost: string | number }>(
-    `SELECT COALESCE(SUM(tokens_in + tokens_cached + tokens_thinking + tokens_out), 0) AS used,
+    `SELECT COALESCE(SUM(tokens_in + tokens_thinking + tokens_out), 0) AS used,
             COALESCE(SUM(cost_usd), 0) AS cost
      FROM agent_runs WHERE user_id = $1`,
     [userId]
@@ -184,10 +186,28 @@ export async function checkUserAgentBudget(
 function classifyVertical(
   agentId: string | null | undefined,
   slug: string | null | undefined,
-  department: string | null | undefined
-): 'TECH' | 'SEO_AEO' | 'SOCIAL' {
+  department: string | null | undefined,
+  inputPrompt?: string | null,
+  outputSummary?: string | null,
+  imageStepCount: number = 0
+): 'TECH' | 'DESIGN' | 'SEO_AEO' | 'SOCIAL' {
   const idSlug = `${agentId || ''} ${slug || ''}`.toLowerCase();
   const dept = `${department || ''}`.toLowerCase();
+  const text = `${inputPrompt || ''} ${outputSummary || ''}`.toLowerCase();
+
+  if (
+    imageStepCount > 0 ||
+    idSlug.includes('designer') ||
+    idSlug.includes('design') ||
+    idSlug.includes('muse-image') ||
+    dept.includes('design') ||
+    text.includes('@designer') ||
+    text.includes('muse-image') ||
+    text.includes('![meta muse generated creative]') ||
+    /\b(sprite|trophy asset|image generation|generate.*image|8-bit sprite)\b/.test(text)
+  ) {
+    return 'DESIGN';
+  }
   if (idSlug.includes('seo') || idSlug.includes('aeo') || idSlug.includes('cbo') || dept.includes('seo') || dept.includes('aeo')) {
     return 'SEO_AEO';
   }
@@ -230,18 +250,34 @@ export async function getUserTokenTelemetry(
     agent_id: string;
     slug: string | null;
     department: string | null;
+    input_prompt: string | null;
+    output_summary: string | null;
     tokens_in: string | number;
     tokens_cached: string | number;
     tokens: string | number;
     cost: string | number;
+    image_step_count: string | number;
   }>(
     `SELECT r.agent_id,
             a.slug,
             a.department,
+            r.input_prompt,
+            r.output_summary,
             COALESCE(r.tokens_in, 0) AS tokens_in,
             COALESCE(r.tokens_cached, 0) AS tokens_cached,
-            COALESCE(r.tokens_in, 0) + COALESCE(r.tokens_cached, 0) + COALESCE(r.tokens_thinking, 0) + COALESCE(r.tokens_out, 0) AS tokens,
-            COALESCE(r.cost_usd, 0) AS cost
+            COALESCE(r.tokens_in, 0) + COALESCE(r.tokens_thinking, 0) + COALESCE(r.tokens_out, 0) AS tokens,
+            COALESCE(r.cost_usd, 0) AS cost,
+            (
+              SELECT COUNT(*)
+              FROM inference_steps s
+              WHERE s.run_id = r.id
+                AND (
+                  LOWER(COALESCE(s.model_used, '')) LIKE '%muse-image%'
+                  OR LOWER(COALESCE(s.tool_name, '')) LIKE '%image%'
+                  OR LOWER(COALESCE(s.tool_name, '')) LIKE '%sprite%'
+                  OR LOWER(COALESCE(s.message_text, '')) LIKE '%![meta muse generated creative]%'
+                )
+            ) AS image_step_count
      FROM agent_runs r
      LEFT JOIN agents a ON a.id = r.agent_id
      WHERE r.user_id = $1 ${timeClause}`,
@@ -250,15 +286,24 @@ export async function getUserTokenTelemetry(
 
   const acc = {
     TECH: { tokens: 0, costUsd: 0, runs: 0 },
+    DESIGN: { tokens: 0, costUsd: 0, runs: 0, imageCount: 0 },
     SEO_AEO: { tokens: 0, costUsd: 0, runs: 0 },
     SOCIAL: { tokens: 0, costUsd: 0, runs: 0 },
   };
 
   let totalCached = 0;
-  let totalPromptInput = 0;
+  let totalTokensIn = 0;
 
   for (const row of res.rows) {
-    const v = classifyVertical(row.agent_id, row.slug, row.department);
+    const imgSteps = Number(row.image_step_count ?? 0);
+    const v = classifyVertical(
+      row.agent_id,
+      row.slug,
+      row.department,
+      row.input_prompt,
+      row.output_summary,
+      imgSteps
+    );
     const t = Number(row.tokens ?? 0);
     const c = Number(row.cost ?? 0);
     const tIn = Number(row.tokens_in ?? 0);
@@ -266,17 +311,31 @@ export async function getUserTokenTelemetry(
     acc[v].tokens += t;
     acc[v].costUsd += c;
     acc[v].runs += 1;
+    if (v === 'DESIGN') {
+      acc.DESIGN.imageCount += Math.max(1, imgSteps);
+    } else if (imgSteps > 0) {
+      acc.DESIGN.imageCount += imgSteps;
+    }
     totalCached += tCached;
-    totalPromptInput += tIn + tCached;
+    totalTokensIn += tIn;
   }
 
-  const totalTokens = acc.TECH.tokens + acc.SEO_AEO.tokens + acc.SOCIAL.tokens;
+  const totalTokens =
+    acc.TECH.tokens + acc.DESIGN.tokens + acc.SEO_AEO.tokens + acc.SOCIAL.tokens;
   const totalCostUsd = Number(
-    (acc.TECH.costUsd + acc.SEO_AEO.costUsd + acc.SOCIAL.costUsd).toFixed(6)
+    (
+      acc.TECH.costUsd +
+      acc.DESIGN.costUsd +
+      acc.SEO_AEO.costUsd +
+      acc.SOCIAL.costUsd
+    ).toFixed(6)
   );
-  const totalRuns = acc.TECH.runs + acc.SEO_AEO.runs + acc.SOCIAL.runs;
+  const totalRuns =
+    acc.TECH.runs + acc.DESIGN.runs + acc.SEO_AEO.runs + acc.SOCIAL.runs;
   const cachedHitPct =
-    totalPromptInput > 0 ? Math.min(99, Math.round((totalCached / totalPromptInput) * 100)) : 0;
+    totalTokensIn > 0
+      ? Math.min(100, Math.max(0, Math.round((totalCached / totalTokensIn) * 100)))
+      : 0;
 
   const pct = (n: number) => (totalTokens > 0 ? Math.round((n / totalTokens) * 100) : 0);
 
@@ -286,12 +345,20 @@ export async function getUserTokenTelemetry(
     totalCostUsd,
     totalRuns,
     cachedHitPct,
+    totalImageGenerations: acc.DESIGN.imageCount,
     byVertical: {
       TECH: {
         tokens: acc.TECH.tokens,
         costUsd: Number(acc.TECH.costUsd.toFixed(6)),
         runs: acc.TECH.runs,
         sharePct: pct(acc.TECH.tokens),
+      },
+      DESIGN: {
+        tokens: acc.DESIGN.tokens,
+        costUsd: Number(acc.DESIGN.costUsd.toFixed(6)),
+        runs: acc.DESIGN.runs,
+        imageCount: acc.DESIGN.imageCount,
+        sharePct: pct(acc.DESIGN.tokens),
       },
       SEO_AEO: {
         tokens: acc.SEO_AEO.tokens,

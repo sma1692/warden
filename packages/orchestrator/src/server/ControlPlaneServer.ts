@@ -2372,6 +2372,9 @@ export class ControlPlaneServer {
 
       const approveBacklogMatch = pathname.match(/^\/api\/backlog\/([^/]+)\/approve$/);
       if (approveBacklogMatch && method === 'POST') {
+        if (await this.rejectIfOverTokenBudget(res, requestUserId)) {
+          return;
+        }
         const rawItemId = decodeURIComponent(approveBacklogMatch[1]);
         const body = await this.readJsonBody(req);
         const decisionSummary = String(
@@ -2420,6 +2423,14 @@ export class ControlPlaneServer {
         const target = this.store.backlogItems.get(itemId);
         if (!target || (requestUserId && (target.user_id ?? null) !== requestUserId)) {
           this.sendJson(res, 404, { error: `Backlog item ${itemId} not found` });
+          return;
+        }
+        const willTriggerExecution =
+          body.stage === 'IN_PROGRESS' &&
+          String(body.last_movement_note ?? body.movement_reason ?? body.reason ?? '').startsWith(
+            'Approved'
+          );
+        if (willTriggerExecution && (await this.rejectIfOverTokenBudget(res, requestUserId))) {
           return;
         }
         const updated = this.store.updateBacklogItem(itemId, {

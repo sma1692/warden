@@ -12,7 +12,7 @@ export function useTheme(): [ThemeMode, React.Dispatch<React.SetStateAction<Them
         return saved;
       }
     }
-    return 'light';
+    return 'dark';
   });
 
   useEffect(() => {

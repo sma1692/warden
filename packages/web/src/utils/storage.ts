@@ -3,8 +3,8 @@
 // in-memory behavior instead of crashing the caller.
 
 export const StorageKeys = {
-  /** Dashboard light/dark theme. */
-  theme: 'warden_surface_theme',
+  /** Dashboard light/dark theme (v2 defaults to dark mode). */
+  theme: 'warden_surface_theme_v2',
   /** JWT session token (mirrored in memory by api/auth). */
   authToken: 'warden.auth.token',
   /** Consultation knob config JSON. */

@@ -258,6 +258,16 @@ export class AgentRunner {
       }
     }
 
+    const effectiveUserId =
+      params.userId ??
+      existingRun?.user_id ??
+      (params.parentRunId ? this.store.runs.get(params.parentRunId)?.user_id : undefined) ??
+      (params.chatThreadId ? this.store.threads.get(params.chatThreadId)?.user_id : undefined) ??
+      (params.backlogItemId
+        ? this.store.backlogItems.get(params.backlogItemId)?.user_id
+        : undefined) ??
+      null;
+
     // 1. Create or resume agent_runs row & Clock In Agent
     const run = existingRun
       ? this.store.updateRun(existingRun.id, {
@@ -267,12 +277,7 @@ export class AgentRunner {
           pending_tool_name: null,
         })!
       : this.store.createRun({
-          user_id:
-            params.userId ??
-            (params.chatThreadId
-              ? this.store.threads.get(params.chatThreadId)?.user_id
-              : undefined) ??
-            null,
+          user_id: effectiveUserId,
           agent_id: agent.id,
           agent_slug: agent.slug,
           parent_run_id: params.parentRunId ?? null,
@@ -297,49 +302,48 @@ export class AgentRunner {
     // Fail fast when the operator exhausted their platform token budget: pause
     // with a gate instead of spending on a new run. Operators with their own
     // Meta Muse key bypass this (their key pays). The watchdog re-checks mid-run.
-    if (params.userId) {
+    if (effectiveUserId) {
       try {
-        const { getUserUsage } = await import('../budgets/UserBudgets.js');
-        const usage = await getUserUsage(params.userId);
-        if (usage.status === 'EXCEEDED') {
-          const { hasUserLlmKey } = await import('../llmkeys/UserLlmKeys.js');
-          if (await hasUserLlmKey(params.userId)) {
-            console.log(
-              `[AgentRunner] Platform budget exceeded but user key present; proceeding on user key (run=${run.id}).`
-            );
-          } else {
-            const promptText = `Platform token budget exhausted (${usage.used.toLocaleString()} / ${usage.cap.toLocaleString()} tokens). Add your own Meta Muse key in Settings to keep running on your key, or terminate this run.`;
-            const paused =
-              this.store.updateRun(run.id, {
-                status: 'PAUSED_TOKEN_CAP',
-                output_summary: promptText,
-              }) ?? run;
-            const gate = this.store.createApprovalGate({
-              user_id: params.userId,
-              run_id: run.id,
-              thread_id: run.chat_thread_id,
-              agent_id: agent.id,
-              department: agent.department,
-              project_scope: agent.project_scope,
-              gate_type: 'TOKEN_CAP_EXCEEDED',
-              prompt_text: promptText,
-              options_json: { choices: ['ADD_OWN_KEY', 'TERMINATE_RUN'] },
-              telegram_notified_at: new Date().toISOString(),
-            });
-            this.store.broadcast('budget:exceeded', {
-              userId: params.userId,
-              threadId: run.chat_thread_id,
-              error: promptText,
-              budget: usage,
-            });
-            return {
-              run: paused,
-              agent,
-              outputSummary: promptText,
-              pausedForCeo: true,
-              gateId: gate.id,
-            };
-          }
+        const { checkUserAgentBudget } = await import('../budgets/UserBudgets.js');
+        const check = await checkUserAgentBudget(effectiveUserId);
+        if (check.byokActive) {
+          console.log(
+            `[AgentRunner] Platform budget exceeded but user key present; proceeding on user key (run=${run.id}).`
+          );
+        } else if (!check.allowed) {
+          const promptText =
+            check.errorMessage ||
+            `Platform token budget exhausted (${check.usage.used.toLocaleString()} / ${check.usage.cap.toLocaleString()} tokens). Add your own Meta Muse key in Settings to keep running on your key, or terminate this run.`;
+          const paused =
+            this.store.updateRun(run.id, {
+              status: 'PAUSED_TOKEN_CAP',
+              output_summary: promptText,
+            }) ?? run;
+          const gate = this.store.createApprovalGate({
+            user_id: effectiveUserId,
+            run_id: run.id,
+            thread_id: run.chat_thread_id,
+            agent_id: agent.id,
+            department: agent.department,
+            project_scope: agent.project_scope,
+            gate_type: 'TOKEN_CAP_EXCEEDED',
+            prompt_text: promptText,
+            options_json: { choices: ['ADD_OWN_KEY', 'TERMINATE_RUN'] },
+            telegram_notified_at: new Date().toISOString(),
+          });
+          this.store.broadcast('budget:exceeded', {
+            userId: effectiveUserId,
+            threadId: run.chat_thread_id,
+            error: promptText,
+            budget: check.usage,
+          });
+          return {
+            run: paused,
+            agent,
+            outputSummary: promptText,
+            pausedForCeo: true,
+            gateId: gate.id,
+          };
         }
       } catch (err) {
         console.error('[AgentRunner] Budget pre-check failed; proceeding:', err);
@@ -584,6 +588,47 @@ export class AgentRunner {
     let stepThinkingText = '';
 
     for (let turnIdx = 0; turnIdx < maxSteps; turnIdx++) {
+      // Mid-run budget enforcement before each follow-up turn
+      if (turnIdx > 0 && effectiveUserId) {
+        try {
+          const { checkUserAgentBudget } = await import('../budgets/UserBudgets.js');
+          const midCheck = await checkUserAgentBudget(effectiveUserId);
+          if (!midCheck.allowed) {
+            const promptText =
+              midCheck.errorMessage ||
+              `Token limit reached (${midCheck.usage.used.toLocaleString()} / ${midCheck.usage.cap.toLocaleString()} tokens used). Add your own Meta Muse key in Settings to continue.`;
+            this.store.broadcast('budget:exceeded', {
+              userId: effectiveUserId,
+              threadId: run.chat_thread_id,
+              error: promptText,
+              budget: midCheck.usage,
+            });
+            const gate = this.store.createApprovalGate({
+              user_id: effectiveUserId,
+              run_id: run.id,
+              thread_id: run.chat_thread_id,
+              agent_id: agent.id,
+              department: agent.department,
+              project_scope: agent.project_scope,
+              gate_type: 'TOKEN_CAP_EXCEEDED',
+              prompt_text: promptText,
+              options_json: { choices: ['ADD_OWN_KEY', 'TERMINATE_RUN'] },
+              telegram_notified_at: new Date().toISOString(),
+            });
+            this.store.updateRun(run.id, {
+              status: 'PAUSED_TOKEN_CAP',
+              output_summary: promptText,
+              pending_gate_id: gate.id,
+            });
+            pausedForCeo = true;
+            createdGateId = gate.id;
+            finalSummary = promptText;
+            break;
+          }
+        } catch {
+          // non-fatal
+        }
+      }
       // Drain any reactive inbox messages delivered asynchronously from subagents or peers
       const inboxMsgs = this.store.consumeRunInboxMessages(run.id);
       if (inboxMsgs.length > 0) {
@@ -1077,7 +1122,7 @@ export class AgentRunner {
         freshAgent.total_tokens_thinking + updatedRun.tokens_thinking,
       total_tokens_out: freshAgent.total_tokens_out + updatedRun.tokens_out,
       total_cost_usd: Number(
-        (freshAgent.total_cost_usd + updatedRun.cost_usd).toFixed(4)
+        (freshAgent.total_cost_usd + updatedRun.cost_usd).toFixed(6)
       ),
     }))!;
 
@@ -1293,7 +1338,7 @@ export class AgentRunner {
       tokens_cached: run.tokens_cached + delta.tokens_cached,
       tokens_thinking: run.tokens_thinking + delta.tokens_thinking,
       tokens_out: run.tokens_out + delta.tokens_out,
-      cost_usd: Number((run.cost_usd + delta.cost_usd).toFixed(4)),
+      cost_usd: Number((run.cost_usd + delta.cost_usd).toFixed(6)),
     });
   }
 
@@ -1502,6 +1547,7 @@ export class AgentRunner {
       if (!waitForChild) {
         // Asynchronous dispatch: run child in background and deliver reply into parent's reactive inbox
         void this.runTask({
+          userId: run.user_id ?? undefined,
           agentIdOrSlug: targetSlug,
           inputPrompt: taskPrompt,
           triggerType: 'DELEGATION',
@@ -1563,6 +1609,7 @@ export class AgentRunner {
       }
 
       const subResult = await this.runTask({
+        userId: run.user_id ?? undefined,
         agentIdOrSlug: targetSlug,
         inputPrompt: taskPrompt,
         triggerType: 'DELEGATION',
@@ -1688,6 +1735,7 @@ export class AgentRunner {
       }
 
       const subResult = await this.runTask({
+        userId: run.user_id ?? undefined,
         agentIdOrSlug: targetSlug,
         inputPrompt: message,
         triggerType: 'DELEGATION',

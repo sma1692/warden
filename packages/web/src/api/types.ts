@@ -54,8 +54,10 @@ export interface UserTokenTelemetry {
   totalCostUsd: number;
   totalRuns: number;
   cachedHitPct: number;
+  totalImageGenerations?: number;
   byVertical: {
     TECH: { tokens: number; costUsd: number; runs: number; sharePct: number };
+    DESIGN?: { tokens: number; costUsd: number; runs: number; imageCount: number; sharePct: number };
     SEO_AEO: { tokens: number; costUsd: number; runs: number; sharePct: number };
     SOCIAL: { tokens: number; costUsd: number; runs: number; sharePct: number };
   };

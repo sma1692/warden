@@ -6,6 +6,7 @@ import {
   DollarSign,
   Flame,
   Megaphone,
+  Palette,
   Search,
   ShieldCheck,
   Zap,
@@ -68,8 +69,16 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
   const cachedHitPct = telemetry?.cachedHitPct ?? 0;
 
   const techData = telemetry?.byVertical?.TECH ?? { tokens: 0, costUsd: 0, runs: 0, sharePct: 0 };
+  const designData = telemetry?.byVertical?.DESIGN ?? {
+    tokens: 0,
+    costUsd: 0,
+    runs: 0,
+    imageCount: 0,
+    sharePct: 0,
+  };
   const seoData = telemetry?.byVertical?.SEO_AEO ?? { tokens: 0, costUsd: 0, runs: 0, sharePct: 0 };
   const socialData = telemetry?.byVertical?.SOCIAL ?? { tokens: 0, costUsd: 0, runs: 0, sharePct: 0 };
+  const totalImageGenerations = telemetry?.totalImageGenerations ?? designData.imageCount ?? 0;
 
   const verticalBreakdown = [
     {
@@ -78,11 +87,25 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
       tokens: techData.tokens,
       costUsd: techData.costUsd,
       runs: techData.runs,
+      imageCount: undefined as number | undefined,
       sharePct: techData.sharePct,
-      barColor: 'bg-[var(--surface-accent-gold)]',
+      barColor: 'bg-[#8A6820] dark:bg-[var(--surface-accent-gold)]',
       badgeStyle:
-        'bg-[var(--surface-accent-gold)]/15 text-[var(--surface-accent-gold)] border-[var(--surface-accent-gold)]/30',
-      icon: <Cpu className="h-3.5 w-3.5 text-[var(--surface-accent-gold)]" />,
+        'bg-[#8A6820]/15 text-[#4A360D] border-[#8A6820]/40 dark:bg-[var(--surface-accent-gold)]/15 dark:text-[var(--surface-accent-gold)] dark:border-[var(--surface-accent-gold)]/30',
+      icon: <Cpu className="h-3.5 w-3.5 text-[#5A4212] dark:text-[var(--surface-accent-gold)]" />,
+    },
+    {
+      id: 'DESIGN' as const,
+      label: 'Designer',
+      tokens: designData.tokens,
+      costUsd: designData.costUsd,
+      runs: designData.runs,
+      imageCount: designData.imageCount,
+      sharePct: designData.sharePct,
+      barColor: 'bg-[#B45309] dark:bg-amber-400',
+      badgeStyle:
+        'bg-[#B45309]/15 text-[#5C2B06] border-[#B45309]/40 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/35',
+      icon: <Palette className="h-3.5 w-3.5 text-[#78350F] dark:text-amber-300" />,
     },
     {
       id: 'SEO_AEO' as const,
@@ -90,11 +113,12 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
       tokens: seoData.tokens,
       costUsd: seoData.costUsd,
       runs: seoData.runs,
+      imageCount: undefined as number | undefined,
       sharePct: seoData.sharePct,
-      barColor: 'bg-[var(--surface-accent)]',
+      barColor: 'bg-[#6E541E] dark:bg-[var(--surface-accent)]',
       badgeStyle:
-        'bg-[var(--surface-accent)]/15 text-[var(--surface-accent)] border-[var(--surface-accent)]/30',
-      icon: <Search className="h-3.5 w-3.5 text-[var(--surface-accent)]" />,
+        'bg-[#6E541E]/15 text-[#3D2E0E] border-[#6E541E]/40 dark:bg-[var(--surface-accent)]/15 dark:text-[var(--surface-accent)] dark:border-[var(--surface-accent)]/30',
+      icon: <Search className="h-3.5 w-3.5 text-[#4A360D] dark:text-[var(--surface-accent)]" />,
     },
     {
       id: 'SOCIAL' as const,
@@ -102,18 +126,21 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
       tokens: socialData.tokens,
       costUsd: socialData.costUsd,
       runs: socialData.runs,
+      imageCount: undefined as number | undefined,
       sharePct: socialData.sharePct,
-      barColor: 'bg-[#8A94A6]',
+      barColor: 'bg-[#4A5568] dark:bg-[#8A94A6]',
       badgeStyle:
-        'bg-[var(--surface-elevated)] text-[var(--surface-text)] border-[var(--surface-border-strong)]',
-      icon: <Megaphone className="h-3.5 w-3.5 text-[var(--surface-text-secondary)]" />,
+        'bg-[#0F1622]/10 text-[#0F1622] border-[#0F1622]/30 dark:bg-[var(--surface-elevated)] dark:text-[var(--surface-text)] dark:border-[var(--surface-border-strong)]',
+      icon: <Megaphone className="h-3.5 w-3.5 text-[#0F1622] dark:text-[var(--surface-text-secondary)]" />,
     },
   ];
 
   const displayedVerticals =
     activeVertical === 'ALL'
       ? verticalBreakdown
-      : verticalBreakdown.filter((v) => v.id === activeVertical);
+      : verticalBreakdown.filter((v) =>
+          activeVertical === 'TECH' ? v.id === 'TECH' || v.id === 'DESIGN' : v.id === activeVertical
+        );
 
   return (
     <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] shadow-xs flex flex-col h-full min-h-0 overflow-hidden">
@@ -234,6 +261,13 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
               <ShieldCheck className="h-3.5 w-3.5 text-[var(--surface-accent-gold)]" />
               <span>Per-Vertical Spend</span>
             </span>
+            <span className="inline-flex items-center gap-1 rounded-md border border-[#B45309]/40 bg-[#B45309]/15 px-2 py-0.5 text-[10px] font-mono font-semibold text-[#5C2B06] dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-300">
+              <Palette className="h-3 w-3 text-[#78350F] dark:text-amber-300" />
+              <span>
+                {totalImageGenerations.toLocaleString()} img-gen{' '}
+                {totalImageGenerations === 1 ? 'change' : 'changes'}
+              </span>
+            </span>
           </div>
 
           <div className="space-y-2.5">
@@ -248,10 +282,11 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
                   </span>
 
                   <div className="flex items-center gap-2 font-mono text-[11px]">
-                    <span className="text-[var(--surface-text-secondary)]">
-                      {v.tokens.toLocaleString()} tok • {formatUsdAdaptive(v.costUsd)} ({v.runs} run{v.runs === 1 ? '' : 's'})
+                    <span className="text-[#2C2519] dark:text-[var(--surface-text-secondary)] font-medium">
+                      {v.tokens.toLocaleString()} tok • {formatUsdAdaptive(v.costUsd)} ({v.runs} run{v.runs === 1 ? '' : 's'}
+                      {v.imageCount !== undefined ? ` • ${v.imageCount} img` : ''})
                     </span>
-                    <span className="text-[var(--surface-accent-gold)] font-bold w-9 text-right">
+                    <span className="text-[#4A360D] dark:text-[var(--surface-accent-gold)] font-bold w-9 text-right">
                       {v.sharePct}%
                     </span>
                   </div>

@@ -948,7 +948,6 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                 key={row.agent.id}
                 onClick={() => {
                   onOpenAgentWindowTab?.(row.agent);
-                  onInspectAgent(row.agent, 'runs');
                 }}
                 className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 space-y-3 shadow-sm active:scale-[0.99] transition cursor-pointer"
               >
@@ -1009,22 +1008,12 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                 >
                   <button
                     type="button"
-                    onClick={() => onInspectAgent(row.agent, 'config')}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gold-500/15 border border-gold-500/40 py-1.5 text-xs font-semibold text-gold-200"
+                    onClick={() => onOpenAgentWindowTab?.(row.agent)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gold-500/15 border border-gold-500/40 py-1.5 text-xs font-semibold text-gold-200 cursor-pointer"
                   >
-                    <Terminal className="h-3.5 w-3.5" />
-                    <span>Inspect Brain &amp; Trace</span>
+                    <MessageSquare className="h-3.5 w-3.5 text-gold-400" />
+                    <span>Open Chat Channel</span>
                   </button>
-                  {onChatDirectWithAgent && (
-                    <button
-                      type="button"
-                      onClick={() => onChatDirectWithAgent(row.agent)}
-                      className="inline-flex items-center justify-center gap-1 rounded-xl bg-[var(--surface-muted)] border border-[var(--surface-border)] px-3 py-1.5 text-xs font-medium text-[var(--surface-text)]"
-                    >
-                      <MessageSquare className="h-3.5 w-3.5 text-gold-400" />
-                      <span>Chat</span>
-                    </button>
-                  )}
                 </div>
               </div>
             ))}
@@ -1127,7 +1116,6 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                       key={row.agent.id}
                       onClick={() => {
                         onOpenAgentWindowTab?.(row.agent);
-                        onInspectAgent(row.agent, 'runs');
                       }}
                       className="group hover:bg-[var(--surface-muted)]/50 transition cursor-pointer"
                     >
@@ -1228,21 +1216,12 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                               type="button"
                               onClick={() => onOpenAgentWindowTab(row.agent)}
                               className="inline-flex items-center gap-1 rounded-lg bg-gold-500/15 hover:bg-gold-500/25 border border-gold-500/40 px-2 py-1 text-[11px] font-medium text-gold-200 transition cursor-pointer"
-                              title="Open agent in a closable window tab"
+                              title="Open agent chat tab"
                             >
                               <ExternalLink className="h-3 w-3 text-gold-400" />
-                              <span>Tab</span>
+                              <span>Chat</span>
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => onInspectAgent(row.agent, 'runs')}
-                            className="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-muted)] hover:bg-[var(--surface-border)] border border-[var(--surface-border)] px-2 py-1 text-[11px] font-medium text-[var(--surface-text)] transition cursor-pointer"
-                            title="Open slide-over drawer"
-                          >
-                            <Terminal className="h-3 w-3 text-[var(--surface-text-secondary)]" />
-                            <span>Drawer</span>
-                          </button>
                           {onChatDirectWithAgent && (
                             <button
                               type="button"
@@ -1352,7 +1331,7 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                       {list.map((row) => (
                         <div
                           key={row.agent.id}
-                          onClick={() => onInspectAgent(row.agent, 'config')}
+                          onClick={() => onOpenAgentWindowTab?.(row.agent)}
                           className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-panel)] hover:border-gold-500/50 p-3 transition cursor-pointer flex flex-col justify-between gap-2 shadow-xs"
                         >
                           <div>

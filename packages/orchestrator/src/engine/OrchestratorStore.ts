@@ -2356,6 +2356,26 @@ export class OrchestratorStore {
           cost_usd: finished.cost_usd,
         })
       );
+    } else if (
+      patch.tokens_in !== undefined ||
+      patch.tokens_cached !== undefined ||
+      patch.tokens_thinking !== undefined ||
+      patch.tokens_out !== undefined ||
+      patch.cost_usd !== undefined ||
+      patch.status !== undefined
+    ) {
+      const snapshot = updated;
+      this.enqueueDbWrite('run-update', (dbStore) =>
+        dbStore.updateAgentRun(snapshot.id, {
+          status: snapshot.status,
+          output_summary: snapshot.output_summary,
+          tokens_in: snapshot.tokens_in,
+          tokens_cached: snapshot.tokens_cached,
+          tokens_thinking: snapshot.tokens_thinking,
+          tokens_out: snapshot.tokens_out,
+          cost_usd: snapshot.cost_usd,
+        })
+      );
     }
     return updated;
   }
