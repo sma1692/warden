@@ -32,7 +32,6 @@ export function isPublicPath(pathname: string, method: string): boolean {
   if (pathname === '/webhook/whatsapp') return true;
   if (pathname.startsWith('/api/auth/otp/') || pathname.startsWith('/api/auth/wa/')) return true;
   if (pathname.startsWith('/api/auth/email/')) return true;
-  if (pathname.startsWith('/api/github/')) return true;
   if (pathname.startsWith('/api/seo/')) return true;
   if (pathname === '/api/health' && (method === 'GET' || method === 'HEAD')) return true;
   return false;

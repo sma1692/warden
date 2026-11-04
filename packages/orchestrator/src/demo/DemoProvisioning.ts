@@ -10,8 +10,7 @@
  *   `demo/<id>` branch off DEMO_BASE_REF on DEMO_REPO_FULL_NAME and opens
  *   one draft PR per user. Agent work lands on that branch (see AgentRunner
  *   branch routing).
- * - full: seeds a welcome thread. Project contexts come from the user's own
- *   connected repos via the GitHub OAuth flow.
+ * - full: seeds a welcome thread with no repo attached yet.
  *
  * Git uses a single server-side demo credential (GITHUB_DEMO_TOKEN); branch
  * naming provides per-user isolation. Without git config, DB seeding still
@@ -364,7 +363,7 @@ async function seedFullRows(userId: string): Promise<void> {
     sender_type: 'AGENT',
     sender_agent_id: 'warden',
     content:
-      'Onboarding complete. Warden now holds your company memory. Connect a GitHub repo and agents will close loops on your code with one approval from you.',
+      'Onboarding complete. Warden now holds your company memory. Point agents at your repo and they will close loops on your code with one approval from you.',
   });
 }
 

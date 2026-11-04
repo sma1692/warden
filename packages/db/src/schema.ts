@@ -10,6 +10,7 @@ export type Department =
   | 'sales'
   | 'hr'
   | 'ops'
+  | 'support'
   | 'finance';
 
 export type HierarchyLevel = -1 | 0 | 1 | 2 | 3;
@@ -212,6 +213,8 @@ export interface AgentRow {
   total_tokens_thinking: number;
   total_tokens_out: number;
   total_cost_usd: number;
+  /** True for runtime auto-registered roles pending human review in Agent Studio. */
+  needs_review: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -627,6 +630,7 @@ export const agents = pgTable('agents', {
   total_tokens_thinking: bigint('total_tokens_thinking', { mode: 'number' }).notNull().default(0),
   total_tokens_out: bigint('total_tokens_out', { mode: 'number' }).notNull().default(0),
   total_cost_usd: numeric('total_cost_usd', { precision: 14, scale: 6 }).notNull().default('0'),
+  needs_review: boolean('needs_review').notNull().default(false),
   created_at: timestamp('created_at', { withTimezone: true, mode: 'string' })
     .notNull()
     .defaultNow(),

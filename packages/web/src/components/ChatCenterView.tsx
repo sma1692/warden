@@ -8,6 +8,7 @@ import {
   ChevronRight,
   FileText,
   Image as ImageIcon,
+  Loader2,
   MessageSquare,
   Paperclip,
   Plus,
@@ -20,6 +21,8 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { AsyncButton } from './AsyncButton';
+import { LlmKeyForm } from './LlmKeyForm';
 import type {
   Agent,
   ApprovalGate,
@@ -376,10 +379,15 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
                     {/* 1-Tap Option Buttons (Includes 1-Tap Approve All 3 on EMPTY_BACKLOG_PING) */}
                     <div className="space-y-1.5">
                       {gate.options_json.map((opt) => (
-                        <button
+                        <AsyncButton
                           key={opt.id}
                           type="button"
-                          onClick={() => onResolveGate(gate.id, opt.label, opt.id)}
+                          action={() => onResolveGate(gate.id, opt.label, opt.id)}
+                          swapWhilePending={
+                            <span className="flex items-center gap-2 text-xs">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Resolving…
+                            </span>
+                          }
                           className={`w-full text-left rounded-lg border px-2.5 py-2 text-xs transition cursor-pointer ${
                             opt.recommended
                               ? 'bg-[var(--semantic-success)]/15 hover:bg-[var(--semantic-success)]/25 border-[var(--semantic-success)]/50 text-[var(--semantic-success)] font-semibold'
@@ -399,9 +407,27 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
                               {opt.description}
                             </p>
                           )}
-                        </button>
+                        </AsyncButton>
                       ))}
                     </div>
+
+                    {/* BYOK: user-budget gates embed key entry so the run unblocks in place */}
+                    {gate.gate_type === 'TOKEN_CAP_EXCEEDED' &&
+                      (() => {
+                        const choices = gate.raw_options?.choices;
+                        return (
+                          Array.isArray(choices) &&
+                          choices.some((c) => c === 'ADD_OWN_KEY' || c === 'UPDATE_KEY')
+                        );
+                      })() && (
+                        <div className="rounded-lg border border-[#C6A664]/40 bg-[var(--surface-panel)] p-2.5 space-y-2">
+                          <LlmKeyForm compact />
+                          <p className="text-[11px] text-[var(--surface-text-secondary)]">
+                            Save your key above, then click the resume option to continue this run
+                            on your key — or manage keys anytime in Settings.
+                          </p>
+                        </div>
+                      )}
 
                     {/* Custom Write-In Resolution */}
                     <div className="flex gap-1.5 pt-1">
@@ -417,17 +443,18 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
                         placeholder="Or type custom instruction / backlog spec..."
                         className="flex-1 rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] px-2.5 py-1 text-xs text-[var(--surface-text)] placeholder:text-[var(--surface-text-secondary)]/50"
                       />
-                      <button
+                      <AsyncButton
                         type="button"
-                        onClick={() => {
+                        action={() => {
                           const val = (gateCustomInput[gate.id] || '').trim();
-                          if (!val) return;
-                          onResolveGate(gate.id, val);
+                          if (!val) return Promise.resolve();
+                          return onResolveGate(gate.id, val);
                         }}
-                        className="rounded-lg bg-gold-500/20 hover:bg-gold-500/30 border border-gold-500/40 px-2.5 py-1 text-xs font-semibold text-gold-200 cursor-pointer"
+                        spinnerClassName="h-3 w-3"
+                        className="inline-flex items-center gap-1 rounded-lg bg-gold-500/20 hover:bg-gold-500/30 border border-gold-500/40 px-2.5 py-1 text-xs font-semibold text-gold-200 cursor-pointer"
                       >
                         Reply
-                      </button>
+                      </AsyncButton>
                     </div>
                   </div>
                 );
@@ -443,14 +470,15 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
               <MessageSquare className="h-4 w-4 text-gold-400" />
               <span>PostgreSQL Thread History (`chat_threads`)</span>
             </h3>
-            <button
+            <AsyncButton
               type="button"
-              onClick={handleCreateNewThread}
+              action={handleCreateNewThread}
+              spinnerClassName="h-3.5 w-3.5"
               className="inline-flex items-center gap-1 rounded-lg bg-gold-500/15 hover:bg-gold-500/25 border border-gold-500/40 px-2.5 py-1 text-xs font-semibold text-gold-200 transition cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>+ New Thread</span>
-            </button>
+            </AsyncButton>
           </div>
 
           <div className="space-y-2 overflow-y-auto max-h-[420px] pr-1">
@@ -968,7 +996,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
               disabled={isSending}
               className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-gold-500 hover:bg-gold-400 disabled:opacity-50 px-4 py-2.5 text-xs sm:text-sm font-bold text-navy-950 transition cursor-pointer"
             >
-              <Send className="h-4 w-4" />
+              {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               <span>{isSending ? 'Routing...' : 'Send'}</span>
             </button>
           </div>

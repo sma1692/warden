@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS agents (
   total_tokens_thinking BIGINT NOT NULL DEFAULT 0,
   total_tokens_out BIGINT NOT NULL DEFAULT 0,
   total_cost_usd NUMERIC(14, 6) NOT NULL DEFAULT 0,
+  needs_review BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

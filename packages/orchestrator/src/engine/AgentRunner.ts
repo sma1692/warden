@@ -19,6 +19,7 @@ import {
   ModelRouter,
   ToolCallInvocation,
   ToolDeclaration,
+  UserKeyError,
   formatFileEditDirectives,
   parseFileEditDirectives,
 } from '../models/ModelRouter.js';
@@ -230,7 +231,9 @@ export class AgentRunner {
       : undefined;
 
     const agent =
-      this.store.getAgent(existingRun?.agent_id || params.agentIdOrSlug) ||
+      (await this.store
+        .ensureAgentBySlug(existingRun?.agent_id || params.agentIdOrSlug)
+        .catch(() => undefined)) ||
       this.store.getAgent('warden')!;
 
     const runStartMs = Date.now();
@@ -289,38 +292,46 @@ export class AgentRunner {
           inbox_messages: [],
         });
 
-    // Fail fast when the operator exhausted their token budget: pause with a
-    // gate instead of spending on a new run. The watchdog re-checks mid-run.
+    // Fail fast when the operator exhausted their platform token budget: pause
+    // with a gate instead of spending on a new run. Operators with their own
+    // Meta Muse key bypass this (their key pays). The watchdog re-checks mid-run.
     if (params.userId) {
       try {
         const { getUserUsage } = await import('../budgets/UserBudgets.js');
         const usage = await getUserUsage(params.userId);
         if (usage.status === 'EXCEEDED') {
-          const promptText = `Token budget exhausted (${usage.used.toLocaleString()} / ${usage.cap.toLocaleString()} tokens). New runs are paused until the budget is raised.`;
-          const paused =
-            this.store.updateRun(run.id, {
-              status: 'PAUSED_TOKEN_CAP',
-              output_summary: promptText,
-            }) ?? run;
-          const gate = this.store.createApprovalGate({
-            user_id: params.userId,
-            run_id: run.id,
-            thread_id: run.chat_thread_id,
-            agent_id: agent.id,
-            department: agent.department,
-            project_scope: agent.project_scope,
-            gate_type: 'TOKEN_CAP_EXCEEDED',
-            prompt_text: promptText,
-            options_json: { choices: ['EXTEND_BUDGET', 'TERMINATE_RUN'] },
-            telegram_notified_at: new Date().toISOString(),
-          });
-          return {
-            run: paused,
-            agent,
-            outputSummary: promptText,
-            pausedForCeo: true,
-            gateId: gate.id,
-          };
+          const { hasUserLlmKey } = await import('../llmkeys/UserLlmKeys.js');
+          if (await hasUserLlmKey(params.userId)) {
+            console.log(
+              `[AgentRunner] Platform budget exceeded but user key present; proceeding on user key (run=${run.id}).`
+            );
+          } else {
+            const promptText = `Platform token budget exhausted (${usage.used.toLocaleString()} / ${usage.cap.toLocaleString()} tokens). Add your own Meta Muse key in Settings to keep running on your key, or terminate this run.`;
+            const paused =
+              this.store.updateRun(run.id, {
+                status: 'PAUSED_TOKEN_CAP',
+                output_summary: promptText,
+              }) ?? run;
+            const gate = this.store.createApprovalGate({
+              user_id: params.userId,
+              run_id: run.id,
+              thread_id: run.chat_thread_id,
+              agent_id: agent.id,
+              department: agent.department,
+              project_scope: agent.project_scope,
+              gate_type: 'TOKEN_CAP_EXCEEDED',
+              prompt_text: promptText,
+              options_json: { choices: ['ADD_OWN_KEY', 'TERMINATE_RUN'] },
+              telegram_notified_at: new Date().toISOString(),
+            });
+            return {
+              run: paused,
+              agent,
+              outputSummary: promptText,
+              pausedForCeo: true,
+              gateId: gate.id,
+            };
+          }
         }
       } catch (err) {
         console.error('[AgentRunner] Budget pre-check failed; proceeding:', err);
@@ -565,21 +576,33 @@ export class AgentRunner {
       const latestTurnContent =
         messages[messages.length - 1]?.content || params.inputPrompt;
 
-      const llmResponse = await this.modelRouter.generate({
-        provider: routerProvider,
-        modelId: resolvedRouting.modelId,
-        stepPhase,
-        agentId: agent.id,
-        runId: run.id,
-        threadId: params.chatThreadId ?? undefined,
-        projectScope: agent.project_scope ?? undefined,
-        systemInstruction: systemPrompt,
-        prompt: latestTurnContent,
-        messages,
-        attachments: turnIdx === 0 ? multimodalAttachments : undefined,
-        tools,
-        enableThinking: true,
-      });
+      let llmResponse;
+      try {
+        llmResponse = await this.modelRouter.generate({
+          provider: routerProvider,
+          modelId: resolvedRouting.modelId,
+          stepPhase,
+          agentId: agent.id,
+          runId: run.id,
+          userId: params.userId ?? run.user_id ?? undefined,
+          threadId: params.chatThreadId ?? undefined,
+          projectScope: agent.project_scope ?? undefined,
+          systemInstruction: systemPrompt,
+          prompt: latestTurnContent,
+          messages,
+          attachments: turnIdx === 0 ? multimodalAttachments : undefined,
+          tools,
+          enableThinking: true,
+        });
+      } catch (err) {
+        // The operator's own key was rejected: pause with a key-update gate
+        // instead of failing the run or spending the platform pool.
+        const gateUserId = params.userId ?? run.user_id ?? null;
+        if (err instanceof UserKeyError && gateUserId) {
+          return await this.pauseRunForBadUserKey(agent, run, gateUserId, err);
+        }
+        throw err;
+      }
 
       if (llmResponse.simulated) {
         await new Promise((resolve) => setTimeout(resolve, 220));
@@ -1005,6 +1028,43 @@ export class AgentRunner {
       agent: clockedOutAgent,
       outputSummary: finalSummary,
       pausedForCeo: false,
+    };
+  }
+
+  /**
+   * Pauses a run whose operator key Meta rejected mid-run. Resolving the gate
+   * after updating the key in Settings resumes on the new key.
+   */
+  private async pauseRunForBadUserKey(
+    agent: AgentRecord,
+    run: AgentRunRecord,
+    userId: string,
+    err: UserKeyError
+  ): Promise<RunAgentTaskResult> {
+    const promptText = `Your Meta Muse key was rejected by Meta (HTTP ${err.statusCode}). Update it in Settings, then resume this run — usage on your key is unlimited by the platform budget.`;
+    const paused =
+      this.store.updateRun(run.id, {
+        status: 'PAUSED_TOKEN_CAP',
+        output_summary: promptText,
+      }) ?? run;
+    const gate = this.store.createApprovalGate({
+      user_id: userId,
+      run_id: run.id,
+      thread_id: run.chat_thread_id,
+      agent_id: agent.id,
+      department: agent.department,
+      project_scope: agent.project_scope,
+      gate_type: 'TOKEN_CAP_EXCEEDED',
+      prompt_text: promptText,
+      options_json: { choices: ['UPDATE_KEY', 'TERMINATE_RUN'] },
+      telegram_notified_at: new Date().toISOString(),
+    });
+    return {
+      run: paused,
+      agent,
+      outputSummary: promptText,
+      pausedForCeo: true,
+      gateId: gate.id,
     };
   }
 

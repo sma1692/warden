@@ -27,6 +27,7 @@ import type {
   Sprint,
 } from '../types/warden';
 import type { VerticalScope } from './ConsultationKnob';
+import { AsyncButton, useAsyncState } from './AsyncButton';
 import { SpriteTaskPreview } from './SpriteTaskPreview';
 import {
   PRIMARY_PROJECT,
@@ -427,8 +428,8 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
     }
   };
 
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const createOp = useAsyncState();
+  const submitCreate = async () => {
     if (!newTitle.trim()) return;
     await onCreateBacklogItem({
       title: newTitle.trim(),
@@ -516,24 +517,26 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
               ))}
             </div>
 
-            <button
+            <AsyncButton
               type="button"
-              onClick={() => void onRunPmTriage()}
+              action={() => onRunPmTriage()}
+              spinnerClassName="h-3.5 w-3.5"
               className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/35 hover:bg-[var(--surface-accent-gold)]/25 px-3 py-1.5 text-xs font-semibold text-[var(--surface-accent-gold)] transition cursor-pointer"
             >
               <Wand2 className="h-3.5 w-3.5" />
               <span>PM Auto-Triage</span>
-            </button>
+            </AsyncButton>
 
             {sprint.status === 'AWAITING_CEO_APPROVAL' && (
-              <button
+              <AsyncButton
                 type="button"
-                onClick={() => void onApproveSprint('Approved from Unified Backlog')}
+                action={() => onApproveSprint('Approved from Unified Backlog')}
+                spinnerClassName="h-3.5 w-3.5"
                 className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--semantic-success)]/15 border border-[var(--semantic-success)]/40 hover:bg-[var(--semantic-success)]/25 px-3 py-1.5 text-xs font-semibold text-[var(--semantic-success)] transition cursor-pointer"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 <span>Approve Sprint</span>
-              </button>
+              </AsyncButton>
             )}
 
             <button
@@ -643,7 +646,10 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
         {/* Collapsible Quick-Add Task Composer */}
         {showAddModal && (
           <form
-            onSubmit={handleCreateSubmit}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void createOp.track(submitCreate());
+            }}
             className="rounded-xl border border-[var(--surface-accent)]/30 bg-[var(--surface-elevated)] p-3.5 space-y-3 mt-2 shadow-xs"
           >
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
@@ -707,12 +713,14 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
                 placeholder="Assignee (@tech_lead, @aeo_lead...)"
                 className="w-full sm:w-44 rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] px-3 py-1.5 text-xs font-mono text-[var(--surface-accent)] focus:outline-none focus:border-[var(--surface-accent)]"
               />
-              <button
+              <AsyncButton
                 type="submit"
-                className="w-full sm:w-auto rounded-lg bg-[var(--surface-accent)] hover:bg-[var(--surface-accent-hover)] px-4 py-1.5 text-xs font-bold text-white transition cursor-pointer shadow-xs"
+                pending={createOp.pending}
+                spinnerClassName="h-3.5 w-3.5"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-accent)] hover:bg-[var(--surface-accent-hover)] px-4 py-1.5 text-xs font-bold text-white transition cursor-pointer shadow-xs"
               >
                 Add to Backlog
-              </button>
+              </AsyncButton>
             </div>
           </form>
         )}
@@ -803,13 +811,14 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
                       placeholder="Enter CEO decision / note..."
                       className="flex-1 rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] px-2.5 py-1 text-[11px] text-[var(--text-main)]"
                     />
-                    <button
+                    <AsyncButton
                       type="button"
-                      onClick={() => void handleQuickResolve(item.id)}
-                      className="rounded-lg bg-[var(--semantic-success)] text-white px-2.5 py-1 text-[11px] font-bold"
+                      action={() => handleQuickResolve(item.id)}
+                      spinnerClassName="h-3 w-3"
+                      className="inline-flex items-center gap-1 rounded-lg bg-[var(--semantic-success)] text-white px-2.5 py-1 text-[11px] font-bold"
                     >
                       Unblock
-                    </button>
+                    </AsyncButton>
                   </div>
                 </div>
               )}
@@ -940,13 +949,14 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
                               placeholder="CEO note / key..."
                               className="rounded-lg bg-[var(--surface-elevated)] border border-[var(--semantic-alert)]/40 px-2 py-1 text-[11px] text-[var(--text-main)] w-36 focus:outline-none focus:border-[var(--semantic-alert)]"
                             />
-                            <button
+                            <AsyncButton
                               type="button"
-                              onClick={() => void handleQuickResolve(item.id)}
-                              className="rounded-lg bg-[var(--semantic-success)] hover:bg-[var(--semantic-success)]/90 text-white px-2.5 py-1 text-[11px] font-bold transition cursor-pointer shadow-xs"
+                              action={() => handleQuickResolve(item.id)}
+                              spinnerClassName="h-3 w-3"
+                              className="inline-flex items-center gap-1 rounded-lg bg-[var(--semantic-success)] hover:bg-[var(--semantic-success)]/90 text-white px-2.5 py-1 text-[11px] font-bold transition cursor-pointer shadow-xs"
                             >
                               Approve
-                            </button>
+                            </AsyncButton>
                           </div>
                         ) : (
                           <span className="text-[11px] font-mono text-[var(--text-muted)]">

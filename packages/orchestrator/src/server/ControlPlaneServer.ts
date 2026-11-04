@@ -36,7 +36,7 @@ import {
 } from '../bridge/whatsapp/index.js';
 import { WhatsAppCommandCenter } from '../bridge/whatsapp/WhatsAppCommandCenter.js';
 import { authenticateRequest, handleAuthRoutes, isPublicPath } from '../auth/routes.js';
-import { handleGithubRoutes } from '../auth/github.js';
+import { handleClientRoutes } from '../client/routes.js';
 import { handleSeoRoutes } from '../seo/seo.js';
 import { onTokensRevoked } from '../auth/UserStore.js';
 import { handleInboundLoginText } from '../auth/WhatsAppLinkLogin.js';
@@ -537,7 +537,9 @@ export class ControlPlaneServer {
                   ? 'OPERATIONS'
                   : deptUpper === 'FINANCE'
                     ? 'FINANCE'
-                    : 'TECH';
+                    : deptUpper === 'SUPPORT'
+                      ? 'SUPPORT'
+                      : 'TECH';
     const unitMap: Record<string, string> = {
       EXECUTIVE: 'Executive (@warden)',
       TECH: 'Unit A: Tech (@cto)',
@@ -547,6 +549,7 @@ export class ControlPlaneServer {
       HR: 'Unit D: Human & Agent Resources (@chro)',
       OPERATIONS: 'Unit E: Operations & Support (@coo)',
       FINANCE: 'Unit F: Finance & FinOps (@cfo)',
+      SUPPORT: 'Unit E: Customer Support (@support_lead)',
     };
 
     const effective = this.store.resolveEffectiveModelForAgent(agent.id, 'planning');
@@ -606,11 +609,19 @@ export class ControlPlaneServer {
         })),
       ];
     } else if (Array.isArray(rawOpts.choices)) {
-      optionsArray = rawOpts.choices.map((c, idx) => ({
-        id: `opt_${idx + 1}`,
-        label: String(c),
-        recommended: idx === 0,
-      }));
+      const FRIENDLY: Record<string, string> = {
+        ADD_OWN_KEY: 'Add my own key & resume',
+        UPDATE_KEY: 'Update my key & resume',
+        TERMINATE_RUN: 'Terminate run',
+      };
+      optionsArray = rawOpts.choices.map((c, idx) => {
+        const code = String(c);
+        return {
+          id: `opt_${idx + 1}`,
+          label: FRIENDLY[code] ?? code,
+          recommended: idx === 0,
+        };
+      });
     }
 
     return {
@@ -758,17 +769,6 @@ export class ControlPlaneServer {
       }
 
       if (
-        await handleGithubRoutes(req, res, {
-          pathname,
-          method,
-          readJsonBody: () => this.readJsonBody(req),
-          sendJson: (r, status, body) => this.sendJson(r, status, body),
-        })
-      ) {
-        return;
-      }
-
-      if (
         await handleSeoRoutes(req, res, {
           pathname,
           method,
@@ -812,6 +812,18 @@ export class ControlPlaneServer {
         await handleReminderRoutes(req, res, {
           pathname,
           method,
+          readJsonBody: () => this.readJsonBody(req),
+          sendJson: (r, status, body) => this.sendJson(r, status, body),
+        })
+      ) {
+        return;
+      }
+
+      if (
+        await handleClientRoutes(req, res, {
+          pathname,
+          method,
+          requestUserId,
           readJsonBody: () => this.readJsonBody(req),
           sendJson: (r, status, body) => this.sendJson(r, status, body),
         })
@@ -873,6 +885,61 @@ export class ControlPlaneServer {
           const { getUserUsage } = await import('../budgets/UserBudgets.js');
           const usage = await getUserUsage(requestUserId);
           this.sendJson(res, 200, { ok: true, budget: usage });
+        } catch {
+          this.sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
+        }
+        return;
+      }
+
+      // BYOK: the operator's own Meta Muse key. Status responses only ever
+      // carry the last-4 hint; the full key is write-only.
+      if (pathname === '/api/llm-keys/me' && method === 'GET') {
+        if (!requestUserId) {
+          this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
+          return;
+        }
+        try {
+          const { getUserLlmKeyStatus } = await import('../llmkeys/UserLlmKeys.js');
+          const key = await getUserLlmKeyStatus(requestUserId);
+          this.sendJson(res, 200, { ok: true, key });
+        } catch {
+          this.sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
+        }
+        return;
+      }
+
+      if (pathname === '/api/llm-keys/me' && method === 'POST') {
+        if (!requestUserId) {
+          this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
+          return;
+        }
+        const body = await this.readJsonBody(req);
+        const apiKey = String(body.api_key || body.apiKey || '').trim();
+        if (!apiKey) {
+          this.sendJson(res, 400, { ok: false, error: 'Paste your Meta Muse API key.' });
+          return;
+        }
+        try {
+          const { saveUserLlmKey } = await import('../llmkeys/UserLlmKeys.js');
+          const key = await saveUserLlmKey(requestUserId, apiKey);
+          this.sendJson(res, 200, { ok: true, key });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Could not save the key.';
+          const status = /^(That key looks|Meta rejected|This key has)/.test(msg) ? 400 : 502;
+          this.sendJson(res, status, { ok: false, error: msg });
+        }
+        return;
+      }
+
+      if (pathname === '/api/llm-keys/me' && method === 'DELETE') {
+        if (!requestUserId) {
+          this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
+          return;
+        }
+        try {
+          const { deleteUserLlmKey } = await import('../llmkeys/UserLlmKeys.js');
+          await deleteUserLlmKey(requestUserId);
+          this.sendJson(res, 200, { ok: true });
         } catch {
           this.sendJson(res, 503, { ok: false, error: 'Database unreachable. Is Postgres running?' });
         }

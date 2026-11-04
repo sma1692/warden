@@ -17,11 +17,12 @@ const STATUS_LABEL: Record<string, string> = {
  * one-click deploy. Renders nothing for full-mode users or before onboarding
  * provisions a demo workspace.
  */
-export const DemoDeployCard: React.FC = () => {
+export const DemoDeployCard: React.FC<{ onError: (message: string) => void }> = ({
+  onError,
+}) => {
   const [state, setState] = useState<DemoWorkspaceState | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [deploying, setDeploying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const remote = await apiClient.getDemoWorkspace().catch(() => null);
@@ -35,19 +36,18 @@ export const DemoDeployCard: React.FC = () => {
 
   const onDeploy = useCallback(async () => {
     setDeploying(true);
-    setError(null);
     try {
       const res = await apiClient.deployDemo();
       if (!res) {
-        setError('Deploy request failed. Is the API running?');
+        onError('Deploy request failed. Is the API running?');
       } else if (!res.ok) {
-        setError(res.result.error || `Deploy ended as ${res.result.status}.`);
+        onError(res.result.error || `Deploy ended as ${res.result.status}.`);
       }
       await refresh();
     } finally {
       setDeploying(false);
     }
-  }, [refresh]);
+  }, [refresh, onError]);
 
   if (!loaded || !state || state.workspace.mode !== 'demo') return null;
   const ws = state.workspace;
@@ -95,7 +95,6 @@ export const DemoDeployCard: React.FC = () => {
           {live ? 'Redeploy' : 'Deploy'}
         </button>
       </div>
-      {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
     </div>
   );
 };

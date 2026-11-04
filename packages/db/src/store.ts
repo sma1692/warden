@@ -336,6 +336,7 @@ export class DatabaseStore {
 
     // Ensure additive schema migrations for sprints, backlog_items, and contracts are present
     await this.pg.query(`
+      ALTER TABLE agents ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT FALSE;
       ALTER TABLE agents DROP CONSTRAINT IF EXISTS agents_department_check;
       ALTER TABLE agents ADD CONSTRAINT agents_department_check
         CHECK (department IN ('executive', 'tech', 'infra', 'marketing', 'sales', 'hr', 'ops', 'support', 'finance', 'product'));
@@ -434,7 +435,7 @@ export class DatabaseStore {
           max_run_duration_ms, current_run_id, clocked_in_at, total_work_time_ms,
           total_runs, total_commits, max_tokens_per_run, today_tokens_used,
           total_tokens_in, total_tokens_cached, total_tokens_thinking, total_tokens_out,
-          total_cost_usd, created_at, updated_at
+          total_cost_usd, needs_review, created_at, updated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7,
           $8, $9, $10, $11, $12::jsonb,
@@ -443,7 +444,7 @@ export class DatabaseStore {
           $21, $22, $23, $24,
           $25, $26, $27, $28,
           $29, $30, $31, $32,
-          $33, $34, $35
+          $33, $34, $35, $36
         )
         ON CONFLICT (id) DO NOTHING`,
         [
@@ -480,6 +481,7 @@ export class DatabaseStore {
           agent.total_tokens_thinking,
           agent.total_tokens_out,
           agent.total_cost_usd,
+          agent.needs_review ?? false,
           agent.created_at,
           agent.updated_at,
         ]
@@ -604,6 +606,7 @@ export class DatabaseStore {
       total_tokens_thinking: Number(r.total_tokens_thinking ?? 0),
       total_tokens_out: Number(r.total_tokens_out ?? 0),
       total_cost_usd: Number(r.total_cost_usd ?? 0),
+      needs_review: r.needs_review === true,
       created_at: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
       updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString(),
     };
@@ -744,6 +747,7 @@ export class DatabaseStore {
         input.total_tokens_thinking ?? existing?.total_tokens_thinking ?? 0,
       total_tokens_out: input.total_tokens_out ?? existing?.total_tokens_out ?? 0,
       total_cost_usd: Number(input.total_cost_usd ?? existing?.total_cost_usd ?? 0),
+      needs_review: input.needs_review ?? existing?.needs_review ?? false,
       created_at: existing?.created_at || input.created_at || now,
       updated_at: now,
     };
@@ -765,7 +769,7 @@ export class DatabaseStore {
           max_run_duration_ms, current_run_id, clocked_in_at, total_work_time_ms,
           total_runs, total_commits, max_tokens_per_run, today_tokens_used,
           total_tokens_in, total_tokens_cached, total_tokens_thinking, total_tokens_out,
-          total_cost_usd, created_at, updated_at
+          total_cost_usd, needs_review, created_at, updated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7,
           $8, $9, $10, $11, $12::jsonb,
@@ -774,7 +778,7 @@ export class DatabaseStore {
           $21, $22, $23, $24,
           $25, $26, $27, $28,
           $29, $30, $31, $32,
-          $33, $34, $35
+          $33, $34, $35, $36
         )
         ON CONFLICT (id) DO UPDATE SET
           slug = EXCLUDED.slug,
@@ -809,6 +813,7 @@ export class DatabaseStore {
           total_tokens_thinking = EXCLUDED.total_tokens_thinking,
           total_tokens_out = EXCLUDED.total_tokens_out,
           total_cost_usd = EXCLUDED.total_cost_usd,
+          needs_review = EXCLUDED.needs_review,
           updated_at = EXCLUDED.updated_at`,
         [
           merged.id,
@@ -844,6 +849,7 @@ export class DatabaseStore {
           merged.total_tokens_thinking,
           merged.total_tokens_out,
           merged.total_cost_usd,
+          merged.needs_review,
           merged.created_at,
           merged.updated_at,
         ]

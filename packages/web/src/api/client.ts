@@ -12,6 +12,7 @@ import type {
   GlobalRoutingProfile,
   InterventionCategory,
   InferenceStep,
+  LlmKeyStatus,
   MediaAttachment,
   MemoryType,
   ModelProvider,
@@ -22,6 +23,7 @@ import type {
   SprintTaskMovementEntry,
   SyncResult,
   SystemHealthTelemetry,
+  UserBudget,
 } from '../types/warden';
 import {
   INITIAL_AGENT_MEMORIES,
@@ -492,6 +494,11 @@ class WardenApiClient {
       TECH: 'Unit A: Tech (@cto)',
       MARKETING: 'Unit B: Marketing / SEO & AEO (@cmo -> @seo_aeo_head)',
       INFRA: 'Infra & Cloud (@infra_head)',
+      SALES: 'Unit C: Sales & Business (@cbo)',
+      HR: 'Unit D: Human & Agent Resources (@chro)',
+      OPERATIONS: 'Unit E: Operations & Support (@coo)',
+      FINANCE: 'Unit F: Finance & FinOps (@cfo)',
+      SUPPORT: 'Unit E: Customer Support (@support_lead)',
       PLANNED_CSUITE: 'Planned C-Suite',
     };
     const formattedSlug = newAgentInput.slug.startsWith('@')
@@ -1492,6 +1499,72 @@ class WardenApiClient {
   public async deployDemo(): Promise<DemoDeployState | null> {
     const remote = await this.safeFetch<DemoDeployState>('/demo/deploy', { method: 'POST' });
     return remote;
+  }
+
+  // BYOK + platform budget. Direct fetch (not safeFetch) so form UX can
+  // surface the server's reason (invalid key vs unreachable).
+  private async keyFetch<T>(
+    path: string,
+    init?: RequestInit,
+    timeoutMs: number = 45_000
+  ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+    try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders(),
+          ...(init?.headers || {}),
+        },
+        signal: controller.signal,
+      });
+      window.clearTimeout(timeout);
+      if (res.status === 401) {
+        notifyUnauthorized();
+        return { ok: false, error: 'Not signed in.' };
+      }
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+      if (!res.ok || !data || data.ok === false) {
+        return { ok: false, error: data?.error || `Request failed (HTTP ${res.status}).` };
+      }
+      return { ok: true, data: data as T };
+    } catch {
+      return { ok: false, error: 'Cannot reach the Warden server. Is it running?' };
+    }
+  }
+
+  public async getMyBudget(): Promise<UserBudget | null> {
+    const res = await this.keyFetch<{ budget: UserBudget }>('/budgets/me');
+    return res.ok ? res.data.budget : null;
+  }
+
+  public async getLlmKeyStatus(): Promise<LlmKeyStatus | null> {
+    const res = await this.keyFetch<{ key: LlmKeyStatus }>('/llm-keys/me');
+    return res.ok ? res.data.key : null;
+  }
+
+  public async saveLlmKey(
+    apiKey: string
+  ): Promise<{ ok: true; key: LlmKeyStatus } | { ok: false; error: string }> {
+    const res = await this.keyFetch<{ key: LlmKeyStatus }>('/llm-keys/me', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+    if (!res.ok) return res;
+    return { ok: true, key: res.data.key };
+  }
+
+  public async deleteLlmKey(): Promise<{ ok: true } | { ok: false; error: string }> {
+    const res = await this.keyFetch<Record<string, never>>('/llm-keys/me', {
+      method: 'DELETE',
+    });
+    if (!res.ok) return res;
+    return { ok: true };
   }
 
   public destroy() {

@@ -6,6 +6,7 @@ projects.yaml
 .state/tokens/
 .state/users.json
 .state/auth-secret
+.state/llm-key-secret
 .state/github.json
 .claude/settings.json
 .claude/settings.local.json

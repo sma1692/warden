@@ -3,21 +3,52 @@ import App from './App';
 import { AuthOnboardingFlow, type OnboardingStepId } from './components/AuthOnboardingFlow';
 import { apiClient } from './api/client';
 import { fetchMe, onUnauthorized, signOut, type AuthUser } from './api/auth';
+import {
+  appTabForPath,
+  authStepForPath,
+  getPathname,
+  navigateTo,
+  pathForAppTab,
+  pathForAuthStep,
+} from './router';
 
 type Session =
   | { state: 'checking' }
   | { state: 'signed_out' }
   | { state: 'onboarding'; step: OnboardingStepId; form: Record<string, any> | null }
-  | { state: 'ready' };
+  | { state: 'ready'; initialTab: string };
 
-/** Picks the screen for a signed-in user from their server-side onboarding state. */
-function sessionFor(user: AuthUser): Session {
-  if (user.onboarding.status === 'COMPLETE') return { state: 'ready' };
-  return {
-    state: 'onboarding',
-    step: (user.onboarding.step as OnboardingStepId) || 'f1',
-    form: user.onboarding.form || null,
-  };
+/**
+ * Picks the screen for a visitor from auth state plus the URL. The server owns
+ * onboarding progress (deep links never skip ahead); the URL owns the
+ * signed-out step and the dashboard tab.
+ */
+function sessionFor(user: AuthUser | null): Session {
+  const path = getPathname();
+  if (!user) {
+    const urlStep = authStepForPath(path);
+    // A cold /otp deep link has no pending code: start at login instead.
+    if (urlStep === 'otp') navigateTo('/login', { replace: true });
+    else if (urlStep !== 'login' && path !== '/') navigateTo('/', { replace: true });
+    return { state: 'signed_out' };
+  }
+  if (user.onboarding.status === 'COMPLETE') {
+    const tab = path === '/' ? 'home' : appTabForPath(path);
+    if (!tab) navigateTo('/home', { replace: true });
+    else if (path === '/') navigateTo(pathForAppTab(tab), { replace: true });
+    return { state: 'ready', initialTab: tab ?? 'home' };
+  }
+  const step = (user.onboarding.step as OnboardingStepId) || 'f1';
+  navigateTo(pathForAuthStep(step), { replace: true });
+  return { state: 'onboarding', step, form: user.onboarding.form || null };
+}
+
+/**
+ * Signed-out entry step from the URL. `/` boots through the loader as before;
+ * `/login` deep links straight to login.
+ */
+function signedOutStep(): OnboardingStepId {
+  return getPathname() === '/login' ? 'login' : 'loading';
 }
 
 /**
@@ -30,11 +61,12 @@ export const Root: React.FC = () => {
   useEffect(() => {
     onUnauthorized(() => {
       apiClient.disconnect();
+      navigateTo('/', { replace: true });
       setSession({ state: 'signed_out' });
     });
     let cancelled = false;
     fetchMe().then((user) => {
-      if (!cancelled) setSession(user ? sessionFor(user) : { state: 'signed_out' });
+      if (!cancelled) setSession(sessionFor(user));
     });
     return () => {
       cancelled = true;
@@ -50,7 +82,14 @@ export const Root: React.FC = () => {
   const handleSignOut = useCallback(async () => {
     apiClient.disconnect();
     await signOut();
+    navigateTo('/', { replace: true });
     setSession({ state: 'signed_out' });
+  }, []);
+
+  const handleComplete = useCallback(() => {
+    // Replace so Back from a fresh dashboard never re-enters finished onboarding.
+    navigateTo('/home', { replace: true });
+    setSession({ state: 'ready', initialTab: 'home' });
   }, []);
 
   if (session.state === 'checking') {
@@ -58,17 +97,17 @@ export const Root: React.FC = () => {
   }
 
   if (session.state === 'ready') {
-    return <App onSignOut={handleSignOut} />;
+    return <App onSignOut={handleSignOut} initialTab={session.initialTab} />;
   }
 
   return (
     <AuthOnboardingFlow
-      // Remount on sign-out so the flow restarts from the loader.
+      // Remount on sign-out so the flow restarts from the entry step.
       key={session.state}
       mode="live"
-      initialStep={session.state === 'onboarding' ? session.step : 'loading'}
+      initialStep={session.state === 'onboarding' ? session.step : signedOutStep()}
       initialForm={session.state === 'onboarding' ? session.form : null}
-      onComplete={() => setSession({ state: 'ready' })}
+      onComplete={handleComplete}
     />
   );
 };

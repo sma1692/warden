@@ -57,21 +57,24 @@ export class HierarchyRouter {
    * Parses a leading `@agent` prefix from the prompt if present.
    * Supports both `@tech_lead:<project>` and `@tech_lead <project>` syntax.
    */
-  public parseDirectMention(
+  public async parseDirectMention(
     content: string,
     explicitTargetAgentId?: string | null,
     explicitMode?: ChatThreadMode
-  ): {
+  ): Promise<{
     isDirect: boolean;
     targetAgent: AgentRecord;
     cleanPrompt: string;
-  } {
+  }> {
     const trimmed = content.trim();
 
     // 1. Check leading @mention in text: e.g. "@tech_lead:<project> fix..." or "@tech_lead <project> fix..."
+    // Unknown roles auto-register into the roster instead of collapsing to @warden.
     const colonMatch = trimmed.match(/^@([a-z0-9_]+:[a-z0-9_.]+)\s*([\s\S]*)$/i);
     if (colonMatch) {
-      const candidate = this.store.getAgent(`@${colonMatch[1]}`);
+      const candidate =
+        this.store.getAgent(`@${colonMatch[1]}`) ||
+        (await this.store.ensureAgentBySlug(`@${colonMatch[1]}`).catch(() => undefined));
       if (candidate && candidate.id !== 'warden') {
         return {
           isDirect: true,
@@ -86,7 +89,9 @@ export class HierarchyRouter {
     );
     if (spaceProjectMatch) {
       const slug = `@${spaceProjectMatch[1].toLowerCase()}:${spaceProjectMatch[2].toLowerCase()}`;
-      const candidate = this.store.getAgent(slug);
+      const candidate =
+        this.store.getAgent(slug) ||
+        (await this.store.ensureAgentBySlug(slug).catch(() => undefined));
       if (candidate) {
         return {
           isDirect: true,
@@ -102,7 +107,8 @@ export class HierarchyRouter {
       if (roleName !== 'warden') {
         const candidate =
           this.store.getAgent(`@${roleName}`) ||
-          this.store.getAgent(`${roleName}:${this.store.getDefaultProjectSlug()}`);
+          this.store.getAgent(`${roleName}:${this.store.getDefaultProjectSlug()}`) ||
+          (await this.store.ensureAgentBySlug(`@${roleName}`).catch(() => undefined));
         if (candidate) {
           return {
             isDirect: true,
@@ -115,7 +121,13 @@ export class HierarchyRouter {
 
     // 2. Check explicit targetAgentId / mode from thread or request
     if (explicitTargetAgentId && explicitTargetAgentId !== 'warden' && explicitTargetAgentId !== '@warden') {
-      const candidate = this.store.getAgent(explicitTargetAgentId);
+      const canRegister =
+        !explicitTargetAgentId.toLowerCase().replace(/^@/, '').startsWith('agent_');
+      const candidate =
+        this.store.getAgent(explicitTargetAgentId) ||
+        (canRegister
+          ? await this.store.ensureAgentBySlug(explicitTargetAgentId).catch(() => undefined)
+          : undefined);
       if (candidate && (explicitMode === 'DIRECT_AGENT' || candidate.id !== 'warden')) {
         return {
           isDirect: true,
@@ -150,7 +162,7 @@ export class HierarchyRouter {
       });
     }
 
-    const parsed = this.parseDirectMention(
+    const parsed = await this.parseDirectMention(
       params.content,
       params.targetAgentId || thread.target_agent_id,
       params.mode || thread.mode

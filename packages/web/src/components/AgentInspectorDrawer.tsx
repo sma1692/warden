@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Flame,
   GitBranch,
+  Loader2,
   Pin,
   Plus,
   Save,
@@ -36,6 +37,7 @@ import {
   formatUsd,
 } from '../utils/formatters';
 import { TokenBreakdownBar } from './TokenBreakdownBar';
+import { AsyncButton, useAsyncState } from './AsyncButton';
 
 interface AgentInspectorDrawerProps {
   agent: Agent | null;
@@ -148,10 +150,12 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
     };
   }, [selectedRunId]);
 
+  const configOp = useAsyncState();
+  const memoryOp = useAsyncState();
+
   if (!agent) return null;
 
-  const handleSaveConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitSaveConfig = async () => {
     const updated = await apiClient.updateAgentBrainConfig(agent.id, {
       init_prompt: initPrompt,
       model_provider: modelProvider,
@@ -175,8 +179,7 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
     }
   };
 
-  const handleAddMemory = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitAddMemory = async () => {
     if (!newMemContent.trim()) return;
     const created = await apiClient.addAgentMemory({
       agent_id: agent.id,
@@ -596,7 +599,10 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
             <div className="space-y-6">
               {/* Brain Config Form */}
               <form
-                onSubmit={handleSaveConfig}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void configOp.track(submitSaveConfig());
+                }}
                 className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 space-y-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -817,13 +823,15 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                 </div>
 
                 <div className="flex justify-end">
-                  <button
+                  <AsyncButton
                     type="submit"
+                    pending={configOp.pending}
+                    spinnerClassName="h-3.5 w-3.5"
                     className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--surface-accent-gold)] hover:brightness-110 px-4 py-2 text-xs font-bold text-black transition cursor-pointer"
                   >
                     <Save className="h-3.5 w-3.5" />
                     <span>Save Brain Config</span>
-                  </button>
+                  </AsyncButton>
                 </div>
               </form>
 
@@ -840,7 +848,13 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                 </div>
 
                 {/* Add Memory Form */}
-                <form onSubmit={handleAddMemory} className="space-y-2.5 rounded-xl bg-[var(--surface-muted)] border border-[var(--surface-border)] p-3">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void memoryOp.track(submitAddMemory());
+                  }}
+                  className="space-y-2.5 rounded-xl bg-[var(--surface-muted)] border border-[var(--surface-border)] p-3"
+                >
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <select
                       value={newMemType}
@@ -872,13 +886,15 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                       placeholder="Add standing rule, repo gotcha, or CEO decision to pgvector memory..."
                       className="flex-1 rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] px-3 py-1.5 text-xs text-[var(--text-main)]"
                     />
-                    <button
+                    <AsyncButton
                       type="submit"
+                      pending={memoryOp.pending}
+                      spinnerClassName="h-3.5 w-3.5"
                       className="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-accent)]/15 hover:bg-[var(--surface-accent)]/25 border border-[var(--surface-accent)]/40 px-3 py-1.5 text-xs font-semibold text-[var(--surface-accent)] cursor-pointer"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       <span>Add Memory</span>
-                    </button>
+                    </AsyncButton>
                   </div>
                 </form>
 
@@ -910,9 +926,10 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                         <p className="text-xs text-[var(--text-main)]">{mem.content}</p>
                       </div>
 
-                      <button
+                      <AsyncButton
                         type="button"
-                        onClick={() => handleTogglePin(mem.id)}
+                        action={() => handleTogglePin(mem.id)}
+                        swapWhilePending={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
                         className={`shrink-0 rounded-lg border p-1.5 transition cursor-pointer ${
                           mem.is_pinned
                             ? 'border-[var(--surface-accent-gold)]/50 bg-[var(--surface-accent-gold)]/20 text-[var(--surface-accent-gold)]'
@@ -921,7 +938,7 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
                         title="Toggle deterministic pin"
                       >
                         <Pin className="h-3.5 w-3.5" />
-                      </button>
+                      </AsyncButton>
                     </div>
                   ))}
                 </div>

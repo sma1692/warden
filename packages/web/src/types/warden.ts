@@ -3,6 +3,11 @@ export type DepartmentUnit =
   | 'TECH'
   | 'MARKETING'
   | 'INFRA'
+  | 'SALES'
+  | 'HR'
+  | 'OPERATIONS'
+  | 'FINANCE'
+  | 'SUPPORT'
   | 'PLANNED_CSUITE';
 
 export type ModelProvider =
@@ -125,6 +130,8 @@ export interface Agent {
   total_tokens_thinking: number;
   total_tokens_out: number;
   total_cost_usd: number;
+  /** True for runtime auto-registered roles pending human review. */
+  needs_review?: boolean;
 }
 
 export interface ProjectContext {
@@ -344,7 +351,8 @@ export type GateType =
   | 'QUESTION'
   | 'STANDUP_SIGN_OFF'
   | 'DEPLOY_PERMISSION'
-  | 'EMPTY_BACKLOG_PING';
+  | 'EMPTY_BACKLOG_PING'
+  | 'TOKEN_CAP_EXCEEDED';
 
 export interface GateOption {
   id: string;
@@ -364,11 +372,31 @@ export interface ApprovalGate {
   gate_type: GateType;
   prompt_text: string;
   options_json: GateOption[];
+  /** Raw server options (choice codes etc.) alongside the rendered labels. */
+  raw_options?: Record<string, unknown>;
   status: 'PENDING' | 'RESOLVED';
   ceo_decision: string | null;
   telegram_notified_at: string | null;
   resolved_at: string | null;
   created_at: string;
+}
+
+export interface UserBudget {
+  userId: string;
+  mode: 'demo' | 'full';
+  /** 0 = unlimited. */
+  cap: number;
+  used: number;
+  /** null when unlimited. */
+  remaining: number | null;
+  costUsd: number;
+  status: 'OK' | 'WARNING_80_PCT' | 'EXCEEDED';
+}
+
+export interface LlmKeyStatus {
+  has_key: boolean;
+  key_hint: string | null;
+  validated_at: string | null;
 }
 
 export interface SystemHealthTelemetry {

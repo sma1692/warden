@@ -122,6 +122,8 @@ export interface AgentRecord {
   total_cost_usd: number;
   active_container_id?: string | null;
   active_git_branch?: string | null;
+  /** True for runtime auto-registered roles pending human review. */
+  needs_review?: boolean;
 }
 
 export interface ProjectContextRecord {
@@ -452,6 +454,25 @@ export function resolveWardenSource(): WardenSource {
 }
 
 /**
+ * Best-effort department for a runtime-encountered role slug. Unknown roles
+ * default to `tech` under `@cto`; the row is flagged `needs_review` so a
+ * human corrects it in Agent Studio.
+ */
+export function inferDepartmentForRole(role: string): string {
+  const r = role.toLowerCase();
+  if (/(sales|sdr|closer|revenue|pipeline|quota|deal)/.test(r)) return 'sales';
+  if (/(hr|recruit|hiring|people|talent|onboard)/.test(r)) return 'hr';
+  if (/(support|helpdesk|help_desk|care|ticket)/.test(r)) return 'support';
+  if (/(sec_|_sec|security|legal|compliance|risk)/.test(r)) return 'tech';
+  if (/(finops|finance|bookkeep|billing|accounting|invoice|treasury)/.test(r)) return 'finance';
+  if (/(market|cmo|seo|aeo|social|content|growth|brand|ads|community|campaign|copywriter|creative)/.test(r)) return 'marketing';
+  if (/(infra|devops|sre|deploy|cloud|platform|network|database_admin)/.test(r)) return 'infra';
+  if (/(exec|chief|warden|strategy)/.test(r)) return 'executive';
+  if (/(ops|operator|logistics|procure|vendor)/.test(r)) return 'ops';
+  return 'tech';
+}
+
+/**
  * Unified Orchestrator State & Database Store
  *
  * Synchronizes state with `@warden/db` (PostgreSQL + pgvector) when reachable,
@@ -510,6 +531,7 @@ export class OrchestratorStore {
   private dbWriteQueue: Promise<unknown> = Promise.resolve();
   private dbAgentIds = new Set<string>();
   private dbPersistedAgentIds = new Set<string>();
+  private seedSource: 'private' | 'generic' = 'generic';
 
   constructor(options?: { onBroadcast?: EventBroadcastFn; wardenRoot?: string }) {
     this.broadcastFn = options?.onBroadcast;
@@ -670,6 +692,21 @@ export class OrchestratorStore {
     }
     console.log(`[OrchestratorStore] Source=db, storage=${mode}`);
     this.attachMemoryExecutor();
+
+    // Fresh database: seed the corporate roster so cloud builds self-initialize.
+    if (pool) {
+      try {
+        const count = await pool.query('SELECT COUNT(*)::int AS n FROM agents');
+        if (Number(count.rows[0]?.n ?? 0) === 0 && Array.isArray(mod.SEED_AGENTS)) {
+          await mod.dbStore.seedAgents(mod.SEED_AGENTS);
+          console.log(
+            `[OrchestratorStore] Seeded ${mod.SEED_AGENTS.length} roster agents into empty Postgres.`
+          );
+        }
+      } catch (err) {
+        console.error('[OrchestratorStore] Roster boot-seed failed:', err);
+      }
+    }
 
     if (this.dbConnected) {
       await this.syncFromPostgresIfAvailable();
@@ -838,8 +875,20 @@ export class OrchestratorStore {
             total_tokens_thinking: Number(row.total_tokens_thinking ?? 0),
             total_tokens_out: Number(row.total_tokens_out ?? 0),
             total_cost_usd: Number(row.total_cost_usd ?? 0),
+            needs_review: row.needs_review === true,
           };
           this.agents.set(merged.id, merged);
+        }
+        // Db mode defers to Postgres: drop generic in-memory seeds the DB
+        // roster does not know, so the two lists cannot drift. Private-seed
+        // workspaces and md mode keep their local agents untouched.
+        if (this.source === 'db' && this.seedSource === 'generic') {
+          const dbIds = new Set(
+            (agentsRes.rows as Array<{ id: unknown }>).map((row) => String(row.id))
+          );
+          for (const id of Array.from(this.agents.keys())) {
+            if (!dbIds.has(id)) this.agents.delete(id);
+          }
         }
       }
     } catch {
@@ -877,6 +926,7 @@ export class OrchestratorStore {
 
     const todayIst = now.slice(0, 10);
     const { data: seed, source: seedSource } = loadSeedData(now, todayIst, readMdSafe);
+    this.seedSource = seedSource;
     console.log(
       `[OrchestratorStore] Seed data: ${seedSource} (${seed.agents.length} agents, ${seed.backlogItems.length} backlog items)`
     );
@@ -1118,6 +1168,60 @@ export class OrchestratorStore {
     );
   }
 
+  /**
+   * Returns the agent for a slug, auto-registering unknown roles instead of
+   * silently falling back to `@warden`. The scaffolded row persists to
+   * Postgres (db mode) flagged `needs_review` for Agent Studio triage.
+   */
+  public async ensureAgentBySlug(rawSlug: string): Promise<AgentRecord | undefined> {
+    const existing = this.getAgent(rawSlug);
+    if (existing) return existing;
+    const slug = rawSlug.startsWith('@') ? rawSlug : `@${rawSlug}`;
+    if (!/^@[a-z0-9_]+(:[a-z0-9_.-]+)?$/i.test(slug)) return undefined;
+    const id = slug.slice(1);
+    const sep = id.indexOf(':');
+    const role = (sep >= 0 ? id.slice(0, sep) : id).toLowerCase();
+    const project = sep >= 0 ? id.slice(sep + 1) : null;
+
+    const department = inferDepartmentForRole(role);
+    const heads: Record<string, string> = {
+      sales: 'cbo',
+      hr: 'chro',
+      ops: 'coo',
+      support: 'coo',
+      finance: 'cfo',
+      marketing: 'cmo',
+      tech: 'cto',
+      infra: 'infra_head',
+      executive: 'warden',
+    };
+    const head = heads[department] ?? 'cto';
+    const parent = this.agents.has(head) ? head : this.agents.has('warden') ? 'warden' : null;
+    const title = role
+      .split('_')
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+      .join(' ');
+    const record = await this.createAgent({
+      id,
+      slug,
+      name: `${title}${project ? ` — ${project}` : ''} (auto-registered)`,
+      department,
+      hierarchy_level: 1,
+      parent_agent_id: parent,
+      project_scope: project,
+      model_id: 'muse-wonder-1.0',
+      init_prompt:
+        `You are ${title.toUpperCase()} (${slug} — Level 1, ${department}), reporting to @${parent ?? 'warden'}. ` +
+        `This role was auto-registered at runtime because it was referenced before being defined — treat your scope as the ${role} specialty within ${department}. ` +
+        `Confirm priorities with your supervisor before destructive or externally-visible actions.`,
+      needs_review: true,
+    });
+    console.log(
+      `[OrchestratorStore] Auto-registered new agent ${slug} (dept=${department}, parent=@${parent ?? 'none'}, needs_review=true)`
+    );
+    return record;
+  }
+
   public async updateAgent(
     idOrSlug: string,
     patch: Partial<AgentRecord>
@@ -1212,6 +1316,7 @@ export class OrchestratorStore {
     max_subagents?: number;
     max_run_duration_ms?: number;
     max_tokens_per_run?: number;
+    needs_review?: boolean;
   }): Promise<AgentRecord> {
     const cleanSlug = input.slug.startsWith('@') ? input.slug : `@${input.slug}`;
     const id = input.id || cleanSlug.slice(1);
@@ -1268,11 +1373,59 @@ export class OrchestratorStore {
       total_tokens_thinking: 0,
       total_tokens_out: 0,
       total_cost_usd: 0,
+      needs_review: input.needs_review ?? false,
     };
 
     this.agents.set(record.id, record);
     this.broadcast('agent:updated', record);
+    this.persistAgent(record, input.needs_review ?? false);
     return record;
+  }
+
+  /**
+   * Persists a created agent row to Postgres (db mode) so dashboard provisions
+   * and runtime auto-registrations survive restarts. Best-effort: failures log.
+   */
+  private persistAgent(record: AgentRecord, needsReview: boolean): void {
+    if (this.source !== 'db') return;
+    const dbDepartments = new Set([
+      'executive', 'tech', 'infra', 'marketing', 'sales', 'hr', 'ops', 'support', 'finance', 'product',
+    ]);
+    const deptRaw = String(record.department || 'tech').toLowerCase();
+    const level = Math.max(-1, Math.min(3, Math.round(record.hierarchy_level)));
+    const parent =
+      record.parent_agent_id && this.dbAgentIds.has(record.parent_agent_id)
+        ? record.parent_agent_id
+        : null;
+    if (record.parent_agent_id && !parent) {
+      console.warn(
+        `[OrchestratorStore] Parent ${record.parent_agent_id} of new agent ${record.id} is not in Postgres; storing with null parent.`
+      );
+    }
+    this.dbAgentIds.add(record.id);
+    this.enqueueDbWrite('agent', (dbStore) =>
+      dbStore.upsertAgent({
+        id: record.id,
+        slug: record.slug,
+        name: record.name,
+        department: dbDepartments.has(deptRaw) ? deptRaw : 'tech',
+        hierarchy_level: level,
+        parent_agent_id: parent,
+        project_scope: record.project_scope ?? 'GLOBAL',
+        model_provider: record.model_provider,
+        model_id: record.model_id,
+        fallback_provider: record.fallback_provider,
+        fallback_model_id: record.fallback_model_id,
+        step_routing_json: record.step_routing_json,
+        init_prompt: record.init_prompt,
+        allowed_repos: record.allowed_repos,
+        permission_tier: record.permission_tier,
+        max_subagents: record.max_subagents,
+        max_run_duration_ms: record.max_run_duration_ms,
+        max_tokens_per_run: record.max_tokens_per_run,
+        needs_review: needsReview,
+      })
+    );
   }
 
   // ============================================================================

@@ -4,7 +4,7 @@
  *
  * Supported Providers (Meta-only):
  * 1. `meta_muse` (Meta Model API):
- *    - `muse-wonder-1.0` (Tier 1 frontier reasoning with `include_reasoning`)
+ *    - `muse-wonder-1.0` (Tier 1 frontier reasoning)
  *    - `muse-spark-1.3` (Tier 2 high-speed coding & tool loops)
  *    - `muse-light` / `muse-flash` (Tier 2 fast file appliers)
  *    - `muse-glimmer-30b` (context compaction)
@@ -249,6 +249,21 @@ export interface FailoverEvent {
   toCredentialId?: string;
   statusCode?: number;
   reason: string;
+}
+
+/**
+ * The user's own Meta Muse key (BYOK) was rejected by Meta (401/403/402).
+ * Callers must pause with a key-update gate — never silently spend the
+ * shared platform pool for a user who brought their own key.
+ */
+export class UserKeyError extends Error {
+  public readonly statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.name = 'UserKeyError';
+    this.statusCode = statusCode;
+  }
 }
 
 export class ProviderHttpError extends Error {
@@ -611,6 +626,8 @@ export interface ModelGenerateRequest {
   agentConfig?: AgentModelRoutingConfig;
   agentId?: string;
   runId?: string;
+  /** Operator id for BYOK: their stored Meta Muse key pays when present. */
+  userId?: string;
   threadId?: string;
   projectScope?: string;
   systemInstruction?: string;
@@ -1342,6 +1359,21 @@ export class ModelRouter {
   }
 
   /**
+   * Decrypted BYOK key for the operator, or null when none is stored.
+   * Never throws: a DB outage falls through to the platform pool, which has
+   * its own simulation fallback.
+   */
+  private async loadUserKey(userId: string): Promise<string | null> {
+    try {
+      const { getUserLlmKey } = await import('../llmkeys/UserLlmKeys.js');
+      return await getUserLlmKey(userId);
+    } catch (err) {
+      console.error('[ModelRouter] User key lookup failed; using platform pool:', err);
+      return null;
+    }
+  }
+
+  /**
    * Main entry point for multi-provider LLM generation across all 6 providers
    * (`meta_muse`, `ollama`, `huggingface`/`vllm`)
    * with 3-tier dynamic routing, multi-token pool rotation, and automatic provider failover.
@@ -1409,6 +1441,52 @@ export class ModelRouter {
     console.log(
       `[🧠 LLM START] agent=${req.agentId || '@warden'} phase=${req.stepPhase || 'default'} route=${provider}:${modelId}`
     );
+
+    // 0. BYOK first: a user-supplied Meta Muse key pays for their own usage
+    // and bypasses the shared platform pool (and its budget gate) entirely.
+    if (req.userId && provider === 'meta_muse') {
+      const userKey = await this.loadUserKey(req.userId);
+      if (userKey) {
+        try {
+          const userResp = await this.callMetaMuse({
+            req,
+            modelId,
+            credential: {
+              id: `userkey:${req.userId}`,
+              provider: 'meta_muse',
+              label: 'User Meta Muse key (BYOK)',
+              apiKey: userKey,
+            } as ProviderCredential,
+            systemInstruction,
+            turns: activeTurns,
+            cacheHitTokens,
+            compacted: compaction.compacted,
+            startMs,
+          });
+          userResp.resolvedRoute = resolvedRoute;
+          userResp.credentialId = `userkey:${req.userId}`;
+          console.log(
+            `[🧠 LLM DONE]  agent=${req.agentId || '@warden'} model=${userResp.model_used} (user key) duration=${userResp.duration_ms}ms tokens=${userResp.usage.tokens_in}in/${userResp.usage.tokens_thinking}think/${userResp.usage.tokens_out}out simulated=${userResp.simulated}`
+          );
+          return userResp;
+        } catch (err) {
+          if (
+            err instanceof ProviderHttpError &&
+            (err.statusCode === 401 || err.statusCode === 403 || err.statusCode === 402)
+          ) {
+            throw new UserKeyError(
+              err.statusCode,
+              `Your Meta Muse key was rejected by Meta (HTTP ${err.statusCode}). Update it in Settings, then resume.`
+            );
+          }
+          console.warn(
+            '[ModelRouter] User key call failed with a retryable error; falling back to the platform pool:',
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+    }
+
     try {
       const primaryResp = await this.executeProviderWithPool({
         req,
@@ -1791,7 +1869,6 @@ export class ModelRouter {
             tools,
             temperature: req.temperature ?? 0.2,
             max_tokens: req.maxOutputTokens ?? 4096,
-            include_reasoning: modelId.includes('wonder') || Boolean(req.enableThinking),
           };
 
     const res = await fetch(endpoint, {

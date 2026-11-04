@@ -1,0 +1,21 @@
+{
+  "name": "warden-link",
+  "version": "0.1.0",
+  "description": "Warden client agent: polls the control plane and applies file edits plus pushit inside one workspace.",
+  "type": "module",
+  "bin": {
+    "warden-link": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

@@ -212,11 +212,19 @@ export class HealthAndQuotaGuard {
       );
       if (running.length > 0) {
         const { getOverBudgetUserIds } = await import('../budgets/UserBudgets.js');
+        const { hasUserLlmKey } = await import('../llmkeys/UserLlmKeys.js');
         const overBudget = await getOverBudgetUserIds(
           running.map((r) => r.user_id as string)
         );
-        const gatedUsers = new Set<string>();
+        // Operators with their own key pay for themselves: exempt from the sweep.
+        const billable = [];
         for (const entry of overBudget) {
+          if (!(await hasUserLlmKey(entry.userId).catch(() => false))) {
+            billable.push(entry);
+          }
+        }
+        const gatedUsers = new Set<string>();
+        for (const entry of billable) {
           for (const run of running) {
             if ((run.user_id ?? null) !== entry.userId) continue;
             const agent = this.store.getAgent(run.agent_id);
@@ -461,7 +469,7 @@ export class HealthAndQuotaGuard {
     maxTokens: number,
     skipGate: boolean
   ): Promise<void> {
-    const promptText = `Operator token budget exhausted (${totalTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens). Run paused; raise the budget to continue.`;
+    const promptText = `Operator platform token budget exhausted (${totalTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens). Run paused; add your own Meta Muse key in Settings to continue on your key.`;
 
     this.store.updateRun(run.id, {
       status: 'PAUSED_TOKEN_CAP',
@@ -480,7 +488,7 @@ export class HealthAndQuotaGuard {
       gate_type: 'TOKEN_CAP_EXCEEDED',
       prompt_text: promptText,
       options_json: {
-        choices: ['EXTEND_BUDGET', 'TERMINATE_RUN'],
+        choices: ['ADD_OWN_KEY', 'TERMINATE_RUN'],
         current_tokens: totalTokens,
         max_tokens: maxTokens,
       },

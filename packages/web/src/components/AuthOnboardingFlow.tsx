@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -35,6 +35,14 @@ import { CountryCodePicker } from './CountryCodePicker';
 import { COUNTRIES, detectCountryIso, findCountry } from '../data/countries';
 import { saveOnboarding, setToken, type AuthUser } from '../api/auth';
 import { WhatsAppQrLogin, type WhatsAppSignInResult } from './WhatsAppQrLogin';
+import { AsyncButton, ToastHost, useToasts, type ActionOutcome } from './AsyncButton';
+import {
+  authStepForPath,
+  getPathname,
+  navigateTo,
+  onLocationChange,
+  pathForAuthStep,
+} from '../router';
 
 export type OnboardingStepId =
   | 'loading'
@@ -414,6 +422,37 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   const [exploreBooting, setExploreBooting] = useState<boolean>(false);
   const [pendingExplore, setPendingExplore] = useState<boolean>(false);
 
+  // Live: each step owns a URL (/login, /otp, /onboarding/f1 …) so Back, Forward,
+  // refresh, and deep links work. Gallery mode is a dev screen browser: no URL sync.
+  const stepRef = useRef(step);
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+  const urlSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!isLive) return;
+    const target = pathForAuthStep(step);
+    if (getPathname() === target) {
+      urlSyncedRef.current = true;
+      return;
+    }
+    // First sync replaces (mount / deep link / loader); later steps push.
+    navigateTo(target, { replace: !urlSyncedRef.current });
+    urlSyncedRef.current = true;
+  }, [isLive, step]);
+  useEffect(() => {
+    if (!isLive) return;
+    return onLocationChange((pathname) => {
+      const next = authStepForPath(pathname);
+      if (next) {
+        setStep((prev) => (prev === next ? prev : (next as OnboardingStepId)));
+      } else {
+        // Foreign path reached via Back/Forward: heal the URL back to this step.
+        navigateTo(pathForAuthStep(stepRef.current), { replace: true });
+      }
+    });
+  }, [isLive]);
+
   // Step 0: Loader state
   const [loadProgress, setLoadProgress] = useState<number>(0);
 
@@ -429,9 +468,11 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
   const [emailAddress, setEmailAddress] = useState<string>('');
   const [otpDigits, setOtpDigits] = useState<string[]>(['1', '2', '3', '1', '2', '3']);
   const [authError, setAuthError] = useState<string | null>(null);
+  // Inline authError is for client-side validation; API failures toast.
+  const { toasts, notifyError, dismiss: dismissToast } = useToasts();
   // Product Mode sends a real code (WhatsApp via /api/auth/otp/*, Email via /api/auth/email/*); Demo Mode keeps the 123123 preset.
   const liveOtp = !demoMode;
-  const [otpBusy, setOtpBusy] = useState<boolean>(false);
+  // Button spinners are owned by AsyncButton while each API call settles.
   // Live WhatsApp sign-in defaults to click-to-chat (QR); the 6-digit code is the fallback.
   const [loginMethod, setLoginMethod] = useState<'qr' | 'code'>('qr');
   const [resendAt, setResendAt] = useState<number>(0);
@@ -504,122 +545,10 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     'TECH'
   );
 
-  // Code connection (cloud-safe): GitHub repo edit path + local runner option.
+  // Code connection: paste the repo URL agents should work with.
   const [repoUrl, setRepoUrl] = useState<string>(
     isLive ? String(savedForm.repoUrl ?? '') : ''
   );
-  const [codePath, setCodePath] = useState<'github' | 'runner'>(
-    isLive && savedForm.codePath === 'runner' ? 'runner' : 'github'
-  );
-  const [ghStatus, setGhStatus] = useState<{
-    configured: boolean;
-    connected: boolean;
-    login: string | null;
-    repo: string | null;
-  } | null>(null);
-  const [ghRepos, setGhRepos] = useState<
-    { full_name: string; private: boolean; default_branch: string }[]
-  >([]);
-  const [ghBusy, setGhBusy] = useState<boolean>(false);
-
-  // Probe the orchestrator for GitHub OAuth state (null = unreachable, e.g. static hosting).
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/github/status')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data && typeof data.configured === 'boolean') {
-          setGhStatus({
-            configured: data.configured,
-            connected: Boolean(data.connected),
-            login: data.login || null,
-            repo: data.repo || null,
-          });
-          if (data.repo) setRepoUrl(`https://github.com/${data.repo}`);
-        }
-      })
-      .catch(() => {
-        // static hosting without the orchestrator: repo-URL paste still works
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Landing return banner after the OAuth round-trip (?github=connected&login=x).
-  const [ghReturn, setGhReturn] = useState<{ ok: boolean; login: string } | null>(null);
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const state = params.get('github');
-      if (state === 'connected') {
-        setGhReturn({ ok: true, login: params.get('login') || 'github-user' });
-        try {
-          window.localStorage.setItem(
-            'warden_github_login',
-            params.get('login') || 'github-user'
-          );
-        } catch {
-          // ignore storage errors
-        }
-      } else if (state === 'error') {
-        setGhReturn({ ok: false, login: params.get('reason') || 'oauth_failed' });
-      }
-      if (state) {
-        params.delete('github');
-        params.delete('login');
-        params.delete('reason');
-        const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
-        window.history.replaceState(null, '', next);
-      }
-    } catch {
-      // non-browser environment
-    }
-  }, []);
-
-  const refreshGhRepos = async () => {
-    setGhBusy(true);
-    try {
-      const res = await fetch('/api/github/repos?per_page=30');
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.repos) setGhRepos(data.repos);
-    } catch {
-      // keep existing list
-    } finally {
-      setGhBusy(false);
-    }
-  };
-
-  const handleGhSelectRepo = async (fullName: string) => {
-    setGhBusy(true);
-    try {
-      const res = await fetch('/api/github/select', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_full_name: fullName }),
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.ok) {
-        setGhStatus((prev) => (prev ? { ...prev, repo: fullName } : prev));
-        setRepoUrl(`https://github.com/${fullName}`);
-      }
-    } finally {
-      setGhBusy(false);
-    }
-  };
-
-  const handleGhDisconnect = async () => {
-    setGhBusy(true);
-    try {
-      await fetch('/api/github/disconnect', { method: 'POST' });
-      setGhStatus((prev) =>
-        prev ? { ...prev, connected: false, login: null, repo: null } : prev
-      );
-      setGhRepos([]);
-    } finally {
-      setGhBusy(false);
-    }
-  };
 
   // Shared 1C / 2C Backlog state
   const [backlogDrafts, setBacklogDrafts] = useState<OnboardingBacklogDraft[]>(
@@ -667,7 +596,6 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       backlogDrafts,
       importSource,
       pastedContext: pastedContext.slice(0, 20000),
-      codePath,
       repoUrl,
     }),
     [
@@ -682,7 +610,6 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       backlogDrafts,
       importSource,
       pastedContext,
-      codePath,
       repoUrl,
     ]
   );
@@ -826,24 +753,21 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     }
   };
 
-  const sendLiveOtp = async (): Promise<boolean> => {
-    setOtpBusy(true);
+  const sendLiveOtp = async (): Promise<{ ok: boolean; error?: string }> => {
     const { ok, data } =
       authChannel === 'EMAIL'
         ? await postAuth('request', { email: emailAddress.trim().toLowerCase() })
         : await postAuth('request', { phone: whatsappNumber });
-    setOtpBusy(false);
     if (!ok) {
-      setAuthError(data.error || 'Could not send the code.');
       if (data.retry_after_sec) setResendAt(Date.now() + data.retry_after_sec * 1000);
-      return false;
+      return { ok: false, error: data.error || 'Could not send the code.' };
     }
     setResendAt(Date.now() + (data.resend_in_sec ?? 30) * 1000);
     setNowTick(Date.now());
-    return true;
+    return { ok: true };
   };
 
-  const handleProceedToOtp = async () => {
+  const handleProceedToOtp = async (): Promise<ActionOutcome> => {
     if (authChannel === 'WHATSAPP' && !isPhoneValid) {
       setAuthError('Enter a valid WhatsApp phone number with country code.');
       return;
@@ -854,7 +778,8 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     }
     setAuthError(null);
     if (liveOtp) {
-      if (!(await sendLiveOtp())) return;
+      const sent = await sendLiveOtp();
+      if (!sent.ok) return sent;
       setOtpDigits(['', '', '', '', '', '']);
     } else {
       setOtpDigits([...TEST_OTP_DIGITS]);
@@ -862,13 +787,15 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     setStep('otp');
   };
 
-  const handleResendOtp = async () => {
+  const handleResendOtp = async (): Promise<ActionOutcome> => {
     setAuthError(null);
     if (authChannel === 'EMAIL' && !isEmailValid) {
       setAuthError('Enter a valid email address.');
       return;
     }
-    if (await sendLiveOtp()) setOtpDigits(['', '', '', '', '', '']);
+    const sent = await sendLiveOtp();
+    if (!sent.ok) return sent;
+    setOtpDigits(['', '', '', '', '', '']);
   };
 
   // Typing a digit advances focus; pasting / autofilling all 6 fills every box.
@@ -899,23 +826,20 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     routeAfterOtpVerification(data.user);
   };
 
-  const handleVerifyOtp = async () => {
+  const handleVerifyOtp = async (): Promise<ActionOutcome> => {
     const code = otpDigits.join('');
     if (liveOtp) {
       if (code.length !== 6) {
         setAuthError(authChannel === 'EMAIL' ? 'Enter the 6-digit code from your email.' : 'Enter the 6-digit code from WhatsApp.');
         return;
       }
-      setOtpBusy(true);
       const { ok, data } =
         authChannel === 'EMAIL'
           ? await postAuth('verify', { email: emailAddress.trim().toLowerCase(), code })
           : await postAuth('verify', { phone: whatsappNumber, code });
-      setOtpBusy(false);
       if (!ok) {
         const left = typeof data.attempts_left === 'number' && data.attempts_left > 0 ? ` ${data.attempts_left} attempts left.` : '';
-        setAuthError(`${data.error || 'Verification failed.'}${left}`);
-        return;
+        return { ok: false, error: `${data.error || 'Verification failed.'}${left}` };
       }
       completeSignIn(data);
       return;
@@ -927,8 +851,13 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     routeAfterOtpVerification();
   };
 
-  const finishOnboarding = async () => {
-    if (isLive) await saveOnboarding({ status: 'COMPLETE', form: formSnapshot });
+  const finishOnboarding = async (): Promise<ActionOutcome> => {
+    if (isLive) {
+      const saved = await saveOnboarding({ status: 'COMPLETE', form: formSnapshot });
+      if (!saved) {
+        return { ok: false, error: 'Could not save onboarding. Is the server running? Try again.' };
+      }
+    }
     onComplete();
   };
 
@@ -938,10 +867,12 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
     setExploreBooting(true);
     try {
       if (isLive) {
-        await saveOnboarding({
+        const saved = await saveOnboarding({
           status: 'COMPLETE',
           form: { ...formSnapshot, demo: true, mode: 'demo', exploreDemo: true },
         });
+        // The demo runs on seed data, so enter anyway — but say so.
+        if (!saved) notifyError('Demo started, but progress could not be saved to the server.');
       } else {
         await new Promise((r) => setTimeout(r, 1800));
       }
@@ -1275,29 +1206,6 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                 </button>
               </div>
 
-              {ghReturn && (
-                <div
-                  className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-xs font-semibold ${
-                    ghReturn.ok
-                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-                      : 'border-red-500/40 bg-red-500/10 text-red-200'
-                  }`}
-                >
-                  {ghReturn.ok ? (
-                    <>
-                      <CheckCircle2 className="h-4 w-4" />
-                      <span>
-                        GitHub connected as @{ghReturn.login} — agents can branch &amp; PR on your repos.
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <X className="h-4 w-4" />
-                      <span>GitHub connect failed ({ghReturn.login}) — try again or paste a repo URL.</span>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* 3 Thesis Pillars Showcase */}
@@ -1483,17 +1391,17 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
               </div>
             )}
 
-            <button
+            <AsyncButton
               type="button"
-              onClick={handleProceedToOtp}
-              disabled={otpBusy}
+              action={handleProceedToOtp}
+              onError={notifyError}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 py-3 text-xs transition cursor-pointer"
             >
               <span>
-                {otpBusy ? 'Sending…' : `Send 6-Digit Code via ${authChannel === 'WHATSAPP' ? 'WhatsApp' : 'Email'}`}
+                {`Send 6-Digit Code via ${authChannel === 'WHATSAPP' ? 'WhatsApp' : 'Email'}`}
               </span>
               <ArrowRight className="h-4 w-4" />
-            </button>
+            </AsyncButton>
 
             {liveOtp && (
               <button
@@ -1541,14 +1449,16 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                 </span>
               </p>
               {liveOtp ? (
-                <button
+                <AsyncButton
                   type="button"
-                  onClick={handleResendOtp}
-                  disabled={otpBusy || resendInSec > 0}
-                  className="text-[11px] font-mono text-[#D4B475] hover:underline disabled:text-slate-500 disabled:no-underline cursor-pointer disabled:cursor-default"
+                  action={handleResendOtp}
+                  onError={notifyError}
+                  disabled={resendInSec > 0}
+                  spinnerClassName="h-3 w-3"
+                  className="inline-flex items-center gap-1 text-[11px] font-mono text-[#D4B475] hover:underline disabled:text-slate-500 disabled:no-underline cursor-pointer disabled:cursor-default"
                 >
                   {resendInSec > 0 ? `Resend in ${resendInSec}s` : 'Resend code'}
-                </button>
+                </AsyncButton>
               ) : (
               <span className="rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2 py-0.5 text-[10px] font-mono text-[#D4B475]">
                 Expected: 123123
@@ -1621,15 +1531,15 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
             </div>
             )}
 
-            <button
+            <AsyncButton
               type="button"
-              onClick={handleVerifyOtp}
-              disabled={otpBusy}
+              action={handleVerifyOtp}
+              onError={notifyError}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 py-3 text-xs transition cursor-pointer"
             >
               <KeyRound className="h-4 w-4" />
-              <span>{liveOtp ? (otpBusy ? 'Verifying…' : 'Verify Code & Continue') : 'Verify OTP (123123) & Continue'}</span>
-            </button>
+              <span>{liveOtp ? 'Verify Code & Continue' : 'Verify OTP (123123) & Continue'}</span>
+            </AsyncButton>
           </div>
         )}
 
@@ -1869,130 +1779,19 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   Connect code — how should agents edit your repos?
                 </h3>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setCodePath('github')}
-                  className={`rounded-xl border p-3 text-left transition cursor-pointer ${
-                    codePath === 'github'
-                      ? 'border-[#C6A664]/60 bg-[#C6A664]/10'
-                      : 'border-[#22262E] bg-[#14161A] opacity-70'
-                  }`}
-                >
-                  <span className="text-xs font-bold text-white">GitHub repo (recommended)</span>
-                  <span className="block text-[11px] text-slate-400 mt-1">
-                    Connect a repo — agents branch, edit, and open PRs directly on git. No local filesystem access needed.
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCodePath('runner')}
-                  className={`rounded-xl border p-3 text-left transition cursor-pointer ${
-                    codePath === 'runner'
-                      ? 'border-[#C6A664]/60 bg-[#C6A664]/10'
-                      : 'border-[#22262E] bg-[#14161A] opacity-70'
-                  }`}
-                >
-                  <span className="text-xs font-bold text-white">Local runner</span>
-                  <span className="block text-[11px] text-slate-400 mt-1">
-                    Run a small client agent on your machine for private folders the cloud cannot reach.
-                  </span>
-                </button>
-              </div>
-              {codePath === 'github' ? (
-                <div className="space-y-2">
-                  {ghStatus?.connected ? (
-                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-200">
-                          <CheckCircle2 className="h-4 w-4" />
-                          Connected as @{ghStatus.login}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void handleGhDisconnect()}
-                          disabled={ghBusy}
-                          className="text-[11px] text-slate-400 hover:text-white underline underline-offset-2 cursor-pointer disabled:opacity-50"
-                        >
-                          Disconnect
-                        </button>
-                      </div>
-                      {ghStatus.repo ? (
-                        <p className="text-xs font-mono text-emerald-200">
-                          Edit target: {ghStatus.repo} — agents branch &amp; PR here.
-                        </p>
-                      ) : (
-                        <p className="text-[11px] text-emerald-200/80">
-                          Pick the repo agents may edit — they branch &amp; open PRs on git.
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <select
-                          aria-label="GitHub repository to edit"
-                          value={ghStatus.repo || ''}
-                          disabled={ghBusy}
-                          onChange={(e) => {
-                            if (e.target.value) void handleGhSelectRepo(e.target.value);
-                          }}
-                          onFocus={() => {
-                            if (ghRepos.length === 0) void refreshGhRepos();
-                          }}
-                          className="flex-1 rounded-xl border border-[#2D3440] bg-[#14161A] px-3 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-[#C6A664]/60 cursor-pointer disabled:opacity-50"
-                        >
-                          <option value="">
-                            {ghRepos.length === 0 ? 'Load repos…' : 'Select a repo…'}
-                          </option>
-                          {ghRepos.map((r) => (
-                            <option key={r.full_name} value={r.full_name}>
-                              {r.full_name}
-                              {r.private ? ' (private)' : ''}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => void refreshGhRepos()}
-                          disabled={ghBusy}
-                          aria-label="Refresh repositories"
-                          className="rounded-xl border border-[#22262E] bg-[#1D2128] hover:bg-[#22262E] p-2 text-slate-300 transition cursor-pointer disabled:opacity-50"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : ghStatus?.configured ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.location.href = '/api/github/authorize';
-                      }}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#F5F0E6] hover:bg-white text-[#0B121C] font-bold px-4 py-2.5 text-xs transition cursor-pointer"
-                    >
-                      <FolderGit2 className="h-4 w-4" />
-                      <span>Connect GitHub — branch &amp; PR on your repos</span>
-                    </button>
-                  ) : (
-                    <>
-                      <input
-                        type="url"
-                        value={repoUrl}
-                        onChange={(e) => setRepoUrl(e.target.value)}
-                        placeholder="https://github.com/you/your-repo (optional — add later)"
-                        className="w-full rounded-xl border border-[#2D3440] bg-[#14161A] px-3.5 py-2.5 text-xs font-mono text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-[#C6A664]/60"
-                      />
-                      <p className="text-[11px] text-slate-500">
-                        {ghStatus === null
-                          ? 'One-click GitHub connect appears when the Warden orchestrator is running — paste a repo URL for now.'
-                          : 'Set GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET on the orchestrator for one-click connect — paste a repo URL for now.'}
-                      </p>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <code className="block rounded-xl border border-[#22262E] bg-[#14161A] px-3.5 py-2.5 text-[11px] font-mono text-gold-300">
-                  npx @warden/runner link --workspace ~/your-project
-                </code>
-              )}
+              <input
+                type="url"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/you/your-repo (optional — add later)"
+                className="w-full rounded-xl border border-[#2D3440] bg-[#14161A] px-3.5 py-2.5 text-xs font-mono text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-[#C6A664]/60"
+              />
+              <p className="text-[11px] text-slate-500">
+                Paste the repo URL agents should work with. For private folders the cloud cannot reach, run a small client agent on your machine:
+              </p>
+              <code className="block rounded-xl border border-[#22262E] bg-[#14161A] px-3.5 py-2.5 text-[11px] font-mono text-gold-300">
+                npx @warden/runner link --workspace ~/your-project
+              </code>
             </div>
 
             <div className="flex justify-end pt-2">
@@ -2307,14 +2106,15 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
+              <AsyncButton
                 type="button"
-                onClick={finishOnboarding}
+                action={finishOnboarding}
+                onError={notifyError}
                 className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 px-6 py-3.5 text-xs transition cursor-pointer"
               >
                 <span>Launch Command Center Dashboard</span>
                 <ArrowRight className="h-4 w-4" />
-              </button>
+              </AsyncButton>
             </div>
           </div>
         )}
@@ -2682,18 +2482,20 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
+              <AsyncButton
                 type="button"
-                onClick={finishOnboarding}
+                action={finishOnboarding}
+                onError={notifyError}
                 className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] text-[#0B121C] font-bold border border-[#D4B475] shadow-[0_2px_12px_rgba(198,166,100,0.25)] hover:brightness-110 px-6 py-3.5 text-xs transition cursor-pointer"
               >
                 <span>Import &amp; Open Dashboard</span>
                 <ArrowRight className="h-4 w-4" />
-              </button>
+              </AsyncButton>
             </div>
           </div>
         )}
       </div>
+      <ToastHost toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 };

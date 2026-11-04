@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Bell,
   Bot,
   CheckCheck,
@@ -22,6 +23,14 @@ import {
   X,
 } from 'lucide-react';
 import { apiClient } from './api/client';
+import {
+  APP_TABS,
+  appTabForPath,
+  getPathname,
+  navigateTo,
+  onLocationChange,
+  pathForAppTab,
+} from './router';
 import { AgentInspectorDrawer } from './components/AgentInspectorDrawer';
 import { AgentStudioView } from './components/AgentStudioView';
 import { BacklogAndSprintView } from './components/BacklogAndSprintView';
@@ -38,6 +47,7 @@ import { HomePriorityWindow } from './components/HomePriorityWindow';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { ReportsView, type UnifiedReportItem } from './components/ReportsView';
 import { SeoAuditView } from './components/SeoAuditView';
+import { SettingsView } from './components/SettingsView';
 import { TokenUsageBox } from './components/TokenUsageBox';
 import type {
   Agent,
@@ -55,6 +65,7 @@ import type {
   ProviderCredential,
   Sprint,
   SystemHealthTelemetry,
+  UserBudget,
 } from './types/warden';
 import {
   INITIAL_AGENTS,
@@ -68,7 +79,7 @@ import {
 } from './api/seedData';
 import { PRODUCT_PROJECTS } from './data/workspaceProfile';
 
-export type PrimaryTabId = 'home' | 'agents' | 'reports' | 'backlogs' | 'seo';
+export type PrimaryTabId = 'home' | 'agents' | 'reports' | 'backlogs' | 'seo' | 'settings';
 
 export interface DynamicWindowTab {
   id: string;
@@ -160,9 +171,18 @@ export interface AppProps {
   /** Signed-in shell: header button signs out. Gallery: returns to the screen browser. */
   onSignOut?: () => void;
   signOutLabel?: string;
+  /** Deep-linked tab from the URL (Root passes this; defaults to home). */
+  initialTab?: string;
+  /** Sync tabs with the URL. Disabled in the dev gallery. */
+  syncUrl?: boolean;
 }
 
-export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }) => {
+export const App: React.FC<AppProps> = ({
+  onSignOut,
+  signOutLabel = 'Sign out',
+  initialTab,
+  syncUrl = true,
+}) => {
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('warden_surface_theme');
@@ -201,8 +221,41 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
     });
   };
 
-  const [activeTab, setActiveTab] = useState<string>('home');
+  const [activeTab, setActiveTab] = useState<string>(() =>
+    initialTab && (APP_TABS as readonly string[]).includes(initialTab) ? initialTab : 'home'
+  );
   const [dynamicTabs, setDynamicTabs] = useState<DynamicWindowTab[]>([]);
+
+  // Each tab owns a URL (/home, /agents, …) so Back, Forward, refresh, and deep
+  // links work. Dynamic window tabs share their parent tab's URL without pushing,
+  // so Back from a window always lands on the previous real page.
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+  const urlSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!syncUrl) return;
+    const target = pathForAppTab(activeTab);
+    if (getPathname() === target) {
+      urlSyncedRef.current = true;
+      return;
+    }
+    navigateTo(target, { replace: !urlSyncedRef.current || activeTab.startsWith('win-') });
+    urlSyncedRef.current = true;
+  }, [syncUrl, activeTab]);
+  useEffect(() => {
+    if (!syncUrl) return;
+    return onLocationChange((pathname) => {
+      const next = appTabForPath(pathname);
+      if (next) {
+        setActiveTab((prev) => (prev === next ? prev : next));
+      } else {
+        // Foreign path reached via Back/Forward: heal the URL back to this tab.
+        navigateTo(pathForAppTab(activeTabRef.current), { replace: true });
+      }
+    });
+  }, [syncUrl]);
   const [activeVertical, setActiveVertical] = useState<VerticalScope>('ALL');
   const [knobConfig, setKnobConfig] = useState<ConsultationKnobConfig>(() =>
     loadConsultationKnobConfig()
@@ -229,6 +282,7 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
   const [credentials, setCredentials] = useState<ProviderCredential[]>(
     INITIAL_PROVIDER_CREDENTIALS
   );
+  const [budget, setBudget] = useState<UserBudget | null>(null);
 
   // Chat Center selection & Agent Inspector state
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
@@ -244,18 +298,38 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
   );
   const [inspectorRunId, setInspectorRunId] = useState<string | null>(null);
 
-  // Toast notification banner
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // Toast notification banner (info for confirmations, error for API failures)
+  const [toast, setToast] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
 
   const showToast = useCallback((msg: string) => {
-    setToastMessage(msg);
+    setToast({ text: msg, tone: 'info' });
+  }, []);
+
+  const showError = useCallback((msg: string) => {
+    setToast({ text: msg, tone: 'error' });
   }, []);
 
   useEffect(() => {
-    if (!toastMessage) return;
-    const t = window.setTimeout(() => setToastMessage(null), 4000);
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), toast.tone === 'error' ? 6000 : 4000);
     return () => window.clearTimeout(t);
-  }, [toastMessage]);
+  }, [toast]);
+
+  // Platform budget banner: refresh on mount and every minute.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      apiClient.getMyBudget().then((b) => {
+        if (!cancelled) setBudget(b);
+      });
+    };
+    load();
+    const id = window.setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const refreshAllData = useCallback(async () => {
     const [
@@ -553,6 +627,7 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
     { id: 'reports', label: 'Reports', icon: FileText, badge: '7' },
     { id: 'backlogs', label: 'Backlogs', icon: Kanban, badge: `${backlogItems.length + 6}` },
     { id: 'seo', label: 'SEO', icon: Globe },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   const activeDynamicTab = useMemo(
@@ -563,13 +638,17 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
   return (
     <div className="h-screen overflow-hidden bg-[#F7F3E8] dark:bg-[#0B121C] text-[#0F1622] dark:text-[#F5F0E6] flex transition-colors duration-200">
       {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed bottom-16 md:bottom-5 right-4 z-50 max-w-md rounded-xl border border-[#C6A664]/50 bg-[#FCF9F2]/95 dark:bg-[#0F1824]/95 px-4 py-2.5 text-xs font-medium text-[#0F1622] dark:text-[#F5F0E6] shadow-2xl flex items-center gap-2.5 backdrop-blur">
-          <Sparkles className="h-4 w-4 text-[#C6A664] shrink-0" />
-          <span className="flex-1">{toastMessage}</span>
+      {toast && (
+        <div className={`fixed bottom-16 md:bottom-5 right-4 z-50 max-w-md rounded-xl border bg-[#FCF9F2]/95 dark:bg-[#0F1824]/95 px-4 py-2.5 text-xs font-medium text-[#0F1622] dark:text-[#F5F0E6] shadow-2xl flex items-center gap-2.5 backdrop-blur ${toast.tone === 'error' ? 'border-red-400/60' : 'border-[#C6A664]/50'}`}>
+          {toast.tone === 'error' ? (
+            <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400 shrink-0" />
+          ) : (
+            <Sparkles className="h-4 w-4 text-[#C6A664] shrink-0" />
+          )}
+          <span className="flex-1">{toast.text}</span>
           <button
             type="button"
-            onClick={() => setToastMessage(null)}
+            onClick={() => setToast(null)}
             className="text-[#5C5343] hover:text-[#0F1622] dark:text-[#8A94A6] dark:hover:text-[#F5F0E6]"
           >
             <X className="h-3.5 w-3.5" />
@@ -860,10 +939,33 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
         {/* WORKSPACE */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
           <div className="max-w-7xl mx-auto h-full min-h-0">
+            {budget && budget.cap > 0 && budget.status !== 'OK' && activeTab !== 'settings' && (
+              <div
+                className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 text-xs ${
+                  budget.status === 'EXCEEDED'
+                    ? 'border-red-400/50 bg-red-400/10 text-red-200'
+                    : 'border-amber-400/50 bg-amber-400/10 text-amber-200'
+                }`}
+              >
+                <span>
+                  {budget.status === 'EXCEEDED'
+                    ? `Platform budget exhausted (${budget.used.toLocaleString()} / ${budget.cap.toLocaleString()} tokens). Runs are paused.`
+                    : `Platform budget ${Math.round((budget.used / budget.cap) * 100)}% used (${budget.used.toLocaleString()} / ${budget.cap.toLocaleString()} tokens).`}
+                  {' '}Add your Meta Muse key to run uncapped on your own credit.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('settings')}
+                  className="rounded-lg bg-[#C6A664]/20 border border-[#C6A664]/50 px-3 py-1.5 font-bold text-[#C6A664] hover:bg-[#C6A664]/30 transition cursor-pointer"
+                >
+                  Open Settings
+                </button>
+              </div>
+            )}
             {activeTab === 'home' && (
               <div className="space-y-5 h-full min-h-0">
               <CopilotHandoffCard />
-              <DemoDeployCard />
+              <DemoDeployCard onError={showError} />
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 h-full min-h-0">
                 <HomePriorityWindow
                   activeVertical={activeVertical}
@@ -923,8 +1025,10 @@ export const App: React.FC<AppProps> = ({ onSignOut, signOutLabel = 'Sign out' }
               <SeoAuditView
                 onCreateBacklogItem={handleCreateBacklogItem}
                 onNotify={(summary) => showToast(summary)}
+                onError={showError}
               />
             )}
+            {activeTab === 'settings' && <SettingsView />}
 
             {activeDynamicTab && activeDynamicTab.kind === 'chat' && (
               <div className="space-y-3 h-full flex flex-col">

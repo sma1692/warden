@@ -365,7 +365,7 @@ export async function syncDiskToDb(options: SyncOptions = {}): Promise<DiskToDbS
   const workspaceRoot = options.workspaceRoot || DEFAULT_WORKSPACE_ROOT;
   await dbStore.init();
 
-  // Ensure all 19 seed agents exist in DB
+  // Ensure the full seed roster exists in DB (upsert, additive-safe)
   await dbStore.seedAgents(SEED_AGENTS);
 
   // 1A. Sync `context/**/*.md` + `.state/topology-cache.json` -> `project_contexts`

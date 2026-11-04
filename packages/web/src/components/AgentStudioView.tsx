@@ -11,6 +11,7 @@ import {
   Flame,
   GitBranch,
   KeyRound,
+  Loader2,
   Megaphone,
   MessageSquare,
   Network,
@@ -47,6 +48,7 @@ import {
 } from '../data/workspaceProfile';
 import { TokenBreakdownBar } from './TokenBreakdownBar';
 import type { VerticalScope } from './ConsultationKnob';
+import { AsyncButton, useAsyncState } from './AsyncButton';
 
 export type AgentVertical = 'TECH' | 'SEO_AEO' | 'SOCIAL';
 
@@ -712,8 +714,8 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
     );
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const createOp = useAsyncState();
+  const submitCreateAgent = async () => {
     if (!slug.trim() || !name.trim()) return;
     await onCreateAgent({
       slug: slug.trim(),
@@ -745,8 +747,8 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
     window.setTimeout(() => setCreatedBanner(null), 3500);
   };
 
-  const handleAddCredentialSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const credentialOp = useAsyncState();
+  const submitAddCredential = async () => {
     if (!credLabel.trim()) return;
     await onAddCredential({
       provider: credProvider,
@@ -1208,14 +1210,17 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                             </button>
                           )}
                           {onKillOrRestartAgent && (
-                            <button
+                            <AsyncButton
                               type="button"
-                              onClick={() =>
-                                onKillOrRestartAgent(
-                                  row.agent.id,
-                                  row.agent.status === 'WORKING' ? 'KILL' : 'RESTART'
+                              action={() =>
+                                Promise.resolve(
+                                  onKillOrRestartAgent(
+                                    row.agent.id,
+                                    row.agent.status === 'WORKING' ? 'KILL' : 'RESTART'
+                                  )
                                 )
                               }
+                              swapWhilePending={<Loader2 className="h-3 w-3 animate-spin" />}
                               className="rounded-lg bg-[var(--surface-card)] hover:bg-[var(--surface-muted)] border border-[var(--surface-border)] p-1 text-[var(--surface-text-secondary)] hover:text-[var(--semantic-alert)] transition cursor-pointer"
                               title="Kill or restart sandbox"
                             >
@@ -1224,7 +1229,7 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                               ) : (
                                 <RotateCcw className="h-3 w-3" />
                               )}
-                            </button>
+                            </AsyncButton>
                           )}
                         </div>
                       </td>
@@ -1371,7 +1376,13 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void createOp.track(submitCreateAgent());
+                }}
+                className="space-y-3 text-xs"
+              >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="block font-mono text-[var(--surface-text-secondary)] mb-1">
@@ -1493,13 +1504,14 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                   />
                 </div>
 
-                <button
+                <AsyncButton
                   type="submit"
+                  pending={createOp.pending}
                   className="w-full inline-flex items-center justify-center gap-2 rounded-xl btn-gold-cta px-4 py-2.5 text-xs font-bold transition cursor-pointer"
                 >
                   <PlusCircle className="h-4 w-4" />
                   <span>Provision AI Employee into Roster</span>
-                </button>
+                </AsyncButton>
               </form>
             </div>
           </div>
@@ -1528,7 +1540,10 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
 
             {showAddTokenForm && (
               <form
-                onSubmit={handleAddCredentialSubmit}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void credentialOp.track(submitAddCredential());
+                }}
                 className="rounded-xl border border-[var(--surface-accent)]/40 bg-[var(--surface-card)] p-3.5 grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs"
               >
                 <input
@@ -1552,12 +1567,14 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                   placeholder="Budget USD"
                   className="rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] px-2.5 py-1.5 font-mono text-[var(--surface-accent-gold)] placeholder:text-[var(--surface-text-secondary)]/50"
                 />
-                <button
+                <AsyncButton
                   type="submit"
-                  className="rounded-lg btn-gold-cta px-3 py-1.5 font-bold transition cursor-pointer"
+                  pending={credentialOp.pending}
+                  spinnerClassName="h-3.5 w-3.5"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg btn-gold-cta px-3 py-1.5 font-bold transition cursor-pointer"
                 >
                   Save Key
-                </button>
+                </AsyncButton>
               </form>
             )}
 
@@ -1580,13 +1597,14 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
                     <span className="text-[var(--surface-accent-gold)]">
                       {formatUsd(cred.remaining_budget_usd)} left
                     </span>
-                    <button
+                    <AsyncButton
                       type="button"
-                      onClick={() => onRotateCredentialFailover(cred.id)}
-                      className="text-[var(--surface-accent)] hover:underline cursor-pointer"
+                      action={() => onRotateCredentialFailover(cred.id)}
+                      spinnerClassName="h-3 w-3"
+                      className="inline-flex items-center gap-1 text-[var(--surface-accent)] hover:underline cursor-pointer"
                     >
                       Test 429 Failover
-                    </button>
+                    </AsyncButton>
                   </div>
                 </div>
               ))}

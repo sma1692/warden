@@ -10,7 +10,7 @@ import '../index.css';
 const Gallery: React.FC = () => {
   const [view, setView] = useState<'flow' | 'dashboard'>('flow');
   if (view === 'dashboard') {
-    return <App onSignOut={() => setView('flow')} signOutLabel="Back to screens" />;
+    return <App onSignOut={() => setView('flow')} signOutLabel="Back to screens" syncUrl={false} />;
   }
   return <AuthOnboardingFlow mode="gallery" onComplete={() => setView('dashboard')} />;
 };
