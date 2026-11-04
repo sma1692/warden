@@ -63,6 +63,7 @@ export function pathForAuthStep(step: string): string {
 export function appTabForPath(pathname: string): string | null {
   const path = normalize(pathname);
   if (path === '/dashboard') return 'home';
+  if (path === '/activity') return 'reports';
   const tab = path.startsWith('/') ? path.slice(1) : path;
   if ((APP_TABS as readonly string[]).includes(tab)) return tab;
   return null;
@@ -71,7 +72,7 @@ export function appTabForPath(pathname: string): string | null {
 /** Canonical path for a dashboard tab. Dynamic window tabs resolve to their parent. */
 export function pathForAppTab(tab: string): string {
   if (tab.startsWith('win-agent-')) return '/agents';
-  if (tab.startsWith('win-report-')) return '/reports';
+  if (tab.startsWith('win-report-') || tab === 'reports') return '/activity';
   if ((APP_TABS as readonly string[]).includes(tab)) return `/${tab}`;
   return '/home';
 }

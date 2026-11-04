@@ -681,8 +681,15 @@ export class OrchestratorStore {
   public async reconcileAgentStatuses(): Promise<string[]> {
     const nowIso = new Date().toISOString();
     // Any run still marked RUNNING or VERIFYING_QA on boot was interrupted by a process restart.
+    // Runs tied to an IN_PROGRESS backlog task are kept RUNNING so ControlPlaneServer can resume them.
     for (const run of this.runs.values()) {
       if (run.status === 'RUNNING' || run.status === 'VERIFYING_QA') {
+        const linkedBacklog = run.backlog_item_id
+          ? this.backlogItems.get(run.backlog_item_id)
+          : undefined;
+        if (linkedBacklog && linkedBacklog.stage === 'IN_PROGRESS') {
+          continue;
+        }
         this.updateRun(run.id, {
           status: 'FAILED',
           output_summary:
@@ -925,6 +932,17 @@ export class OrchestratorStore {
    */
   public async hydrateUser(userId: string): Promise<void> {
     if (this.source !== 'db') return;
+    try {
+      const { getDemoWorkspace, ensureDemoStarterBacklog } = await import(
+        '../demo/DemoProvisioning.js'
+      );
+      const ws = await getDemoWorkspace(userId).catch(() => null);
+      if (ws?.mode === 'demo') {
+        await ensureDemoStarterBacklog(userId);
+      }
+    } catch {
+      // ignore if demo_workspaces is not initialized
+    }
     await this.hydrateFromDbStore(userId);
   }
 

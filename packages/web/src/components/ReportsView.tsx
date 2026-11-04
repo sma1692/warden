@@ -1,51 +1,66 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
-  ArrowUpRight,
-  Check,
+  Brain,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock,
-  Copy,
+  Code2,
   Cpu,
-  ExternalLink,
-  FileCode,
-  FileText,
+  Flame,
+  GitBranch,
   Globe,
-  Key,
-  Layers,
-  Play,
+  Loader2,
+  MessageSquare,
   RefreshCw,
-  ScrollText,
   Search,
   Share2,
-  ShieldAlert,
   Sparkles,
+  Terminal,
+  Zap,
 } from 'lucide-react';
-import {
-  REPORT_NEEDS_CEO_CARDS,
-  REPORT_TASK_MOVEMENTS,
-  REPORT_WEEKLY_PLAN,
-} from '../data/reportsData';
-import {
-  UNIFIED_REPORTS_CATALOG,
-  type UnifiedReportItem,
-} from '../data/reportsCatalog';
-import type { VerticalScope } from './ConsultationKnob';
-import { MarkdownRenderer } from './MarkdownRenderer';
+import { apiClient } from '../api/client';
+import type { UnifiedReportItem } from '../data/reportsCatalog';
 import { useFollowedVertical } from '../hooks/useVerticalFilter';
-import type { BacklogItem } from '../types/warden';
+import type { Agent, AgentRun, BacklogItem, InferenceStep } from '../types/warden';
+import {
+  formatCompactTokens,
+  formatRelativeTime,
+  formatStopwatch,
+  formatUsd,
+} from '../utils/formatters';
+import type { VerticalScope } from './ConsultationKnob';
+import { TokenBreakdownBar } from './TokenBreakdownBar';
 
 interface ReportsViewProps {
   activeVertical?: VerticalScope;
+  agents?: Agent[];
   backlogItems?: BacklogItem[];
-  onTriggerStandupNow: () => Promise<void>;
+  onTriggerStandupNow?: () => Promise<void>;
   onOpenBacklog?: () => void;
   onOpenBacklogItem?: (itemId: string) => void;
   onOpenChatWithAgent?: (slug: string) => void;
+  onInspectAgent?: (
+    agent: Agent,
+    subTab?: 'runs' | 'trace' | 'config',
+    runId?: string | null
+  ) => void;
   onOpenReportWindowTab?: (report: UnifiedReportItem) => void;
 }
 
-export type ReportSubTab = 'full_mom' | 'needs_ceo' | 'weekly_plan' | 'movements' | 'raw';
+type StatusFilter = 'ALL' | 'RUNNING' | 'COMPLETED';
+
+function classifyAgentVertical(
+  agentIdOrSlug?: string | null,
+  department?: string | null
+): Exclude<VerticalScope, 'ALL'> {
+  const s = `${agentIdOrSlug || ''} ${department || ''}`.toLowerCase();
+  if (s.includes('seo') || s.includes('aeo') || s.includes('cbo')) return 'SEO_AEO';
+  if (s.includes('social') || s.includes('cmo') || s.includes('marketing')) return 'SOCIAL';
+  return 'TECH';
+}
 
 const VERTICAL_BADGE_STYLE: Record<
   Exclude<VerticalScope, 'ALL'>,
@@ -53,106 +68,309 @@ const VERTICAL_BADGE_STYLE: Record<
 > = {
   TECH: {
     label: 'Tech',
-    className: 'bg-[var(--semantic-action)]/15 text-[var(--semantic-action)] border-[var(--semantic-action)]/35',
-    icon: <Cpu className="h-3 w-3 text-[var(--semantic-action)]" />,
+    className:
+      'bg-[var(--surface-accent-gold)]/15 text-[var(--surface-accent-gold)] border-[var(--surface-accent-gold)]/35',
+    icon: <Cpu className="h-3 w-3 text-[var(--surface-accent-gold)]" />,
   },
   SEO_AEO: {
     label: 'SEO / AEO',
-    className: 'bg-[var(--semantic-success)]/15 text-[var(--semantic-success)] border-[var(--semantic-success)]/35',
+    className:
+      'bg-[var(--semantic-success)]/15 text-[var(--semantic-success)] border-[var(--semantic-success)]/35',
     icon: <Globe className="h-3 w-3 text-[var(--semantic-success)]" />,
   },
   SOCIAL: {
-    label: 'Social Media',
-    className: 'bg-[var(--semantic-warning)]/15 text-[var(--semantic-warning)] border-[var(--semantic-warning)]/35',
-    icon: <Share2 className="h-3 w-3 text-[var(--semantic-warning)]" />,
+    label: 'Social',
+    className:
+      'bg-[var(--surface-accent)]/15 text-[var(--surface-accent)] border-[var(--surface-accent)]/35',
+    icon: <Share2 className="h-3 w-3 text-[var(--surface-accent)]" />,
   },
 };
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
   activeVertical = 'ALL',
-  backlogItems,
-  onTriggerStandupNow,
-  onOpenBacklog,
+  agents: externalAgents,
+  backlogItems = [],
   onOpenBacklogItem,
   onOpenChatWithAgent,
-  onOpenReportWindowTab,
+  onInspectAgent,
 }) => {
   const [localVertical, setLocalVertical] = useFollowedVertical(activeVertical);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedReportId, setSelectedReportId] = useState<string>(
-    UNIFIED_REPORTS_CATALOG[0].id
-  );
-  const [activeSubTab, setActiveSubTab] = useState<ReportSubTab>('full_mom');
-  const [copied, setCopied] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
+  const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [agents, setAgents] = useState<Agent[]>(externalAgents || []);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [steps, setSteps] = useState<InferenceStep[]>([]);
+  const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
+  const [liveBrainStatus, setLiveBrainStatus] = useState<{
+    runId: string;
+    agentSlug?: string;
+    stepIndex?: number;
+    totalSteps?: number;
+    summary?: string;
+  } | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const filteredReports = useMemo(() => {
-    return UNIFIED_REPORTS_CATALOG.filter((item) => {
-      if (localVertical !== 'ALL' && item.vertical !== localVertical) {
+  useEffect(() => {
+    if (externalAgents && externalAgents.length > 0) {
+      setAgents(externalAgents);
+    }
+  }, [externalAgents]);
+
+  const loadActivity = useCallback(async () => {
+    const [loadedRuns, loadedAgents] = await Promise.all([
+      apiClient.getAgentRuns(),
+      externalAgents && externalAgents.length > 0
+        ? Promise.resolve(externalAgents)
+        : apiClient.getAgents(),
+    ]);
+    const sorted = [...loadedRuns].sort((a, b) => {
+      const aLive = a.status === 'RUNNING' || a.status === 'VERIFYING_QA' ? 1 : 0;
+      const bLive = b.status === 'RUNNING' || b.status === 'VERIFYING_QA' ? 1 : 0;
+      if (aLive !== bLive) return bLive - aLive;
+      return (b.started_at || '').localeCompare(a.started_at || '');
+    });
+    setRuns(sorted);
+    setAgents(loadedAgents);
+    setSelectedRunId((prev) => {
+      if (prev && sorted.some((r) => r.id === prev)) return prev;
+      const firstLive = sorted.find(
+        (r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA'
+      );
+      return firstLive?.id || sorted[0]?.id || null;
+    });
+  }, [externalAgents]);
+
+  const loadStepsForSelected = useCallback(async (runId: string | null) => {
+    if (!runId) {
+      setSteps([]);
+      return;
+    }
+    const loadedSteps = await apiClient.getInferenceSteps(runId);
+    setSteps(loadedSteps);
+    setExpandedSteps((prev) => {
+      const next = { ...prev };
+      for (const s of loadedSteps) {
+        if (next[s.id] === undefined) {
+          next[s.id] = true;
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    void loadActivity();
+  }, [loadActivity]);
+
+  useEffect(() => {
+    void loadStepsForSelected(selectedRunId);
+  }, [selectedRunId, loadStepsForSelected]);
+
+  useEffect(() => {
+    const unsubscribe = apiClient.subscribe((evt) => {
+      if (evt.type === 'BRAIN_STATUS' && evt.data) {
+        const data = evt.data as {
+          runId?: string;
+          agentSlug?: string;
+          stepIndex?: number;
+          totalSteps?: number;
+          summary?: string;
+        };
+        if (data.runId) {
+          setLiveBrainStatus({
+            runId: data.runId,
+            agentSlug: data.agentSlug,
+            stepIndex: data.stepIndex,
+            totalSteps: data.totalSteps,
+            summary: data.summary,
+          });
+        }
+      }
+      if (
+        evt.type === 'RUN_UPDATED' ||
+        evt.type === 'STEP_CREATED' ||
+        evt.type === 'AGENT_UPDATED' ||
+        evt.type === 'BACKLOG_UPDATED'
+      ) {
+        void loadActivity();
+        if (evt.type === 'STEP_CREATED' && evt.data) {
+          const step = evt.data as InferenceStep;
+          if (step.run_id && step.run_id === selectedRunId) {
+            void loadStepsForSelected(selectedRunId);
+          }
+        } else if (evt.type === 'RUN_UPDATED' && evt.data) {
+          const run = evt.data as AgentRun;
+          if (run.id === selectedRunId) {
+            void loadStepsForSelected(selectedRunId);
+          }
+        }
+      }
+    });
+    return unsubscribe;
+  }, [loadActivity, loadStepsForSelected, selectedRunId]);
+
+  const agentByIdOrSlug = useCallback(
+    (idOrSlug?: string | null): Agent | undefined => {
+      if (!idOrSlug) return undefined;
+      const clean = idOrSlug.replace(/^@/, '');
+      return agents.find(
+        (a) =>
+          a.id === idOrSlug ||
+          a.id === clean ||
+          a.slug === idOrSlug ||
+          a.slug === `@${clean}`
+      );
+    },
+    [agents]
+  );
+
+  const liveRuns = useMemo(
+    () =>
+      runs.filter((r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA'),
+    [runs]
+  );
+
+  const inProgressTasks = useMemo(
+    () =>
+      backlogItems.filter(
+        (b) => b.stage === 'IN_PROGRESS' || b.stage === 'QA_REVIEW'
+      ),
+    [backlogItems]
+  );
+
+  const completedRunsCount = useMemo(
+    () => runs.filter((r) => r.status === 'COMPLETED').length,
+    [runs]
+  );
+
+  const filteredRuns = useMemo(() => {
+    return runs.filter((run) => {
+      const ag = agentByIdOrSlug(run.agent_id);
+      const vertical = classifyAgentVertical(
+        ag?.slug || run.agent_id,
+        ag?.department
+      );
+      if (localVertical !== 'ALL' && vertical !== localVertical) {
         return false;
+      }
+      if (statusFilter === 'RUNNING') {
+        if (run.status !== 'RUNNING' && run.status !== 'VERIFYING_QA') return false;
+      } else if (statusFilter === 'COMPLETED') {
+        if (run.status !== 'COMPLETED') return false;
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        return (
-          item.title.toLowerCase().includes(q) ||
-          item.subtitle.toLowerCase().includes(q) ||
-          item.authorSlug.toLowerCase().includes(q) ||
-          item.projectSlug.toLowerCase().includes(q)
-        );
+        const slug = (ag?.slug || run.agent_id || '').toLowerCase();
+        const prompt = (run.input_prompt || '').toLowerCase();
+        const summary = (run.output_summary || '').toLowerCase();
+        return slug.includes(q) || prompt.includes(q) || summary.includes(q);
       }
       return true;
     });
-  }, [localVertical, searchQuery]);
+  }, [runs, agentByIdOrSlug, localVertical, statusFilter, searchQuery]);
 
-  const activeReport = useMemo(() => {
-    return (
-      filteredReports.find((r) => r.id === selectedReportId) ||
-      filteredReports[0] ||
-      UNIFIED_REPORTS_CATALOG[0]
-    );
-  }, [filteredReports, selectedReportId]);
+  const selectedRun = useMemo(
+    () =>
+      runs.find((r) => r.id === selectedRunId) ||
+      filteredRuns[0] ||
+      runs[0] ||
+      null,
+    [runs, filteredRuns, selectedRunId]
+  );
 
-  const handleCopyMarkdown = async () => {
-    if (!activeReport) return;
-    await navigator.clipboard.writeText(activeReport.markdownContent);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
-  };
+  const selectedAgent = useMemo(
+    () => (selectedRun ? agentByIdOrSlug(selectedRun.agent_id) : undefined),
+    [selectedRun, agentByIdOrSlug]
+  );
 
-  const handleTriggerPoll = async () => {
-    setIsPolling(true);
+  const selectedBacklogItem = useMemo(() => {
+    if (!selectedRun?.backlog_item_id) return undefined;
+    return backlogItems.find((b) => b.id === selectedRun.backlog_item_id);
+  }, [selectedRun, backlogItems]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
     try {
-      await onTriggerStandupNow();
+      await loadActivity();
+      if (selectedRunId) {
+        await loadStepsForSelected(selectedRunId);
+      }
     } finally {
-      setIsPolling(false);
+      setIsRefreshing(false);
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* 1. Top Header & Vertical Filter Bar */}
+      {/* 1. Top Header & Live Activity Controls */}
       <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 sm:p-5 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-[var(--surface-accent)]/15 border border-[var(--surface-accent)]/35 p-2.5 text-[var(--surface-accent)] shrink-0">
-              <ScrollText className="h-5 w-5" />
+            <div className="rounded-xl bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/35 p-2.5 text-[var(--surface-accent-gold)] shrink-0">
+              <Activity
+                className={`h-5 w-5 ${liveRuns.length > 0 ? 'animate-pulse' : ''}`}
+              />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-base sm:text-lg font-bold text-[var(--text-main)]">
-                  Executive Reports, Audits &amp; Standup MoMs
+                  Live Agent Activity &amp; Brain Trace
                 </h1>
-                <span className="rounded-full bg-[var(--semantic-success)]/15 border border-[var(--semantic-success)]/30 px-2 py-0.5 text-[10px] font-mono text-[var(--semantic-success)]">
-                  {filteredReports.length} Reports
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-mono font-bold ${
+                    liveRuns.length > 0
+                      ? 'bg-[var(--semantic-success)]/15 border-[var(--semantic-success)]/40 text-[var(--semantic-success)]'
+                      : 'bg-[var(--surface-elevated)] border-[var(--surface-border)] text-[var(--text-muted)]'
+                  }`}
+                >
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      liveRuns.length > 0
+                        ? 'bg-[var(--semantic-success)] animate-pulse'
+                        : 'bg-[var(--text-muted)]'
+                    }`}
+                  />
+                  <span>{liveRuns.length} Live Running</span>
+                </span>
+                <span className="rounded-full bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/30 px-2.5 py-0.5 text-[11px] font-mono text-[var(--surface-accent-gold)]">
+                  {inProgressTasks.length} In-Progress Task{inProgressTasks.length === 1 ? '' : 's'}
+                </span>
+                <span className="rounded-full bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-2.5 py-0.5 text-[11px] font-mono text-[var(--text-muted)]">
+                  {completedRunsCount} Completed
                 </span>
               </div>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Cross-vertical deliverables across Tech, SEO/AEO, and Social Media with compressed token provenance.
+                Click any running or completed agent below to inspect its real-time reasoning, tool calls, and step-by-step brain trace.
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Status filter pills */}
+            <div className="inline-flex items-center rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-border)] p-1 gap-1">
+              {(
+                [
+                  { id: 'ALL', label: 'All' },
+                  { id: 'RUNNING', label: `Running (${liveRuns.length})` },
+                  { id: 'COMPLETED', label: `Completed (${completedRunsCount})` },
+                ] as { id: StatusFilter; label: string }[]
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setStatusFilter(tab.id)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer ${
+                    statusFilter === tab.id
+                      ? 'bg-[var(--surface-accent-gold)]/15 text-[var(--surface-accent-gold)] border border-[var(--surface-accent-gold)]/40 shadow-xs'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             {/* Vertical filter pills */}
             <div className="inline-flex items-center rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-border)] p-1 gap-1">
               {(
@@ -184,415 +402,497 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter reports..."
-                className="rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-border)] pl-8 pr-3 py-1.5 text-xs text-[var(--text-main)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--surface-accent)] w-44 transition"
+                placeholder="Filter agents or tasks..."
+                className="rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-border)] pl-8 pr-3 py-1.5 text-xs text-[var(--text-main)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--surface-accent-gold)] w-44 transition"
               />
             </div>
 
             <button
               type="button"
-              onClick={handleTriggerPoll}
-              disabled={isPolling}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-accent)]/15 border border-[var(--surface-accent)]/40 hover:bg-[var(--surface-accent)]/25 px-3 py-1.5 text-xs font-semibold text-[var(--surface-accent)] transition cursor-pointer disabled:opacity-50"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-border)] hover:border-[var(--surface-accent-gold)]/50 px-3 py-1.5 text-xs font-semibold text-[var(--text-main)] transition cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? 'animate-spin' : ''}`} />
-              <span>{isPolling ? 'Polling...' : 'Run Standup Poll'}</span>
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
             </button>
           </div>
         </div>
-      </div>
 
-      {/* 2A. MOBILE VIEW (< md): Responsive Report Cards */}
-      <div className="md:hidden space-y-2.5">
-        {filteredReports.map((report) => {
-          const vBadge = VERTICAL_BADGE_STYLE[report.vertical];
-          const isSelected = report.id === activeReport?.id;
-          return (
-            <div
-              key={report.id}
-              onClick={() => setSelectedReportId(report.id)}
-              className={`rounded-2xl border p-3.5 transition cursor-pointer shadow-xs ${
-                isSelected
-                  ? 'border-[var(--surface-accent)]/60 bg-[var(--surface-panel)] ring-1 ring-[var(--surface-accent)]/30 shadow-sm'
-                  : 'border-[var(--surface-border)] bg-[var(--surface-panel)] hover:border-[var(--surface-border-strong)]'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${vBadge.className}`}
-                >
-                  {vBadge.icon}
-                  <span>{vBadge.label}</span>
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <span className="rounded bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-main)]">
-                    {report.tokenBurnLabel}
-                  </span>
-                  <span className="text-[10px] font-mono text-[var(--text-muted)]">{report.date}</span>
-                </div>
-              </div>
-
-              <h3 className="text-xs font-bold text-[var(--text-main)] leading-snug">
-                {report.title}
-              </h3>
-              <p className="text-[11px] text-[var(--text-muted)] mt-1 line-clamp-2">
-                {report.subtitle}
-              </p>
-
-              <div className="mt-2.5 pt-2 border-t border-[var(--surface-border-subtle)] flex items-center justify-between gap-2 text-[10px]">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[var(--surface-accent)] font-semibold">
-                    {report.authorSlug}
-                  </span>
-                  <span className="text-[var(--text-muted)]">•</span>
-                  <span className="text-[var(--semantic-success)] font-mono">{report.keyMetric}</span>
-                </div>
-                {onOpenReportWindowTab && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenReportWindowTab(report);
-                    }}
-                    className="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-2 py-1 text-[10px] font-semibold text-[var(--text-main)] hover:text-[var(--surface-accent)] transition cursor-pointer"
-                  >
-                    <span>Tab</span>
-                    <ArrowUpRight className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+        {/* Live Running Agents Strip */}
+        {liveRuns.length > 0 && (
+          <div className="mt-4 pt-3.5 border-t border-[var(--surface-border)] space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-mono font-bold text-[var(--semantic-success)] flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-[var(--semantic-success)] animate-pulse" />
+                <span>LIVE RUNNING AGENTS — CLICK TO INSPECT BRAIN TRACE</span>
+              </span>
             </div>
-          );
-        })}
-      </div>
-
-      {/* 2B. PC VIEW (>= md): Clean Tabular Report Directory */}
-      <div className="hidden md:block rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-[var(--surface-border)] bg-[var(--surface-elevated)] text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
-                <th className="py-2.5 px-4">Report Title</th>
-                <th className="py-2.5 px-3">Vertical</th>
-                <th className="py-2.5 px-3">Author</th>
-                <th className="py-2.5 px-3">Key Telemetry</th>
-                <th className="py-2.5 px-3">Tokens</th>
-                <th className="py-2.5 px-3">Date / Cadence</th>
-                <th className="py-2.5 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--surface-border-subtle)] text-xs">
-              {filteredReports.map((report) => {
-                const vBadge = VERTICAL_BADGE_STYLE[report.vertical];
-                const isSelected = report.id === activeReport?.id;
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+              {liveRuns.map((run) => {
+                const ag = agentByIdOrSlug(run.agent_id);
+                const slug = ag?.slug || `@${run.agent_id}`;
+                const isSelected = selectedRun?.id === run.id;
+                const liveStep =
+                  liveBrainStatus && liveBrainStatus.runId === run.id
+                    ? liveBrainStatus
+                    : null;
                 return (
-                  <tr
-                    key={report.id}
-                    onClick={() => setSelectedReportId(report.id)}
-                    className={`transition cursor-pointer ${
+                  <button
+                    key={run.id}
+                    type="button"
+                    onClick={() => setSelectedRunId(run.id)}
+                    className={`text-left rounded-xl border p-3 transition cursor-pointer ${
                       isSelected
-                        ? 'bg-[var(--surface-accent)]/5 hover:bg-[var(--surface-accent)]/10'
-                        : 'hover:bg-[var(--surface-elevated)]/60'
+                        ? 'border-[var(--semantic-success)] bg-[var(--semantic-success)]/10 ring-1 ring-[var(--semantic-success)]/40'
+                        : 'border-[var(--semantic-success)]/40 bg-[var(--surface-elevated)] hover:border-[var(--semantic-success)]'
                     }`}
                   >
-                    <td className="py-3 px-4 max-w-md">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`h-2 w-2 rounded-full shrink-0 ${
-                            report.status === 'ACTION_NEEDED'
-                              ? 'bg-[var(--semantic-warning)]'
-                              : 'bg-[var(--semantic-success)]'
-                          }`}
-                        />
-                        <span className="font-bold text-[var(--text-main)] truncate">
-                          {report.title}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5 pl-4">
-                        {report.subtitle}
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${vBadge.className}`}
-                      >
-                        {vBadge.icon}
-                        <span>{vBadge.label}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-bold text-[var(--surface-accent-gold)]">
+                        {slug}
                       </span>
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenChatWithAgent?.(report.authorSlug);
-                        }}
-                        className="font-mono text-xs text-[var(--surface-accent)] hover:underline cursor-pointer"
-                      >
-                        {report.authorSlug}
-                      </button>
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <span className="rounded-lg bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-2 py-1 text-[11px] font-mono text-[var(--semantic-success)] font-semibold">
-                        {report.keyMetric}
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--semantic-success)]/20 border border-[var(--semantic-success)]/40 px-2 py-0.5 text-[10px] font-mono font-bold text-[var(--semantic-success)]">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>{run.status === 'VERIFYING_QA' ? 'VERIFYING QA' : 'RUNNING'}</span>
                       </span>
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap font-mono text-[11px] text-[var(--text-main)]">
-                      {report.tokenBurnLabel}
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <div className="text-[11px] font-mono text-[var(--text-main)]">{report.date}</div>
-                      <div className="text-[10px] text-[var(--text-muted)]">{report.cadenceLabel}</div>
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedReportId(report.id);
-                          }}
-                          className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
-                            isSelected
-                              ? 'bg-[var(--surface-accent)]/15 text-[var(--surface-accent)] border-[var(--surface-accent)]/40'
-                              : 'bg-[var(--surface-elevated)] text-[var(--text-main)] border-[var(--surface-border)] hover:border-[var(--surface-border-strong)]'
-                          }`}
-                        >
-                          Inspect
-                        </button>
-                        {onOpenReportWindowTab && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenReportWindowTab(report);
-                            }}
-                            title="Open report in dedicated top window tab"
-                            className="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-elevated)] border border-[var(--surface-border)] hover:border-[var(--surface-accent)] px-2 py-1 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--surface-accent)] transition cursor-pointer"
-                          >
-                            <ArrowUpRight className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                    </div>
+                    <p className="text-xs font-semibold text-[var(--text-main)] mt-1.5 truncate">
+                      {run.input_prompt}
+                    </p>
+                    <p className="text-[11px] font-mono text-[var(--text-muted)] mt-1 truncate">
+                      {liveStep?.summary || run.output_summary || 'Executing brain trace steps...'}
+                    </p>
+                  </button>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* 3. Active Report Reader Panel */}
-      {activeReport && (
-        <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 sm:p-6 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--surface-border)]">
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                    VERTICAL_BADGE_STYLE[activeReport.vertical].className
-                  }`}
-                >
-                  {VERTICAL_BADGE_STYLE[activeReport.vertical].icon}
-                  <span>{VERTICAL_BADGE_STYLE[activeReport.vertical].label}</span>
-                </span>
-                <span className="text-xs font-mono text-[var(--surface-accent)]">{activeReport.filePath}</span>
-                <span className="rounded bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-2 py-0.5 text-[10px] font-mono text-[var(--text-muted)]">
-                  {activeReport.tokenBurnLabel}
-                </span>
-              </div>
-              <h2 className="text-sm sm:text-base font-bold text-[var(--text-main)] mt-1">
-                {activeReport.title}
-              </h2>
-              {(activeReport.linkedBacklogIds || []).length > 0 && (
-                <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
-                    Linked tasks:
-                  </span>
-                  {(activeReport.linkedBacklogIds || []).map((taskId) => {
-                    const task = (backlogItems || []).find((b) => b.id === taskId);
-                    return (
-                      <button
-                        key={taskId}
-                        type="button"
-                        onClick={() => {
-                          if (onOpenBacklogItem) onOpenBacklogItem(taskId);
-                          else onOpenBacklog?.();
-                        }}
-                        title={task?.title || taskId}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-accent)]/40 bg-[var(--surface-accent)]/10 hover:bg-[var(--surface-accent)]/20 px-2 py-1 text-[11px] font-semibold text-[var(--surface-accent)] transition cursor-pointer max-w-[260px]"
-                      >
-                        <span className="truncate">{task?.title || taskId}</span>
-                        {task && (
-                          <span className="shrink-0 font-mono text-[10px] opacity-80">
-                            {task.stage}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {activeReport.isStandupMom && (
-                <div className="flex items-center gap-1 rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-border)] p-1">
-                  {(
-                    [
-                      { id: 'full_mom', label: 'Rendered MoM' },
-                      { id: 'needs_ceo', label: `Needs CEO (${REPORT_NEEDS_CEO_CARDS.length})` },
-                      { id: 'weekly_plan', label: 'Weekly Plan' },
-                      { id: 'movements', label: 'Movements' },
-                      { id: 'raw', label: 'Raw MD' },
-                    ] as { id: ReportSubTab; label: string }[]
-                  ).map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveSubTab(tab.id)}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer ${
-                        activeSubTab === tab.id
-                          ? 'bg-[var(--surface-accent)]/15 text-[var(--surface-accent)] border border-[var(--surface-accent)]/40 shadow-xs'
-                          : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleCopyMarkdown}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-border)] hover:bg-[var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--text-main)] transition cursor-pointer"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-3.5 w-3.5 text-[var(--semantic-success)]" />
-                    <span className="text-[var(--semantic-success)] font-semibold">Copied</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                    <span>Copy MD</span>
-                  </>
-                )}
-              </button>
             </div>
           </div>
+        )}
+      </div>
 
-          {/* Reader Body */}
-          {!activeReport.isStandupMom || activeSubTab === 'full_mom' ? (
-            <div className="rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-border-subtle)] p-4 sm:p-5 text-[var(--text-main)]">
-              <MarkdownRenderer content={activeReport.markdownContent} />
-            </div>
-          ) : activeSubTab === 'needs_ceo' ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
-              {REPORT_NEEDS_CEO_CARDS.map((card) => (
-                <div
-                  key={card.id}
-                  className="rounded-xl border border-[var(--semantic-alert)]/35 bg-[var(--surface-elevated)] p-4 flex flex-col justify-between gap-3 shadow-xs"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="rounded-md bg-[var(--semantic-alert)]/15 border border-[var(--semantic-alert)]/40 px-2 py-0.5 text-[10px] font-mono font-bold text-[var(--semantic-alert)]">
-                        {card.priority} • {card.project}
+      {/* 2. Split-Pane Activity Feed & Live Brain Trace Inspector */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        {/* Left Column: Agent Runs & Task Activity List (5 cols) */}
+        <div className="lg:col-span-5 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] overflow-hidden shadow-sm">
+          <div className="border-b border-[var(--surface-border)] bg-[var(--surface-elevated)] px-4 py-3 flex items-center justify-between">
+            <span className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)]">
+              Agent Execution Feed ({filteredRuns.length})
+            </span>
+            <span className="text-[11px] font-mono text-[var(--surface-accent-gold)]">
+              WebSocket Live
+            </span>
+          </div>
+
+          <div className="divide-y divide-[var(--surface-border-subtle)] max-h-[680px] overflow-y-auto">
+            {filteredRuns.length === 0 ? (
+              <div className="p-8 text-center space-y-2">
+                <Brain className="h-8 w-8 text-[var(--text-muted)] mx-auto opacity-60" />
+                <p className="text-xs font-semibold text-[var(--text-main)]">
+                  No agent runs recorded yet
+                </p>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Approve a task in Needs Action on the Home page or message @warden to watch agents execute live here.
+                </p>
+              </div>
+            ) : (
+              filteredRuns.map((run) => {
+                const ag = agentByIdOrSlug(run.agent_id);
+                const slug = ag?.slug || `@${run.agent_id}`;
+                const vertical = classifyAgentVertical(slug, ag?.department);
+                const vBadge = VERTICAL_BADGE_STYLE[vertical];
+                const isSelected = selectedRun?.id === run.id;
+                const isLive =
+                  run.status === 'RUNNING' || run.status === 'VERIFYING_QA';
+                const totalTokens =
+                  (run.tokens_in || 0) +
+                  (run.tokens_cached || 0) +
+                  (run.tokens_thinking || 0) +
+                  (run.tokens_out || 0);
+
+                return (
+                  <button
+                    key={run.id}
+                    type="button"
+                    onClick={() => setSelectedRunId(run.id)}
+                    className={`w-full text-left p-4 transition cursor-pointer block ${
+                      isSelected
+                        ? 'bg-[var(--surface-accent-gold)]/10 border-l-4 border-l-[var(--surface-accent-gold)]'
+                        : 'hover:bg-[var(--surface-elevated)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-bold text-[var(--surface-accent-gold)]">
+                          {slug}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${vBadge.className}`}
+                        >
+                          {vBadge.icon}
+                          <span>{vBadge.label}</span>
+                        </span>
+                      </div>
+
+                      {isLive ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--semantic-success)]/15 border border-[var(--semantic-success)]/40 px-2 py-0.5 text-[10px] font-mono font-bold text-[var(--semantic-success)]">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--semantic-success)] animate-pulse" />
+                          <span>{run.status === 'VERIFYING_QA' ? 'QA CHECK' : 'RUNNING'}</span>
+                        </span>
+                      ) : run.status === 'COMPLETED' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/35 px-2 py-0.5 text-[10px] font-mono font-semibold text-[var(--surface-accent-gold)]">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>COMPLETED</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--semantic-alert)]/15 border border-[var(--semantic-alert)]/35 px-2 py-0.5 text-[10px] font-mono font-semibold text-[var(--semantic-alert)]">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>{run.status}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-xs sm:text-sm font-bold text-[var(--text-main)] leading-snug line-clamp-2">
+                      {run.input_prompt}
+                    </h3>
+
+                    {run.output_summary && (
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1 line-clamp-2">
+                        {run.output_summary}
+                      </p>
+                    )}
+
+                    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-[var(--text-muted)]">
+                      <div className="flex items-center gap-2">
+                        <span>{formatRelativeTime(run.started_at)}</span>
+                        <span>•</span>
+                        <span>{formatStopwatch(run.active_duration_ms || 0)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--surface-accent-gold)]">
+                          {formatCompactTokens(totalTokens)} tok
+                        </span>
+                        <span>•</span>
+                        <span className="text-[var(--semantic-success)]">
+                          {formatUsd(run.cost_usd || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Live Brain & Terminal Trace Inspector (7 cols) */}
+        <div className="lg:col-span-7 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] overflow-hidden shadow-sm">
+          {selectedRun ? (
+            <>
+              {/* Selected Run Header */}
+              <div className="border-b border-[var(--surface-border)] bg-[var(--surface-elevated)] p-4 sm:p-5 space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-sm sm:text-base font-bold text-[var(--surface-accent-gold)]">
+                        {selectedAgent?.slug || `@${selectedRun.agent_id}`}
                       </span>
-                      <span className="text-[11px] font-mono text-[var(--surface-accent)] font-semibold">{card.requester}</span>
+                      {selectedAgent?.role_title && (
+                        <span className="text-xs text-[var(--text-muted)]">
+                          ({selectedAgent.role_title})
+                        </span>
+                      )}
+                      {selectedRun.status === 'RUNNING' ||
+                      selectedRun.status === 'VERIFYING_QA' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--semantic-success)]/15 border border-[var(--semantic-success)]/40 px-2.5 py-0.5 text-[11px] font-mono font-bold text-[var(--semantic-success)]">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>
+                            {selectedRun.status === 'VERIFYING_QA'
+                              ? 'LIVE • VERIFYING QA'
+                              : 'LIVE • RUNNING'}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/35 px-2.5 py-0.5 text-[11px] font-mono font-bold text-[var(--surface-accent-gold)]">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>{selectedRun.status}</span>
+                        </span>
+                      )}
                     </div>
-                    <h3 className="text-xs font-bold text-[var(--text-main)]">{card.id} ({card.type})</h3>
-                    <p className="text-xs text-[var(--text-muted)]">{card.desc}</p>
-                    <div className="rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] p-2 text-[11px] font-mono text-[var(--semantic-warning)] flex items-center gap-1.5">
-                      <Key className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">Unblocks {card.unblocks}</span>
-                    </div>
+                    <h2 className="text-sm sm:text-base font-bold text-[var(--text-main)] mt-1.5">
+                      {selectedRun.input_prompt}
+                    </h2>
                   </div>
-                  <div className="flex items-center gap-2 pt-2 border-t border-[var(--surface-border-subtle)]">
-                    {onOpenBacklog && (
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedBacklogItem && onOpenBacklogItem && (
                       <button
                         type="button"
-                        onClick={onOpenBacklog}
-                        className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-[var(--semantic-alert)]/15 border border-[var(--semantic-alert)]/40 hover:bg-[var(--semantic-alert)]/25 px-2.5 py-1.5 text-[11px] font-semibold text-[var(--semantic-alert)] transition cursor-pointer"
+                        onClick={() => onOpenBacklogItem(selectedBacklogItem.id)}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-panel)] border border-[var(--surface-border)] hover:border-[var(--surface-accent-gold)]/50 px-3 py-1.5 text-xs font-semibold text-[var(--text-main)] transition cursor-pointer"
                       >
-                        <span>Resolve in Backlog</span>
-                        <ExternalLink className="h-3 w-3" />
+                        <span>Task ({selectedBacklogItem.stage})</span>
                       </button>
                     )}
                     {onOpenChatWithAgent && (
                       <button
                         type="button"
-                        onClick={() => onOpenChatWithAgent(card.requester)}
-                        className="inline-flex items-center justify-center gap-1 rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] hover:bg-[var(--surface-muted)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-main)] transition cursor-pointer"
+                        onClick={() =>
+                          onOpenChatWithAgent(
+                            selectedAgent?.slug || `@${selectedRun.agent_id}`
+                          )
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/40 hover:bg-[var(--surface-accent-gold)]/25 px-3 py-1.5 text-xs font-semibold text-[var(--surface-accent-gold)] transition cursor-pointer"
                       >
-                        <span>Ping {card.requester}</span>
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        <span>Chat with Agent</span>
+                      </button>
+                    )}
+                    {selectedAgent && onInspectAgent && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onInspectAgent(selectedAgent, 'trace', selectedRun.id)
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-panel)] border border-[var(--surface-border)] hover:border-[var(--surface-accent)]/50 px-3 py-1.5 text-xs font-semibold text-[var(--text-main)] transition cursor-pointer"
+                      >
+                        <Brain className="h-3.5 w-3.5 text-[var(--surface-accent)]" />
+                        <span>Full Agent Drawer</span>
                       </button>
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : activeSubTab === 'weekly_plan' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {REPORT_WEEKLY_PLAN.map((proj) => (
-                <div
-                  key={proj.project}
-                  className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-4 space-y-2.5 shadow-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[var(--text-main)] uppercase font-mono">
-                      {proj.project}
+
+                {/* Output Summary & Metadata */}
+                {selectedRun.output_summary && (
+                  <p className="text-xs text-[var(--text-muted)] bg-[var(--surface-panel)] rounded-xl p-3 border border-[var(--surface-border)]">
+                    {selectedRun.output_summary}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-[var(--text-muted)]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded bg-[var(--surface-panel)] border border-[var(--surface-border)] px-2 py-0.5 text-[var(--surface-accent-gold)]">
+                      Run #{selectedRun.id.slice(0, 14)}
                     </span>
-                    <span className="text-[11px] font-mono text-[var(--surface-accent)] font-semibold">{proj.owner}</span>
-                  </div>
-                  <p className="text-xs text-[var(--semantic-success)] font-medium">{proj.title}</p>
-                  <ul className="space-y-1">
-                    {proj.tasks.map((item: string, idx: number) => (
-                      <li key={idx} className="text-xs text-[var(--text-main)] flex items-start gap-2">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-[var(--semantic-action)] shrink-0 mt-0.5" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          ) : activeSubTab === 'movements' ? (
-            <div className="space-y-2">
-              {REPORT_TASK_MOVEMENTS.map((mov) => (
-                <div
-                  key={mov.id}
-                  className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono uppercase text-[var(--surface-accent)] font-semibold">
-                        {mov.project}
+                    {selectedRun.container_id && (
+                      <span className="rounded bg-[var(--surface-panel)] border border-[var(--surface-border)] px-2 py-0.5">
+                        🐳 {selectedRun.container_id}
                       </span>
-                      <span className="text-xs font-bold text-[var(--text-main)]">{mov.id}</span>
-                    </div>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">{mov.reason}</p>
+                    )}
+                    {selectedRun.git_branch && (
+                      <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-panel)] border border-[var(--surface-border)] px-2 py-0.5 text-[var(--semantic-success)]">
+                        <GitBranch className="h-3 w-3" />
+                        {selectedRun.git_branch}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 font-mono text-[10px]">
-                    <span className="rounded bg-[var(--surface-panel)] border border-[var(--surface-border)] px-2 py-0.5 text-[var(--text-main)]">
-                      {mov.movement}
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      <strong className="text-[var(--text-main)]">
+                        {formatStopwatch(selectedRun.active_duration_ms || 0)}
+                      </strong>
                     </span>
-                    <span className="rounded bg-[var(--semantic-success)]/15 border border-[var(--semantic-success)]/40 px-2 py-0.5 text-[var(--semantic-success)] font-semibold">
-                      {mov.priority}
+                    <span>
+                      Cost:{' '}
+                      <strong className="text-[var(--semantic-success)]">
+                        {formatUsd(selectedRun.cost_usd || 0)}
+                      </strong>
                     </span>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                <TokenBreakdownBar
+                  tokensIn={selectedRun.tokens_in || 0}
+                  tokensCached={selectedRun.tokens_cached || 0}
+                  tokensThinking={selectedRun.tokens_thinking || 0}
+                  tokensOut={selectedRun.tokens_out || 0}
+                  maxTokensQuota={selectedAgent?.max_tokens_per_run || 1_000_000}
+                />
+              </div>
+
+              {/* Step-by-Step Brain & Terminal Trace Body */}
+              <div className="p-4 sm:p-5 space-y-3 max-h-[540px] overflow-y-auto">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-[var(--surface-accent-gold)] flex items-center gap-1.5">
+                    <Terminal className="h-3.5 w-3.5" />
+                    <span>Step-by-Step Brain &amp; Terminal Trace ({steps.length})</span>
+                  </span>
+                  <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                    Auto-updates via WebSocket
+                  </span>
+                </div>
+
+                {steps.map((step) => {
+                  const isExpanded = expandedSteps[step.id] ?? true;
+                  const stepTotalTokens =
+                    (step.tokens_in || 0) +
+                    (step.tokens_thinking || 0) +
+                    (step.tokens_out || 0);
+                  const isExpensiveStep = stepTotalTokens >= 50_000;
+
+                  return (
+                    <div
+                      key={step.id}
+                      className={`rounded-2xl border transition ${
+                        isExpensiveStep
+                          ? 'border-[var(--semantic-warning)]/50 bg-[var(--semantic-warning)]/5'
+                          : 'border-[var(--surface-border)] bg-[var(--surface-elevated)]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedSteps((prev) => ({
+                            ...prev,
+                            [step.id]: !isExpanded,
+                          }))
+                        }
+                        className="w-full flex flex-wrap items-center justify-between gap-2 p-3.5 text-left cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-[var(--surface-accent-gold)]" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-[var(--text-muted)]" />
+                          )}
+                          <span className="rounded bg-[var(--surface-panel)] border border-[var(--surface-border)] px-2 py-0.5 text-[11px] font-mono font-bold text-[var(--surface-accent-gold)]">
+                            Step #{step.step_index} • {step.step_type}
+                          </span>
+                          {step.tool_name && (
+                            <span className="rounded bg-[var(--surface-accent)]/15 border border-[var(--surface-accent)]/30 px-2 py-0.5 text-[11px] font-mono text-[var(--surface-accent)]">
+                              🛠️ {step.tool_name}
+                            </span>
+                          )}
+                          {isExpensiveStep && (
+                            <span className="inline-flex items-center gap-1 rounded bg-[var(--semantic-warning)]/15 border border-[var(--semantic-warning)]/40 px-2 py-0.5 text-[10px] font-mono text-[var(--semantic-warning)] font-semibold">
+                              <Flame className="h-3 w-3" />
+                              {formatCompactTokens(stepTotalTokens)}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3 text-[11px] font-mono text-[var(--text-muted)]">
+                          <span>⏱️ {((step.duration_ms || 0) / 1000).toFixed(1)}s</span>
+                          <span>
+                            Think:{' '}
+                            <strong className="text-[var(--surface-accent-gold)]">
+                              {formatCompactTokens(step.tokens_thinking || 0)}
+                            </strong>
+                          </span>
+                          <span>
+                            Out:{' '}
+                            <strong className="text-[var(--surface-accent)]">
+                              {formatCompactTokens(step.tokens_out || 0)}
+                            </strong>
+                          </span>
+                        </div>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="border-t border-[var(--surface-border)] p-4 space-y-3 text-xs">
+                          {step.thinking_text && (
+                            <div className="rounded-xl bg-[var(--surface-panel)] border border-[var(--surface-accent-gold)]/25 p-3 space-y-1">
+                              <div className="text-[11px] font-mono font-semibold text-[var(--surface-accent-gold)] flex items-center gap-1.5">
+                                <Sparkles className="h-3.5 w-3.5 text-[var(--surface-accent-gold)]" />
+                                <span>
+                                  Internal Brain Reasoning ({step.model_used} •{' '}
+                                  {formatCompactTokens(step.tokens_thinking || 0)} thinking tok)
+                                </span>
+                              </div>
+                              <p className="text-[var(--text-main)] font-mono text-[11px] leading-relaxed">
+                                {step.thinking_text}
+                              </p>
+                            </div>
+                          )}
+
+                          {step.message_text && (
+                            <div className="text-[var(--text-main)] font-medium">
+                              {step.message_text}
+                            </div>
+                          )}
+
+                          {step.tool_args_json && (
+                            <div className="space-y-1">
+                              <div className="text-[11px] font-mono text-[var(--text-muted)] flex items-center gap-1">
+                                <Code2 className="h-3.5 w-3.5 text-[var(--surface-accent-gold)]" />
+                                <span>Tool Arguments:</span>
+                              </div>
+                              <pre className="rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] p-2.5 text-[11px] font-mono text-[var(--text-main)] overflow-x-auto">
+                                {JSON.stringify(step.tool_args_json, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+
+                          {step.tool_output_json && (
+                            <div className="space-y-2">
+                              {step.tool_output_json.diff && (
+                                <div className="space-y-1">
+                                  <div className="text-[11px] font-mono text-[var(--semantic-success)]">
+                                    Workspace Git Diff:
+                                  </div>
+                                  <pre className="rounded-lg bg-[var(--surface-panel)] border border-[var(--semantic-success)]/30 p-2.5 text-[11px] font-mono text-[var(--semantic-success)] overflow-x-auto">
+                                    {step.tool_output_json.diff}
+                                  </pre>
+                                </div>
+                              )}
+                              {step.tool_output_json.stdout && (
+                                <div className="space-y-1">
+                                  <div className="text-[11px] font-mono text-[var(--text-muted)]">
+                                    Execution Output (exit_code={step.tool_output_json.exit_code ?? 0}):
+                                  </div>
+                                  <pre className="rounded-lg bg-[var(--surface-panel)] border border-[var(--surface-border)] p-2.5 text-[11px] font-mono text-[var(--text-main)] overflow-x-auto">
+                                    {step.tool_output_json.stdout}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {(selectedRun.status === 'RUNNING' ||
+                  selectedRun.status === 'VERIFYING_QA') && (
+                  <div className="rounded-2xl border border-[var(--semantic-success)]/40 bg-[var(--semantic-success)]/10 p-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Loader2 className="h-4 w-4 text-[var(--semantic-success)] animate-spin shrink-0" />
+                      <div>
+                        <div className="text-xs font-bold text-[var(--semantic-success)]">
+                          {liveBrainStatus?.runId === selectedRun.id && liveBrainStatus.stepIndex
+                            ? `Executing Step #${liveBrainStatus.stepIndex} of ${liveBrainStatus.totalSteps || 4}...`
+                            : 'Agent Brain Active — Streaming Next Execution Step...'}
+                        </div>
+                        <div className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">
+                          {liveBrainStatus?.runId === selectedRun.id && liveBrainStatus.summary
+                            ? liveBrainStatus.summary
+                            : selectedRun.output_summary || 'Reasoning and running workspace tools'}
+                        </div>
+                      </div>
+                    </div>
+                    <Zap className="h-4 w-4 text-[var(--semantic-success)] animate-pulse shrink-0" />
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
-            <pre className="rounded-xl bg-[var(--surface-elevated)] border border-[var(--surface-border)] p-4 text-xs font-mono text-[var(--text-main)] overflow-x-auto whitespace-pre-wrap">
-              {activeReport.markdownContent}
-            </pre>
+            <div className="p-10 text-center space-y-2">
+              <Brain className="h-10 w-10 text-[var(--text-muted)] mx-auto opacity-50" />
+              <h3 className="text-sm font-bold text-[var(--text-main)]">
+                Select an Agent Run to Inspect Brain Trace
+              </h3>
+              <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
+                When agents run tasks from Needs Action or chat directives, their live step-by-step reasoning and tool execution trace streams here in real time.
+              </p>
+            </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
+
+export default ReportsView;

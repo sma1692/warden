@@ -275,7 +275,11 @@ function findMatchingBacklogItem(
     const t = (b.title || '').toLowerCase();
     const id = (b.id || '').toLowerCase();
     if (item.id === 'prio_tech_lobby_bootstrap') {
-      return id.includes('lobby_bootstrap') || t.includes('lobby with play');
+      return (
+        id.includes('lobby_bootstrap') ||
+        t.includes('lobby with play') ||
+        t.includes('lobby bootstrap')
+      );
     }
     if (item.id === 'prio_tech_trophy_assets') {
       return (
@@ -309,6 +313,7 @@ interface HomePriorityWindowProps {
   onApproveBacklogItem?: (itemId: string, summary: string) => Promise<void> | void;
   onOpenAgentTab?: (agentSlug: string) => void;
   onOpenBacklogsTab?: () => void;
+  onOpenActivityTab?: () => void;
   onOpenThread?: (threadId: string) => void;
   onDecisionRecorded?: (summary: string) => void;
 }
@@ -321,6 +326,7 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
   onApproveBacklogItem,
   onOpenAgentTab,
   onOpenBacklogsTab,
+  onOpenActivityTab,
   onOpenThread,
   onDecisionRecorded,
 }) => {
@@ -388,34 +394,39 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
   );
 
   const getResolvedState = (item: PriorityDecisionItem) => {
-    if (resolvedById[item.id]) {
-      return resolvedById[item.id];
-    }
     const matched = findMatchingBacklogItem(item, backlogItems);
     if (matched && matched.stage === 'DONE') {
       return {
-        decisionText: matched.last_movement_note || `Approved "${item.decisiveTitle}"`,
+        decisionText:
+          matched.last_movement_note ||
+          matched.human_resolution ||
+          `Approved "${item.decisiveTitle}"`,
         resolvedAt: matched.completed_at
           ? new Date(matched.completed_at).toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit',
             })
-          : 'Saved',
+          : 'Completed',
         levelUsed: 1 as ConsultationLevel,
         running: false,
       };
     }
     if (
       matched &&
-      matched.stage === 'IN_PROGRESS' &&
-      (matched.last_movement_note || '').startsWith('Approved')
+      (matched.stage === 'IN_PROGRESS' || matched.stage === 'QA_REVIEW')
     ) {
       return {
-        decisionText: matched.last_movement_note || `Approved "${item.decisiveTitle}"`,
+        decisionText:
+          matched.last_movement_note ||
+          matched.human_resolution ||
+          `Approved "${item.decisiveTitle}"`,
         resolvedAt: 'Running',
         levelUsed: 1 as ConsultationLevel,
         running: true,
       };
+    }
+    if (resolvedById[item.id]) {
+      return resolvedById[item.id];
     }
     return undefined;
   };
@@ -448,8 +459,8 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
       },
     }));
     const matchedBacklogItem = findMatchingBacklogItem(item, backlogItems);
-    if (matchedBacklogItem && onApproveBacklogItem) {
-      void onApproveBacklogItem(matchedBacklogItem.id, summary);
+    if (onApproveBacklogItem) {
+      void onApproveBacklogItem(matchedBacklogItem ? matchedBacklogItem.id : item.id, summary);
     }
     onDecisionRecorded?.(`${item.agentSlug}: ${summary}`);
   };
@@ -540,15 +551,29 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
 
                 {resolved ? (
                   resolved.running ? (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--semantic-success)]/40 bg-[var(--semantic-success)]/15 px-3 py-1.5 text-xs font-bold text-[var(--semantic-success)]">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveModalItemId(item.id);
+                      }}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--semantic-success)]/50 bg-[var(--semantic-success)]/15 hover:bg-[var(--semantic-success)]/25 px-3 py-1.5 text-xs font-bold text-[var(--semantic-success)] transition cursor-pointer"
+                    >
                       <span className="h-2 w-2 rounded-full bg-[var(--semantic-success)] animate-pulse" />
-                      <span>Running</span>
-                    </span>
+                      <span>Running • View</span>
+                    </button>
                   ) : (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--surface-accent-gold)]/40 bg-[var(--surface-accent-gold)]/15 px-3 py-1.5 text-xs font-bold text-[var(--surface-accent-gold)]">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveModalItemId(item.id);
+                      }}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--surface-accent-gold)]/40 bg-[var(--surface-accent-gold)]/15 hover:bg-[var(--surface-accent-gold)]/25 px-3 py-1.5 text-xs font-bold text-[var(--surface-accent-gold)] transition cursor-pointer"
+                    >
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      <span>Approved</span>
-                    </span>
+                      <span>Completed • View</span>
+                    </button>
                   )
                 ) : (
                   <button
@@ -745,6 +770,19 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
                       <span className="text-[11px] font-mono text-[var(--surface-text-secondary)]">
                         {resolved.running ? 'Team spawned — executing, no further approval needed.' : 'Task complete.'}
                       </span>
+                      {onOpenActivityTab && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveModalItemId(null);
+                            onOpenActivityTab();
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-accent-gold)]/40 bg-[var(--surface-accent-gold)]/15 hover:bg-[var(--surface-accent-gold)]/25 px-3 py-1.5 text-xs font-semibold text-[var(--surface-accent-gold)] transition cursor-pointer"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                          <span>{resolved.running ? 'Watch Live Brain Trace' : 'View Activity Trace'}</span>
+                        </button>
+                      )}
                       {resolved.running && spawnedThread && onOpenThread && (
                         <button
                           type="button"

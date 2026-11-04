@@ -328,7 +328,7 @@ class WardenApiClient {
   public async getAgentRuns(agentId?: string): Promise<AgentRun[]> {
     const query = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : '';
     const remote = await this.safeFetch<AgentRun[]>(`/runs${query}`);
-    if (Array.isArray(remote) && remote.length > 0) {
+    if (Array.isArray(remote)) {
       if (!agentId) {
         this.runs = remote;
       }
@@ -341,7 +341,7 @@ class WardenApiClient {
 
   public async getInferenceSteps(runId: string): Promise<InferenceStep[]> {
     const remote = await this.safeFetch<InferenceStep[]>(`/runs/${encodeURIComponent(runId)}/steps`);
-    if (Array.isArray(remote) && remote.length > 0) {
+    if (Array.isArray(remote)) {
       this.stepsByRun[runId] = remote;
       return remote;
     }
@@ -1308,7 +1308,42 @@ class WardenApiClient {
   public async spawnDemoTaskRun(
     itemId: string,
     decisionSummary: string
-  ): Promise<{ thread: ChatThread; item: BacklogItem } | null> {
+  ): Promise<{ thread: ChatThread; item: BacklogItem; run?: AgentRun } | null> {
+    const remoteApproved = await this.safeFetch<{
+      ok?: boolean;
+      item?: BacklogItem;
+      thread?: ChatThread;
+      run?: AgentRun;
+    }>(`/backlog/${encodeURIComponent(itemId)}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ summary: decisionSummary }),
+    });
+
+    if (remoteApproved?.item && remoteApproved?.thread) {
+      const serverItem = remoteApproved.item;
+      const hasExisting = this.backlog.some((i) => i.id === serverItem.id);
+      this.backlog = hasExisting
+        ? this.backlog.map((i) => (i.id === serverItem.id ? serverItem : i))
+        : [serverItem, ...this.backlog];
+      this.threads = [
+        remoteApproved.thread,
+        ...this.threads.filter((t) => t.id !== remoteApproved.thread!.id),
+      ];
+      if (remoteApproved.run) {
+        this.runs = [
+          remoteApproved.run,
+          ...this.runs.filter((r) => r.id !== remoteApproved.run!.id),
+        ];
+        this.emit({ type: 'RUN_UPDATED', data: remoteApproved.run });
+      }
+      this.emit({ type: 'BACKLOG_UPDATED', data: serverItem });
+      return {
+        thread: remoteApproved.thread,
+        item: serverItem,
+        run: remoteApproved.run,
+      };
+    }
+
     const existing = this.backlog.find((i) => i.id === itemId);
     if (!existing) return null;
     const nowIso = new Date().toISOString();

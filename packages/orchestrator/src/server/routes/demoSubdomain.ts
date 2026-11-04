@@ -229,7 +229,7 @@ export async function handleDemoSubdomainRoutes(
   }
 
   if ((pathname === '/api/demo/subdomain/spawn' || pathname === '/api/demo/spawn') && method === 'POST') {
-    const body = await ctx.readJsonBody().catch(() => ({}));
+    const body = await ctx.readJsonBody().catch(() => ({} as Record<string, any>));
     const spawnRes = await spawnDemoPath(targetUser, {
       gameId: body?.gameId,
       customSubdomain: body?.subdomain,
@@ -239,7 +239,7 @@ export async function handleDemoSubdomainRoutes(
   }
 
   if ((pathname === '/api/demo/subdomain/deploy' || pathname === '/api/demo/deploy') && method === 'POST') {
-    const body = await ctx.readJsonBody().catch(() => ({}));
+    const body = await ctx.readJsonBody().catch(() => ({} as Record<string, any>));
     const deployRes = await deployDemoPath(targetUser, {
       gameId: body?.gameId,
       customSubdomain: body?.subdomain,

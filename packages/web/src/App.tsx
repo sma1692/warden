@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   Bell,
   Bot,
@@ -75,6 +76,7 @@ const TabFallback: React.FC = () => (
 );
 import type {
   Agent,
+  AgentRun,
   AgentStepRouting,
   ApprovalGate,
   BacklogItem,
@@ -251,6 +253,7 @@ export const App: React.FC<AppProps> = ({
   // Core data state. Starts empty; refreshAllData fills it on mount from the
   // API (or fallback seeds when offline), so seeds stay out of this chunk.
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [runs, setRuns] = useState<AgentRun[]>([]);
   const [projectContexts, setProjectContexts] = useState<ProjectContext[]>([]);
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [gates, setGates] = useState<ApprovalGate[]>([]);
@@ -318,6 +321,7 @@ export const App: React.FC<AppProps> = ({
   const refreshAllData = useCallback(async () => {
     const [
       loadedAgents,
+      loadedRuns,
       loadedContexts,
       loadedThreads,
       loadedGates,
@@ -327,6 +331,7 @@ export const App: React.FC<AppProps> = ({
       loadedCredentials,
     ] = await Promise.all([
       apiClient.getAgents(),
+      apiClient.getAgentRuns(),
       apiClient.getProjectContexts(),
       apiClient.getChatThreads(),
       apiClient.getApprovalGates(),
@@ -336,6 +341,7 @@ export const App: React.FC<AppProps> = ({
       apiClient.getProviderCredentials(),
     ]);
     setAgents(loadedAgents);
+    setRuns(loadedRuns);
     setProjectContexts(loadedContexts);
     setThreads(loadedThreads);
     setGates(loadedGates);
@@ -358,6 +364,7 @@ export const App: React.FC<AppProps> = ({
       case 'STEP_CREATED':
       case 'BRAIN_STATUS':
         setAgents(await apiClient.getAgents());
+        setRuns(await apiClient.getAgentRuns());
         break;
       case 'CHAT_MESSAGE':
         setThreads(await apiClient.getChatThreads());
@@ -372,6 +379,7 @@ export const App: React.FC<AppProps> = ({
         break;
       case 'BACKLOG_UPDATED':
         setBacklogItems(await apiClient.getBacklogItems());
+        setRuns(await apiClient.getAgentRuns());
         break;
       case 'BUDGET_EXCEEDED':
         break; // budget is refreshed by the notifier subscription below
@@ -500,6 +508,13 @@ export const App: React.FC<AppProps> = ({
             gate.prompt_text ||
               'Token limit reached! Your chat quota is exhausted — add your Meta Muse key in Settings to continue.'
           );
+        }
+        return;
+      }
+      if (evt.type === 'BACKLOG_UPDATED' && evt.data) {
+        const item = evt.data as BacklogItem;
+        if (item.stage === 'DONE' && item.title) {
+          showToast(`✅ Task completed: "${item.title}"`);
         }
         return;
       }
@@ -717,6 +732,13 @@ export const App: React.FC<AppProps> = ({
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
   };
 
+  const activeRunsCount = useMemo(
+    () =>
+      runs.filter((r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA')
+        .length,
+    [runs]
+  );
+
   const pinnedTabs: {
     id: PrimaryTabId;
     label: string;
@@ -725,8 +747,13 @@ export const App: React.FC<AppProps> = ({
   }[] = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'agents', label: 'Team', icon: Users, badge: `${agents.length}` },
-    { id: 'reports', label: 'Reports', icon: FileText, badge: '4' },
-    { id: 'backlogs', label: 'Backlogs', icon: Kanban, badge: `${backlogItems.length + 6}` },
+    {
+      id: 'reports',
+      label: 'Activity',
+      icon: Activity,
+      badge: activeRunsCount > 0 ? `${activeRunsCount} live` : `${runs.length}`,
+    },
+    { id: 'backlogs', label: 'Backlogs', icon: Kanban, badge: `${backlogItems.length}` },
     { id: 'seo', label: 'SEO', icon: Globe },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -1107,12 +1134,14 @@ export const App: React.FC<AppProps> = ({
                       const spawned = await apiClient.spawnDemoTaskRun(itemId, summary);
                       await refreshAllData();
                       if (spawned) {
-                        handleOpenThreadByObject(spawned.thread);
-                        showToast(`Spawning team for "${spawned.item.title}" — lead chat open.`);
+                        showToast(
+                          `Spawning team for "${spawned.item.title}" — live in Activity.`
+                        );
                       }
                     }}
                     onOpenAgentTab={(slug) => handleOpenAgentWindowTab(slug)}
                     onOpenBacklogsTab={() => setActiveTab('backlogs')}
+                    onOpenActivityTab={() => setActiveTab('reports')}
                     onOpenThread={handleOpenThread}
                     onDecisionRecorded={(summary) => showToast(summary)}
                   />
@@ -1145,11 +1174,15 @@ export const App: React.FC<AppProps> = ({
               <Suspense fallback={<TabFallback />}>
               <ReportsView
                 activeVertical={activeVertical}
+                agents={agents}
                 backlogItems={backlogItems}
                 onTriggerStandupNow={handleTriggerStandup}
                 onOpenBacklog={() => setActiveTab('backlogs')}
                 onOpenBacklogItem={handleOpenBacklogItem}
                 onOpenChatWithAgent={(slug) => handleOpenAgentWindowTab(slug)}
+                onInspectAgent={(agent, subTab, runId) =>
+                  handleInspectAgent(agent, subTab, runId)
+                }
                 onOpenReportWindowTab={(report) => handleOpenReportWindowTab(report)}
               />
               </Suspense>

@@ -260,6 +260,96 @@ function shortUserId(userId: string): string {
   return userId.replace(/-/g, '').slice(0, 8);
 }
 
+export const DEMO_STARTER_BACKLOG_ITEMS = [
+  {
+    key: 'lobby_bootstrap',
+    title: 'Lobby bootstrap: loading screen + logo + lobby with Play button',
+    spec_md:
+      'Branded loading screen with the proper logo lockup, then a lobby screen with a Play button that enters the match.',
+    stage: 'NEEDS_CEO' as const,
+    priority: 'P0' as const,
+  },
+  {
+    key: 'trophy_assets',
+    title: 'Generate trophy system art set (12 sprites + 4 animations)',
+    spec_md:
+      'Per ASSETS_MANIFEST.md: trophy ladder art in the locked style, packed as a sprite atlas in the demo game bundle.',
+    stage: 'TODO' as const,
+    priority: 'P0' as const,
+  },
+  {
+    key: 'crash_patch',
+    title: 'Support case: game crashes after the final move',
+    spec_md:
+      'Player report: the arena crashes on match end. Reproduced by triage; minimal end-state guard plus Playwright regression test ready for approval.',
+    stage: 'NEEDS_CEO' as const,
+    priority: 'P0' as const,
+  },
+  {
+    key: 'trophy_seo',
+    title: 'Trophy launch SEO cluster (4 guides + FAQ schema)',
+    spec_md:
+      'How-to trophy guides with FAQ schema so launch searches land on the demo game. How-to intent first.',
+    stage: 'TODO' as const,
+    priority: 'P1' as const,
+  },
+  {
+    key: 'trophy_social',
+    title: 'Trophy launch social visuals (5 clips + launch thread)',
+    spec_md:
+      'Player-flex clips cut from the new art set plus the announcement thread. Premiere on Reels + Shorts.',
+    stage: 'TODO' as const,
+    priority: 'P1' as const,
+  },
+] as const;
+
+export async function ensureDemoStarterBacklog(userId: string): Promise<void> {
+  try {
+    const mod: Record<string, any> = await import(/* @vite-ignore */ '@warden/db');
+    const dbStore = mod?.dbStore;
+    if (!dbStore) return;
+    if (typeof dbStore.init === 'function') await dbStore.init().catch(() => undefined);
+    const existing: Array<{ title?: string; id?: string }> = await dbStore.listBacklogItems({
+      userId,
+    });
+    for (const s of DEMO_STARTER_BACKLOG_ITEMS) {
+      const hasMatch = existing.some((b) => {
+        const t = (b.title || '').toLowerCase();
+        const id = (b.id || '').toLowerCase();
+        if (s.key === 'lobby_bootstrap') {
+          return id.includes('lobby_bootstrap') || t.includes('lobby with play') || t.includes('lobby bootstrap');
+        }
+        if (s.key === 'trophy_assets') {
+          return id.includes('trophy_assets') || t.includes('trophy system art') || t.includes('trophy asset');
+        }
+        if (s.key === 'crash_patch') {
+          return id.includes('crash_patch') || t.includes('crashes after the final move');
+        }
+        if (s.key === 'trophy_seo') {
+          return id.includes('trophy_seo') || t.includes('seo cluster');
+        }
+        if (s.key === 'trophy_social') {
+          return id.includes('trophy_social') || t.includes('social visuals') || t.includes('trophy launch pack');
+        }
+        return false;
+      });
+      if (!hasMatch) {
+        await dbStore.createBacklogItem({
+          user_id: userId,
+          title: s.title,
+          spec_md: s.spec_md,
+          stage: s.stage,
+          priority: s.priority,
+          department: 'tech',
+          project_slug: 'demo-project',
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[DemoProvisioning] Failed to ensure starter backlog:', err);
+  }
+}
+
 export async function seedDemoAgentRuns(_userId: string): Promise<void> {
   // No-op: new users start at 0 tokens and only record actual agent runs.
 }
@@ -308,44 +398,7 @@ async function seedDemoRows(
       ` Approve the hotfix or the asset batch in NEEDS ACTION to watch a loop close.`,
   });
 
-  const starters = [
-    {
-      title: 'Generate trophy system art set (12 sprites + 4 animations)',
-      spec_md: 'Per ASSETS_MANIFEST.md: trophy ladder art in the locked style, packed as a sprite atlas in the demo game bundle.',
-      stage: 'TODO',
-      priority: 'P0',
-    },
-    {
-      title: 'Support case: game crashes after the final move',
-      spec_md: 'Player report: the arena crashes on match end. Reproduced by triage; minimal end-state guard plus Playwright regression test ready for approval.',
-      stage: 'NEEDS_CEO',
-      priority: 'P0',
-    },
-    {
-      title: 'Trophy launch SEO cluster (4 guides + FAQ schema)',
-      spec_md: 'How-to trophy guides with FAQ schema so launch searches land on the demo game. How-to intent first.',
-      stage: 'TODO',
-      priority: 'P1',
-    },
-    {
-      title: 'Trophy launch social visuals (5 clips + launch thread)',
-      spec_md: 'Player-flex clips cut from the new art set plus the announcement thread. Premiere on Reels + Shorts.',
-      stage: 'TODO',
-      priority: 'P1',
-    },
-  ] as const;
-  for (const s of starters) {
-    await dbStore.createBacklogItem({
-      user_id: userId,
-      title: s.title,
-      spec_md: s.spec_md,
-      stage: s.stage,
-      priority: s.priority,
-      department: 'tech',
-      project_slug: 'demo-project',
-    });
-  }
-
+  await ensureDemoStarterBacklog(userId);
   await seedDemoAgentRuns(userId);
 }
 
@@ -412,6 +465,7 @@ export async function provisionUser(
   if (existing) {
     console.log(`[🚀 DEMO PROVISION] Existing workspace found for user=${userId} mode=${existing.mode} deploy_status=${existing.deploy_status} deploy_url=${existing.deploy_url}`);
     if (existing.mode === 'demo') {
+      await ensureDemoStarterBacklog(userId);
       await seedDemoAgentRuns(userId);
       if (!existing.deploy_url || existing.deploy_status === 'NOT_DEPLOYED') {
         const deployed = await deployInitialDemoBuild(userId, existing.local_dir);
