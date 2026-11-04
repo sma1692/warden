@@ -12,11 +12,12 @@
     "packages/client"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "WARDEN_SOURCE=db npm run dev --workspaces --if-present",
     "dev:db": "WARDEN_SOURCE=db npm run dev",
-    "dev:md": "WARDEN_SOURCE=md npm run dev",
-    "dev:api": "npm --workspace=@warden/orchestrator run dev",
+    "dev:md": "WARDEN_SOURCE=md npm run dev --workspaces --if-present",
+    "dev:api": "WARDEN_SOURCE=db npm --workspace=@warden/orchestrator run dev",
     "dev:api:db": "WARDEN_SOURCE=db npm run dev:api",
+    "dev:api:md": "WARDEN_SOURCE=md npm --workspace=@warden/orchestrator run dev",
     "dev:web": "npm --workspace=@warden/web run dev",
     "dev:ui": "npm --workspace=@warden/web run dev:ui",
     "build": "node scripts/build.mjs",
@@ -24,6 +25,7 @@
     "build:stag": "node scripts/build.mjs stag",
     "build:local": "node scripts/build.mjs local",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:migrate": "npm --workspace=@warden/db run migrate",
@@ -44,5 +46,6 @@
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
-  }
+  },
+  "license": "MIT"
 }

@@ -62,7 +62,7 @@ function makeSeedAgent(
     health_status: 'HEALTHY',
     last_heartbeat_at: NOW_ISO,
     active_subagent_count: 0,
-    max_run_duration_ms: 86_400_000,
+    max_run_duration_ms: 1_800_000,
     current_run_id: null,
     clocked_in_at: null,
     total_work_time_ms: 0,

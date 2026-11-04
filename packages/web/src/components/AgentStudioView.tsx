@@ -529,7 +529,7 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
               last_heartbeat_at: new Date().toISOString(),
               max_subagents: 4,
               active_subagent_count: 0,
-              max_run_duration_ms: 86_400_000,
+              max_run_duration_ms: 1_800_000,
               current_run_id: null,
               clocked_in_at: null,
               active_git_branch: null,

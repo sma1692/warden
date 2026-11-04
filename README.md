@@ -1,194 +1,155 @@
 # Warden — Autonomous Multi-Agent Command Center & Chief of Staff Framework
 
-Warden is an open-source multi-agent orchestration framework designed for founders and engineering leaders. One human operator interacts with a single executive agent, `warden`. Warden orchestrates a corporate-style hierarchy of specialized agents across engineering, product, infrastructure, security, and growth, delivering compact, decision-ready briefs.
+Warden is an open-source (MIT) multi-agent orchestration framework and executive command center built for founders and engineering leaders. One human operator interacts with a single executive agent, `@warden`. Warden coordinates a corporate hierarchy of specialized agents across engineering, product, infrastructure, security, and growth, delivering compact, decision-ready briefs and verified code changes.
 
-The framework runs natively inside Muse and operates as a standalone orchestrator with a live React web dashboard, dual Markdown/Postgres state engines, multi-channel reminders, and automated CLI/daemon execution.
+The platform ships a Node.js Control Plane API (`@warden/orchestrator`), a real-time React + Vite web dashboard (`@warden/web`), a PostgreSQL + `pgvector` hybrid memory engine (`@warden/db`), an ephemeral container/SSH sandbox manager with automated Playwright visual QA (`@warden/sandbox`), and a jailed local workspace execution daemon (`@warden/client` / `warden-link`).
 
 ---
 
 ## 1. The Bottom-Heavy Token Pyramid
 
-Traditional multi-agent systems suffer from catastrophic context bloat. In naive swarm architectures, root orchestrators ingest entire codebases, multi-megabyte project histories, and complete backlogs on every conversational turn. This causes exponential token cost growth and high hallucination rates.
+Traditional multi-agent swarms suffer from catastrophic context bloat: root orchestrators ingest entire codebases, multi-megabyte conversation histories, and complete backlogs on every turn.
 
-Warden solves this problem by inverting the token flow into a **Bottom-Heavy Token Pyramid**:
+Warden inverts token flow into a **Bottom-Heavy Token Pyramid**:
 
-- **Root Level (`warden` — Chief of Staff)**:
+- **Root Level (`@warden` — Chief of Staff)**:
   - Budget: Under 1,500 tokens per turn.
-  - Strict Token Firewall: Never reads source code, repository directories, full topology caches, or raw task lists.
-  - Responsibilities: Analyzes high-level user intent, routes tasks downward to C-Suite leads, and compresses responses into actionable briefs.
-- **Level 0 C-Suite (`cto`, `cbo`)**:
+  - Strict Token Firewall: Never reads raw source files, repository trees, or raw task lists.
+  - Responsibilities: Analyzes high-level operator intent, routes tasks across departments, and compresses upward telemetry into executive briefs.
+- **Level 0 C-Suite (`@cto`, `@cmo`, `@cbo`)**:
   - Budget: Under 4,000 tokens per turn.
-  - Strict Context Firewall: Reads only designated `context/<agent>.md` and `memory/<agent>.md` files. Forbidden from loading full code trees or project backlogs.
-  - Responsibilities: The CTO governs cross-project architecture and chairs standups; the CBO evaluates commercial priorities, prize EV, and opportunity cost.
-- **Level 1 Domain Leads (`pm`, `tech_lead`, `infra_head`, `sec_lead`, `designer`, `pa`)**:
-  - Responsibilities: Own prioritized backlogs (`worklist/`), system specifications, API contracts (`contracts/`), cloud infrastructure runbooks, and security audits.
-  - Role in Pyramid: Consume concise symbol digests from Reader Scouts, deconstruct high-level initiatives into minimal file-edit manifests (`FileEditDirective[]`), and assign atomic tasks to Level 2 developers.
-- **Level 2 Sandboxed Developers & Scouts (`reader_scout`, `frontend_dev`, `backend_dev`, `systems_cpp_dev`, `rust_lowlat_dev`, `xr_3d_dev`, `infra_jr`, `sec_auditor`, `coder_applier`)**:
-  - The wide base of the pyramid.
-  - **Fast Read Scout (`reader_scout`)**: Scans raw codebases, runs grep/AST queries, and returns strictly $\le 150$-word symbol + line-range digests. Tier 1 never ingests raw code.
-  - **Fast File Appliers**: Sandboxed execution inside isolated directory mirrors (`.state/mirror/`).
-  - Scoped Sharding: Each developer works strictly on 1 to 3 assigned files per task shard.
-- **Strict Upward Return Compression Caps**:
-  - Level 2 Scout to Level 1: Under 150 words (symbol + line-range digest ONLY).
-  - Level 2 Applier to Level 1: Under 200 words. Writes full diffs to disk; passes only file paths and brief status upward.
-  - Level 1 to Level 0: Under 150 words. Delivers bullet points and contract file paths.
-  - Level 0 to Root (`warden`): Under 120 words. Delivers high-level summaries and explicit human decision items (`[NEEDS_CEO]`).
-- **Zero-Read Single-File Chat Logging**:
-  - Maintains a single append-only log file per session (`chats/<YYYY-MM-DD>-session-<id>.md`).
-  - Agents append progress via atomic stream writes without reading previous turns back into context, maintaining constant O(1) logging overhead.
+  - Strict Context Firewall: Consumes only scoped architecture docs, pinned preferences, and compact upward digests.
+  - Responsibilities: `@cto` governs system architecture and chairs daily standups; `@cmo` and `@cbo` govern growth, SEO/AEO, and commercial priorities.
+- **Level 1 Domain Leads (`@pm`, `@tech_lead`, `@infra_head`, `@sec_lead`, `@seo_aeo_head`, `@designer`)**:
+  - Responsibilities: Own prioritized sprint backlogs, API contracts (`propose_contract`), infrastructure runbooks, and security gates.
+  - Role in Pyramid: Consume symbol digests from Reader Scouts, deconstruct initiatives into minimal file-edit manifests (`FileEditDirective[]`), and fan out atomic tasks to Level 2 specialists.
+- **Level 2 Sandboxed Developers & Scouts (`@reader_scout`, `@frontend_dev`, `@backend_dev`, `@infra_jr`, `@sec_auditor`, `@coder_applier`)**:
+  - **Fast Read Scout (`@reader_scout`)**: Scans source trees and emits $\le 150$-word symbol + line-range digests so Tier 1 planners never ingest raw files.
+  - **Scoped File Appliers**: Execute inside isolated Docker sandboxes, cloud ephemeral VMs, or jailed local workspaces (`warden-link`), capped at $\le 8$ turns per shard (`MAX_L2_SHARD_TURNS = 8`) to prevent quadratic context snowballing.
 
 ---
 
-## 2. Scout → Plan → Apply: Scout -> Architect -> Applier Protocol & Read+Write Cost Benchmark
+## 2. Scout -> Plan -> Apply Execution Pipeline
 
-Warden features a decoupled execution pipeline called **Scout → Plan → Apply**, separating raw code inspection, high-level strategic reasoning, and mechanical code modification.
+Warden decouples code inspection, architectural reasoning, and mechanical file editing across three phases:
 
-- **Three-Stage Execution Flow**:
-  - **Phase 1: Fast Read Scout (Scout pass)**: Level 2 `reader_scout` subagents inspect raw source trees, execute AST and grep lookups, and emit an ultra-compact symbol and line-range digest ($\le 150$ words). Tier 1 models NEVER ingest full source files.
-  - **Phase 2: High-Reasoning Architect (Tier 1)**: Level 0 and Level 1 agents (`warden`, `cto`, `pm`, `tech_lead`, `sec_lead`, `infra_head`) consume only the compressed digest. Using frontier reasoning models (Muse Wonder 1.0, Muse Pro), they solve architectural constraints and produce minimal `FileEditDirective[]` manifests.
-  - **Phase 3: Fast File Applier (Apply pass)**: Level 2 developer subagents (`coder_applier`, `frontend_dev`, `backend_dev`, etc.) consume the manifest and apply file modifications using high-speed models (Muse Spark 1.3, Muse Light, Muse Flash) or local offline Meta open-weights models via Ollama and vLLM (Llama 3.3 70B, Muse Glimmer 30B).
-- **Verified Read + Write Cost Benchmark**:
-  - **Zero Raw-Code Reads at Tier 1**: Eliminates 85% to 92% of input tokens on architectural planning turns by substituting raw code with $\le 150$-word digests.
-  - **Cumulative Input Token Costs: 75% Reduction** (dropping effective blended rates from $0.60 per 1M tokens down to $0.15 per 1M tokens).
-  - **Output Generation Costs: 94% Reduction** (dropping output billing from $10.00 per 1M tokens down to $0.60 per 1M tokens).
-  - **Overall Read + Write Benchmark**: End-to-end multi-agent feature implementations achieve an overall 80% to 92% token cost reduction compared to naive monolithic swarms.
-- **Anti-Snowballing Turn Limits**:
-  - Long-running conversational threads compound quadratic context re-billing on every turn.
-  - Warden enforces a strict ceiling of 8 conversational turns or fewer per developer shard.
-  - Once a shard completes its file modifications, the agent process terminates immediately. New tasks spawn fresh subagents with clean context windows.
-- **Disjoint Shard Concurrency**:
-  - Large features split across disjoint file sets.
-  - Multiple Level 2 developers run simultaneously without merge conflicts or overlapping token bloat.
+- **Phase 1 — Scout (`reader_scout`)**: Inspects repository files and returns compact symbol and line-range digests ($\le 150$ words).
+- **Phase 2 — Architect (`planning` step)**: Level 0/1 agents reason over the digest using frontier models (`muse-wonder-1.0`, `muse-spark-1.3`) and emit structured `FileEditDirective[]` manifests.
+- **Phase 3 — Applier (`tool_loop` step)**: Level 2 developers apply edits using high-speed models (`muse-light`, `muse-flash`) or local open-weights models via Ollama / vLLM (`llama-3.3-70b`, `muse-glimmer-30b`), followed by automated build and headless Playwright verification.
 
 ---
 
-## 3. Meta-Native Model Routing & Runtime Auto-Discovery
+## 3. Meta-Native 3-Tier Model Router & Multi-Key Failover
 
-Warden routes every agent to Meta models across the Meta Model API and local open-weights runtimes.
+`ModelRouter` (`packages/orchestrator/src/models/ModelRouter.ts`) routes every inference step across Meta cloud models and local Meta open-weights runtimes:
 
-- **Meta-Native Model Portfolio**:
-  - **Muse Wonder 1.0**: Tier 1 frontier reasoning for architects and planners.
-  - **Muse Spark 1.3**: Tier 2 high-speed coding and tool loops.
-  - **Muse Light / Muse Flash**: Tier 2 fast file appliers.
-  - **Muse Glimmer 30B**: context compaction, local or cloud.
-  - **Muse Image / Muse Voice**: creative visuals and voice notes.
-  - **Meta Open Weights**: Llama 3.3 70B and Llama 4 Maverick via Ollama, vLLM, and Hugging Face endpoints.
-- **Runtime Unknown-Model Discovery**:
-  - If a user specifies a new or unlisted model identifier in configuration or via CLI arguments, Warden automatically triggers model auto-discovery.
-  - The discovery engine queries model endpoint metadata or applies heuristic capability profiling to detect context window limits, tool-calling capabilities, and pricing metrics.
-  - It classifies the discovered model into Tier 1 (Architect) or Tier 2 (Applier).
-- **Zero-Overhead Local Persistence (`.state/model-registry.json`)**:
-  - Discovered model profiles save directly to `.state/model-registry.json`.
-  - Subsequent runs load resolved specifications instantly from the local cache, avoiding external network lookups.
-- **Integrated Token Telemetry & Reporting**:
-  - Built-in script `scripts/token-report.mjs` inspects session traces and calculates granular token expenditures.
-  - Outputs billed input tokens, output tokens, thinking/reasoning tokens, tool invocation counts, and USD cost estimates per agent tier.
+- **3-Tier Dynamic Resolution**:
+  - **Tier A (Global Profile)**: `META_MUSE_HACKATHON`, `LOCAL_ZERO_COST`, or `CUSTOM_HYBRID`.
+  - **Tier B (Per-Agent Primary + Fallback)**: Automatic cross-provider failover if a primary endpoint is unreachable.
+  - **Tier C (Per-Step Intra-Run Routing)**: Dynamically switches models within a single run (`planning` -> `muse-spark-1.3` / `muse-wonder-1.0`, `tool_loop` -> `muse-light`, `compaction` -> `muse-glimmer-30b`, `creative_image` -> `muse-image`, `voice_note` -> `muse-voice`).
+- **Multi-Key Credential Pool & BYOK**:
+  - `CredentialPoolManager` rotates API keys on HTTP `429`, `402`/`403`, or `5xx` with automatic cooldown timers and failover telemetry.
+  - **Bring Your Own Key (BYOK)**: Operators can store AES-256-GCM encrypted Meta Muse keys in the dashboard (`UserLlmKeys`), bypassing shared platform token caps.
 
 ---
 
-## 4. Operating Modes
+## 4. Hybrid Memory Engine (`PostgreSQL + pgvector`)
 
-Warden provides three operational modes to match workflow intensity:
+`HybridMemoryEngine` (`packages/orchestrator/src/memory/HybridMemoryEngine.ts`) combines deterministic SQL context with vector recall:
 
-- **Mode A: Executive Mode (Upward Compression Funnel)**:
-  - Communicate with `warden` in chat. Your request cascades downward through the hierarchy and compresses upward into an executive brief.
-- **Mode B: Direct-to-Agent Mode (`@agent`)**:
-  - Prefix messages with an agent handle (such as `@cto`, `@pm`, `@tech_lead <project>`, `@frontend_dev <project>`, or `@infra_head`).
-  - Bypasses root compression to allow unmediated technical interaction with specific specialists.
-- **Mode C: Standup Automation & Daemon Execution**:
-  - Run `npm run standup` to trigger an automated standup that triages `worklist/inbox.md`, reconciles backlogs, and writes a draft for human approval.
-  - Run `npm run daemon` to maintain a background service running scheduled standups and backlog checks.
+- **Deterministic SQL Injection**: Always injects the agent's role prompt, allowed repositories, matching `project_contexts` (`architecture_doc_md`, build/test commands), active sprint plan, and pinned memories (`PINNED_PREFERENCE`, `CEO_DECISION`).
+- **768-Dim Pinned Semantic + Keyword Recall**: Queries `agent_memories` (`EPISODIC_LESSON`, `REPO_GOTCHA`), past `chat_messages`, and indexed `code_chunks` using `pgvector` cosine similarity (`vector(768)`) blended with normalized keyword overlap.
+- **Zero-Drift Offline Embedding Fallback**: Pinned to `muse-embed-1.0` (768 dimensions) with a deterministic MD5 word/bigram + FNV-1a character trigram feature-hashing fallback so vector search operates reliably even in offline/local environments.
 
 ---
 
-## 5. Repository Operators Protocol (`pull -> work -> pushit`)
+## 5. Runaway Watchdogs, Sandboxed QA & Local Workspace Link
 
-All code modifications adhere to a safe repository lifecycle:
-
-- **1. Synchronize Inward (`sync-in`)**:
-  - Command: `node scripts/repo-tool.mjs sync-in <project>`
-  - Pulls fast-forward upstream updates and mirrors source files into `.state/mirror/<project>/`.
-- **2. Sandboxed Parallel Execution**:
-  - Developer subagents operate exclusively within `.state/mirror/<project>/`.
-  - Subagents cannot modify the parent repository root directly.
-- **3. Synchronize Outward (`sync-out` / `pushit`)**:
-  - Command: `node scripts/repo-tool.mjs sync-out <project>`
-  - Verifies file changes, copies updates back to the project repository, bumps patch versions every fifth commit, records commit headers, and pushes changes upstream.
+- **`HealthAndQuotaGuard` (15s Watchdog Sweep)**:
+  - **Anti-Fork-Bomb Caps**: Enforces `MAX_DEPTH = 4`, per-agent concurrency limits (`max_subagents = 4`), and per-run spawn limits (`MAX_SPAWNS_PER_RUN = 12`).
+  - **Stuck-Loop Circuit Breaker**: Trips `STUCK_LOOP` if an agent invokes the same tool with identical arguments and fails 3 times consecutively.
+  - **30-Minute Hard Timeout**: Automatically snapshots uncommitted work to a `wip/timeout-<runId>` branch before terminating the container.
+  - **Per-Run & Per-Operator Token Caps**: Pauses runs (`PAUSED_TOKEN_CAP`) and raises an interactive `ApprovalGate` when budgets are reached.
+- **`PlaywrightQAGate` (`packages/sandbox/src/PlaywrightQAGate.ts`)**:
+  - Runs `npm run typecheck`, `npm run build`, boots the preview server, and launches headless Chromium with WebGL flags (`--use-gl=angle`, `--use-angle=swiftshader`) to assert HTTP 200 and zero console/page errors before completion.
+- **`warden-link` Local Client (`packages/client`)**:
+  - Lightweight CLI daemon (`warden-link start --url <api> --key <jwt> --workspace <dir>`) that polls the control plane and executes `read_file`, `write_file`, and `pushit` commands inside a path-jailed local repository while blocking access to `.env` and private keys.
 
 ---
 
-## 6. Live Telemetry Dashboard & Dual State Engines
+## 6. Live Web Dashboard & Omnichannel Command Surface
 
-- **Dual State Backend**:
-  - Run `npm run dev:md` for zero-dependency file-based state storing all backlogs, memory, and logs in Markdown.
-  - Run `npm run dev:db` for enterprise state management backed by PostgreSQL and pgvector.
-- **Real-Time Web Dashboard**:
-  - Responsive React application running on Vite.
-  - Visualizes active workforce status, sprint backlogs, live token consumption, and system health telemetry.
-  - Includes interactive Consultation Knob widget adjusting agent autonomy levels between manual human gates and automated execution.
+- **Real-Time Web Dashboard (`packages/web`)**:
+  - Built with React 19, Vite, and Tailwind CSS, synchronized over authenticated WebSockets (`/ws`).
+  - Includes the **Priority Window & Approval Gates**, **Workforce Floor & Agent Studio**, **Chat Center** (with live thinking/tool trace inspector), **Sprint & Kanban Backlog Board**, **Automated SEO & AEO Auditor** (`/llms.txt` + JSON-LD generator), and **Consultation Knob** (autonomy level tuner).
+- **Messaging & Reminder Bridges**:
+  - Includes a pluggable messaging command center (`packages/orchestrator/src/bridge/whatsapp/`) supporting voice note transcription, interactive standup approval buttons, and multi-channel cron reminders (`packages/orchestrator/src/reminders/`).
 
 ---
 
-## 7. Workspace Layout
+## 6.5 What the Runtime Enforces (and What It Does Not)
+
+The pyramid is enforced in code, not only in prompts. See `packages/orchestrator/src/engine/tierPolicy.ts` and its tests.
+
+- **Upward word caps**: Every subagent reply is trimmed to its tier cap before it enters the parent context (Level 0: 120, Level 1: 150, `reader_scout`: 150, Level 2 appliers: 200). The full output stays on the child run.
+- **Raw-source firewall**: `read_file` refuses source files for `@warden`, Level 0, and Level 1 agents. They read docs only and must delegate code reads to `@reader_scout`.
+- **Path containment**: File tools use `path.relative` containment, so `../` and sibling-prefix paths are rejected.
+- **Honest tool results**: Missing files, refused writes, unapplied edits, and commands with no sandbox session return `ok: false`. The QA gate reports "not run" when Playwright is unavailable.
+- **Telemetry provenance**: Token and cost numbers come only from the provider `usage` block. Tool steps and simulated (offline, no API key) turns record zero, and simulated steps are labelled `[simulated]`. Demo workspaces ship with labelled seed history.
+- **Sandbox modes**: Runs use a Docker container when the `warden-workspace` image is available. Otherwise they fall back to LOCAL mode (host process behind `PermissionGuard`) and log a warning. Set `WARDEN_REQUIRE_DOCKER=1` to forbid the fallback.
+- **CORS**: Set `WARDEN_CORS_ORIGIN` to your dashboard origin in production (defaults to `*` for local dev).
+
+Run the checks:
+
+```bash
+npm run typecheck
+npm test
+```
+
+---
+
+## 7. Monorepo Layout
 
 ```text
 warden/
-├── projects.example.yaml             # Template mapping project keys to repository folders
-├── .env.example                      # Configuration template for the Meta Model API key
-├── AGENTS.md                         # Canonical corporate hierarchy and communication protocol
-├── MUSE.md                           # Muse entrypoint and agent definitions
-├── README.md                         # System documentation and architecture guide
+├── .env.example                      # Environment template (Meta Muse API, Postgres, Auth, Sandbox)
+├── AGENTS.md                         # Coding agent instructions and architectural conventions
+├── README.md                         # Architecture and quickstart documentation
+├── docker-compose.yml                # PostgreSQL 16 + pgvector container definition
 ├── packages/
-│   ├── orchestrator/                 # Control plane, model router, and reminder service
-│   ├── db/                           # PostgreSQL schema, migrations, and markdown syncer
-│   ├── sandbox/                      # Sandboxed execution manager and security guardrails
-│   └── web/                          # Live web dashboard UI (React + Vite + Tailwind)
-├── scripts/
-│   ├── repo-tool.mjs                 # Multi-repo synchronization and mirror manager
-│   ├── warden-muse.mjs           # Meta Muse CLI orchestrator and standup daemon
-│   ├── token-report.mjs              # Token consumption and cost telemetry reporter
-│   ├── token-firewall.mjs            # Static token audit and file access verifier
-│   ├── export-oss-md.mjs             # Open-source zero-leak markdown & public repo exporter
-│   └── publish-public.mjs            # Production allowlist publisher and sanitizer
-├── .agents/skills/                   # Standardized runbooks (orchestrator, standup, pushit)
-├── .claude/agents/                   # Agent prompt library (roles, hierarchy, runbooks)
-└── docs/                             # Setup guides (WhatsApp Cloud API, privacy policies)
+│   ├── db/                           # PostgreSQL + pgvector schema, store, and JSON snapshot fallback
+│   ├── sandbox/                      # Docker/SSH sandbox manager, PermissionGuard, PlaywrightQAGate
+│   ├── orchestrator/                 # HTTP/WS control plane, AgentRunner, ModelRouter, watchdogs, auth
+│   ├── web/                          # React + Vite command center dashboard
+│   └── client/                       # warden-link local workspace execution daemon
+└── scripts/
+    ├── build.mjs                     # Workspace build orchestrator
+    ├── token-report.mjs              # Session token and cost telemetry analyzer
+    └── token-firewall.mjs            # Static token budget and file-access verifier
 ```
 
 ---
 
-## 8. Quickstart Guide
+## 8. Quickstart
 
-- **Prerequisites**: Node.js (v20+ recommended) and optional Docker for PostgreSQL mode.
+**Prerequisites**: Node.js 20+ and Docker (for PostgreSQL + `pgvector`).
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/example/warden.git
-cd warden
-
-# 2. Install dependencies
+# 1. Install workspace dependencies
 npm install
 
-# 3. Configure environment and projects
+# 2. Configure environment
 cp .env.example .env
-cp projects.example.yaml projects.yaml
+# Edit .env and set META_MUSE_API_KEY (or configure your key later in the Dashboard Settings UI)
 
-# 4. Launch in Markdown mode (zero external database requirement)
-npm run dev:md
-
-# 5. Or launch in PostgreSQL mode
+# 3. Start PostgreSQL + pgvector and launch the stack
 npm run db:up
 npm run dev:db
+
+# 4. Verify build & type safety across all workspaces
+npm run typecheck
+npm run build
 ```
 
-The web dashboard is available at `http://localhost:5173` and the control plane API at `http://localhost:4000`.
-
----
-
-## 9. Zero-Leak Sanitization Guarantee
-
-Warden is built with strict privacy and data-isolation standards:
-
-- No proprietary internal company credentials, proprietary game/crypto logic, or private customer data are stored in tracked repository files.
-- All private state resides in gitignored local directories (`.state/`, `context/`, `memory/`, `worklist/`, `chats/`, `standups/`).
-- Automated sanitization scripts (`scripts/export-oss-md.mjs`, `scripts/publish-public.mjs`) guarantee zero sensitive data leakage across public releases.
+- **Web Dashboard**: `http://localhost:5173` (or `https://localhost:5173` when `WARDEN_HTTPS=true`)
+- **Control Plane API & WebSocket**: `http://localhost:4000` (`/api/*` and `/ws`)

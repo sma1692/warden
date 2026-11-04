@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 
 export const WARDEN_ROOT = path.resolve(__dirname, '../../..');
 
-// Auto-load root `.env` so DATABASE_URL, META_MUSE_API_KEY, TELEGRAM_* work from any workspace cwd
+// Auto-load root `.env` so DATABASE_URL, META_MUSE_API_KEY, WHATSAPP_* work from any workspace cwd
 (function loadRootEnv() {
   const envPath = path.join(WARDEN_ROOT, '.env');
   if (!fs.existsSync(envPath)) return;

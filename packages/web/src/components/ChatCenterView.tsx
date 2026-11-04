@@ -341,13 +341,6 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
   }, [preferredTargetAgentSlug, activeThread?.id, activeThread?.target_agent_id]);
 
   useEffect(() => {
-    if (initialDraft) {
-      setInputText(initialDraft);
-      onDraftConsumed?.();
-    }
-  }, [initialDraft, onDraftConsumed]);
-
-  useEffect(() => {
     if (!activeThread) return;
     let cancelled = false;
     apiClient.getChatMessages(activeThread.id).then(async (loaded) => {
@@ -449,12 +442,115 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
     onSelectThread(created.id);
   };
 
+  const sendMessageToThread = useCallback(
+    async (
+      threadId: string,
+      agentSlug: string,
+      textToSend: string,
+      filesToSend: MediaAttachment[] = []
+    ) => {
+      setIsSending(true);
+      const tempCeoId = `msg_temp_ceo_${Date.now()}`;
+      const optimisticCeoMsg: ChatMessage = {
+        id: tempCeoId,
+        thread_id: threadId,
+        sender_type: 'CEO',
+        sender_agent_id: null,
+        recipient_agent_id: agentSlug,
+        content: textToSend,
+        attachments_json: filesToSend,
+        run_id: null,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, optimisticCeoMsg]);
+
+      setLiveSteps([]);
+      setLiveBrainHistory([]);
+      setLiveBrainStatus({
+        thread_id: threadId,
+        run_id: 'pending',
+        agent_id: agentSlug,
+        agent_slug: agentSlug,
+        phase: 'ROUTING',
+        thought: `Analyzing directive for ${agentSlug} using muse-spark-1.3...`,
+        completed_step: 'CEO message received & logged',
+        next_action: `Clocking in ${agentSlug} and warming context + procedural memory`,
+        model_used: 'meta_muse/muse-spark-1.3',
+        timestamp: new Date().toISOString(),
+      });
+
+      try {
+        const res = await apiClient.sendChatMessage({
+          thread_id: threadId,
+          target_agent_id: agentSlug,
+          content: textToSend,
+          attachments: filesToSend,
+        });
+
+        if (res.agentReply) {
+          // Synchronous reply (offline fallback path): render immediately.
+          const reply = res.agentReply;
+          setMessages((prev) => [
+            ...prev.filter((m) => m.id !== tempCeoId),
+            res.ceoMessage,
+            reply,
+          ]);
+          if (reply.run_id) {
+            const steps = await apiClient.getInferenceSteps(reply.run_id);
+            if (steps && steps.length > 0) {
+              setRunStepsMap((prev) => ({ ...prev, [reply.run_id!]: steps }));
+            }
+          }
+          setIsSending(false);
+          setLiveBrainStatus(null);
+        } else if (res.runId) {
+          // Async dispatch (HTTP 202): CEO message is stored; the agent reply
+          // lands via WebSocket push or the polling loop. Keep the indicator up.
+          setMessages((prev) => [
+            ...prev.filter((m) => m.id !== tempCeoId),
+            res.ceoMessage,
+          ]);
+          const pending = {
+            runId: res.runId,
+            agentSlug: res.agentSlug || agentSlug,
+            startedAt: Date.now(),
+          };
+          pendingRunRef.current = pending;
+          setPendingRun(pending);
+        } else {
+          setMessages((prev) => [
+            ...prev.filter((m) => m.id !== tempCeoId),
+            res.ceoMessage,
+          ]);
+          setIsSending(false);
+          setLiveBrainStatus(null);
+        }
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== tempCeoId));
+        pendingRunRef.current = null;
+        setPendingRun(null);
+        setIsSending(false);
+        setLiveBrainStatus(null);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (initialDraft && activeThread && !isSending) {
+      const textToSend = initialDraft.trim();
+      onDraftConsumed?.();
+      if (textToSend) {
+        void sendMessageToThread(activeThread.id, targetAgentSlug, textToSend, []);
+      }
+    }
+  }, [initialDraft, activeThread, isSending, onDraftConsumed, sendMessageToThread, targetAgentSlug]);
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!inputText.trim() && attachments.length === 0) || !activeThread || isSending) {
       return;
     }
-    setIsSending(true);
     const textToSend =
       inputText.trim() ||
       `Inspect ${attachments.length} attached multimodal file(s) (${attachments.map((a) => a.filename).join(', ')})`;
@@ -462,88 +558,7 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
     setInputText('');
     setAttachments([]);
 
-    const tempCeoId = `msg_temp_ceo_${Date.now()}`;
-    const optimisticCeoMsg: ChatMessage = {
-      id: tempCeoId,
-      thread_id: activeThread.id,
-      sender_type: 'CEO',
-      sender_agent_id: null,
-      recipient_agent_id: targetAgentSlug,
-      content: textToSend,
-      attachments_json: filesToSend,
-      run_id: null,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, optimisticCeoMsg]);
-
-    setLiveSteps([]);
-    setLiveBrainHistory([]);
-    setLiveBrainStatus({
-      thread_id: activeThread.id,
-      run_id: 'pending',
-      agent_id: targetAgentSlug,
-      agent_slug: targetAgentSlug,
-      phase: 'ROUTING',
-      thought: `Analyzing directive for ${targetAgentSlug} using muse-spark-1.3...`,
-      completed_step: 'CEO message received & logged',
-      next_action: `Clocking in ${targetAgentSlug} and warming context + procedural memory`,
-      model_used: 'meta_muse/muse-spark-1.3',
-      timestamp: new Date().toISOString(),
-    });
-
-    try {
-      const res = await apiClient.sendChatMessage({
-        thread_id: activeThread.id,
-        target_agent_id: targetAgentSlug,
-        content: textToSend,
-        attachments: filesToSend,
-      });
-
-      if (res.agentReply) {
-        // Synchronous reply (offline fallback path): render immediately.
-        const reply = res.agentReply;
-        setMessages((prev) => [
-          ...prev.filter((m) => m.id !== tempCeoId),
-          res.ceoMessage,
-          reply,
-        ]);
-        if (reply.run_id) {
-          const steps = await apiClient.getInferenceSteps(reply.run_id);
-          if (steps && steps.length > 0) {
-            setRunStepsMap((prev) => ({ ...prev, [reply.run_id!]: steps }));
-          }
-        }
-        setIsSending(false);
-        setLiveBrainStatus(null);
-      } else if (res.runId) {
-        // Async dispatch (HTTP 202): CEO message is stored; the agent reply
-        // lands via WebSocket push or the polling loop. Keep the indicator up.
-        setMessages((prev) => [
-          ...prev.filter((m) => m.id !== tempCeoId),
-          res.ceoMessage,
-        ]);
-        const pending = {
-          runId: res.runId,
-          agentSlug: res.agentSlug || targetAgentSlug,
-          startedAt: Date.now(),
-        };
-        pendingRunRef.current = pending;
-        setPendingRun(pending);
-      } else {
-        setMessages((prev) => [
-          ...prev.filter((m) => m.id !== tempCeoId),
-          res.ceoMessage,
-        ]);
-        setIsSending(false);
-        setLiveBrainStatus(null);
-      }
-    } catch {
-      setMessages((prev) => prev.filter((m) => m.id !== tempCeoId));
-      pendingRunRef.current = null;
-      setPendingRun(null);
-      setIsSending(false);
-      setLiveBrainStatus(null);
-    }
+    await sendMessageToThread(activeThread.id, targetAgentSlug, textToSend, filesToSend);
   };
 
   return (

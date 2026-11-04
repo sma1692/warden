@@ -12,7 +12,6 @@ import {
   RunTriggerType,
 } from './OrchestratorStore.js';
 import { HealthAndQuotaGuard } from '../watchdogs/HealthAndQuotaGuard.js';
-import { TelegramPushPager } from '../telegram/TelegramPushPager.js';
 import {
   ChatTurnMessage,
   FileEditDirective,
@@ -24,6 +23,7 @@ import {
   parseFileEditDirectives,
 } from '../models/ModelRouter.js';
 import { HybridMemoryEngine, hybridMemoryEngine } from '../memory/HybridMemoryEngine.js';
+import { capUpwardReply, canReadRawSource, isInsideRoot } from './tierPolicy.js';
 
 const execAsync = promisify(exec);
 
@@ -150,7 +150,7 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
   {
     name: 'ask_ceo',
     description:
-      'Pause execution in WAITING_FOR_CEO state, checkpoint the current conversation history, create an ApprovalGate, and send a 1-way Telegram Push Pager alert.',
+      'Pause execution in WAITING_FOR_CEO state, checkpoint the current conversation history, and create an ApprovalGate for the CEO.',
     parameters: {
       type: 'object',
       properties: {
@@ -202,20 +202,17 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
 export class AgentRunner {
   private store: OrchestratorStore;
   private healthGuard: HealthAndQuotaGuard;
-  private telegramPager: TelegramPushPager;
   private modelRouter: ModelRouter;
   private memoryEngine: HybridMemoryEngine;
 
   constructor(options: {
     store: OrchestratorStore;
     healthGuard: HealthAndQuotaGuard;
-    telegramPager: TelegramPushPager;
     modelRouter?: ModelRouter;
     memoryEngine?: HybridMemoryEngine;
   }) {
     this.store = options.store;
     this.healthGuard = options.healthGuard;
-    this.telegramPager = options.telegramPager;
     this.modelRouter = options.modelRouter || new ModelRouter();
     this.memoryEngine = options.memoryEngine || hybridMemoryEngine;
   }
@@ -266,7 +263,6 @@ export class AgentRunner {
       : this.store.createRun({
           user_id:
             params.userId ??
-            existingRun?.user_id ??
             (params.chatThreadId
               ? this.store.threads.get(params.chatThreadId)?.user_id
               : undefined) ??
@@ -378,42 +374,92 @@ export class AgentRunner {
       ? this.store.backlogItems.get(params.backlogItemId) || null
       : null;
 
+    const userBacklogItems = Array.from(this.store.backlogItems.values()).filter(
+      (b) => !params.userId || (b.user_id ?? null) === params.userId
+    );
+    const needsCeoItems = userBacklogItems.filter(
+      (b) => b.stage === 'NEEDS_CEO' || b.requires_human_intervention
+    );
+    const pendingGatesForUser = Array.from(this.store.approvalGates.values()).filter(
+      (g) =>
+        g.status === 'PENDING' &&
+        (!params.userId || (g.user_id ?? null) === params.userId)
+    );
+    const liveQueueDigest = [
+      ``,
+      `# LIVE STUDIO QUEUE & NEEDS-ACTION SNAPSHOT`,
+      `- **Needs Action / CEO Sign-Off (${needsCeoItems.length} item(s))**:`,
+      ...(needsCeoItems.length > 0
+        ? needsCeoItems.map(
+            (b) =>
+              `  - \`[${b.priority}] ${b.title}\` (id=\`${b.id}\`, stage=\`${b.stage}\`, owner=\`${b.assigned_agent_id || b.pm_owner_id || '@warden'}\`): ${b.intervention_prompt || b.spec_md.slice(0, 180).replace(/\s+/g, ' ')}`
+          )
+        : [`  - None currently queued.`]),
+      ...(pendingGatesForUser.length > 0
+        ? [
+            `- **Pending Approval Gates (${pendingGatesForUser.length})**:`,
+            ...pendingGatesForUser.map(
+              (g) => `  - \`${g.gate_type}\` (${g.agent_id}): ${g.prompt_text.slice(0, 180)}`
+            ),
+          ]
+        : []),
+    ].join('\n');
+
+    const isConversationalFastPath =
+      (params.triggerType === 'CEO_CHAT' || params.triggerType === 'DIRECT_MENTION') &&
+      (params.maxSteps ?? 4) <= 2;
+
     let systemPrompt = existingRun?.system_context_override || agent.init_prompt;
     if (!existingRun?.system_context_override) {
-      try {
-        const built = await this.memoryEngine.buildAgentSystemPrompt({
-          agent: {
-            id: agent.id,
-            slug: agent.slug,
-            name: agent.name,
-            department: agent.department,
-            hierarchy_level: agent.hierarchy_level,
-            parent_agent_id: agent.parent_agent_id,
-            project_scope: agent.project_scope,
-            model_provider: agent.model_provider,
-            model_id: agent.model_id,
-            init_prompt: agent.init_prompt,
-            allowed_repos: agent.allowed_repos,
-            permission_tier: agent.permission_tier,
-          },
-          projectContexts,
-          activeBacklogItem,
-          queryText: params.inputPrompt,
-          pinnedMemories: this.store.getMemoriesForAgent(
-            agent.id,
-            agent.project_scope,
-            params.userId ?? undefined
-          ),
-        });
-        if (typeof built === 'string' && built.length > 0) {
-          systemPrompt = built;
+      if (isConversationalFastPath) {
+        // Fast path for direct conversational chat: skip remote /embeddings network calls
+        const pinned = this.store.getMemoriesForAgent(
+          agent.id,
+          agent.project_scope,
+          params.userId ?? undefined
+        );
+        const pinnedBlock =
+          pinned.length > 0
+            ? `\n\n# PINNED DECISIONS\n` +
+              pinned.map((m) => `- [${m.memory_type}]: ${m.content}`).join('\n')
+            : '';
+        systemPrompt = `${agent.init_prompt}${pinnedBlock}${liveQueueDigest}`;
+      } else {
+        try {
+          const built = await this.memoryEngine.buildAgentSystemPrompt({
+            agent: {
+              id: agent.id,
+              slug: agent.slug,
+              name: agent.name,
+              department: agent.department,
+              hierarchy_level: agent.hierarchy_level,
+              parent_agent_id: agent.parent_agent_id,
+              project_scope: agent.project_scope,
+              model_provider: agent.model_provider,
+              model_id: agent.model_id,
+              init_prompt: agent.init_prompt,
+              allowed_repos: agent.allowed_repos,
+              permission_tier: agent.permission_tier,
+            },
+            projectContexts,
+            activeBacklogItem,
+            queryText: params.inputPrompt,
+            pinnedMemories: this.store.getMemoriesForAgent(
+              agent.id,
+              agent.project_scope,
+              params.userId ?? undefined
+            ),
+          });
+          if (typeof built === 'string' && built.length > 0) {
+            systemPrompt = `${built}\n${liveQueueDigest}`;
+          }
+        } catch {
+          // Fallback to deterministic prompt composition
+          const archDocs = projectContexts
+            .map((c) => `### Repo: ${c.repo_slug} (${c.role})\n${c.architecture_doc_md}`)
+            .join('\n\n');
+          systemPrompt = `${agent.init_prompt}\n\n## Project Architecture\n${archDocs}\n${liveQueueDigest}`;
         }
-      } catch {
-        // Fallback to deterministic prompt composition
-        const archDocs = projectContexts
-          .map((c) => `### Repo: ${c.repo_slug} (${c.role})\n${c.architecture_doc_md}`)
-          .join('\n\n');
-        systemPrompt = `${agent.init_prompt}\n\n## Project Architecture\n${archDocs}`;
       }
     }
 
@@ -458,6 +504,7 @@ export class AgentRunner {
     let pausedForCeo = false;
     let createdGateId: string | undefined;
     let finalSummary = '';
+    let qaSummaryForFinal = 'QA not run.';
     const MAX_L2_SHARD_TURNS = 8;
     const maxSteps = isTier2Applier
       ? Math.min(params.maxSteps ?? MAX_L2_SHARD_TURNS, MAX_L2_SHARD_TURNS)
@@ -575,6 +622,9 @@ export class AgentRunner {
 
       const latestTurnContent =
         messages[messages.length - 1]?.content || params.inputPrompt;
+      // On the final turn of a multi-step loop, disable tools so the model must synthesize a direct text answer instead of emitting another preamble + tool call.
+      const allowToolsThisTurn =
+        isConversationalFastPath ? false : turnIdx + 1 < maxSteps;
 
       let llmResponse;
       try {
@@ -592,6 +642,7 @@ export class AgentRunner {
           messages,
           attachments: turnIdx === 0 ? multimodalAttachments : undefined,
           tools,
+          enableTools: allowToolsThisTurn,
           enableThinking: true,
         });
       } catch (err) {
@@ -608,11 +659,14 @@ export class AgentRunner {
         await new Promise((resolve) => setTimeout(resolve, 220));
       }
 
-      const stepTokensIn = llmResponse.usage?.tokens_in || 1420;
-      const stepTokensCached = llmResponse.usage?.tokens_cached || 890;
-      const stepTokensThinking = llmResponse.usage?.tokens_thinking || 380;
-      const stepTokensOut = llmResponse.usage?.tokens_out || 510;
-      const stepCostUsd = llmResponse.usage?.cost_usd || 0.008;
+      // Telemetry records only what the provider reported. Simulated (offline) turns
+      // made no billable call, so they record zero usage instead of an estimate.
+      const billable = !llmResponse.simulated;
+      const stepTokensIn = billable ? llmResponse.usage?.tokens_in ?? 0 : 0;
+      const stepTokensCached = billable ? llmResponse.usage?.tokens_cached ?? 0 : 0;
+      const stepTokensThinking = billable ? llmResponse.usage?.tokens_thinking ?? 0 : 0;
+      const stepTokensOut = billable ? llmResponse.usage?.tokens_out ?? 0 : 0;
+      const stepCostUsd = billable ? llmResponse.usage?.cost_usd ?? 0 : 0;
 
       if (resolvedRouting.credentialId) {
         const cred = this.store.providerCredentials.get(resolvedRouting.credentialId);
@@ -639,7 +693,7 @@ export class AgentRunner {
       this.store.addInferenceStep({
         run_id: run.id,
         step_type: 'LLM_INFERENCE',
-        model_used: effectiveModelLabel,
+        model_used: llmResponse.simulated ? `${effectiveModelLabel} [simulated]` : effectiveModelLabel,
         thinking_text: stepThinkingText,
         message_text: llmResponse.message_text,
         tool_name: null,
@@ -678,9 +732,10 @@ export class AgentRunner {
             : [];
 
       // Append the assistant/model turn to the conversation history and checkpoint
+      const cleanMessageText = (llmResponse.message_text || '').trim();
       messages.push({
         role: 'model',
-        content: llmResponse.message_text || '',
+        content: cleanMessageText,
         toolCalls:
           turnToolCalls.length > 0
             ? turnToolCalls.map((tc) => ({
@@ -696,7 +751,12 @@ export class AgentRunner {
         system_context_override: systemPrompt,
       });
 
-      finalSummary = llmResponse.message_text || finalSummary;
+      // Only promote turn output to finalSummary when it is the final answer (no pending tool calls)
+      // or when finalSummary is still empty, so a tool-calling preamble ("Checking now...") never
+      // overwrites or becomes the only reply if the synthesis turn returns empty text.
+      if (cleanMessageText && (turnToolCalls.length === 0 || !finalSummary)) {
+        finalSummary = cleanMessageText;
+      }
 
       this.store.emit('brain:status', {
         thread_id: params.chatThreadId || 'thr_executive_main',
@@ -893,6 +953,7 @@ export class AgentRunner {
         primaryRepo,
         sandboxInfo.previewUrl
       );
+      qaSummaryForFinal = qaResult.summary;
 
       this.store.addInferenceStep({
         run_id: run.id,
@@ -908,52 +969,54 @@ export class AgentRunner {
         },
         tool_output_json: {
           ok: qaResult.passed,
-          httpStatus: 200,
-          consoleErrors: 0,
+          summary: qaResult.summary,
           screenshotUrl: qaResult.screenshotUrl,
           previewUrl: sandboxInfo.previewUrl,
         },
         duration_ms: qaResult.durationMs,
-        tokens_in: 180,
-        tokens_cached: 120,
+        tokens_in: 0,
+        tokens_cached: 0,
         tokens_thinking: 0,
-        tokens_out: 95,
-        cost_usd: 0.001,
+        tokens_out: 0,
+        cost_usd: 0,
       });
 
       this.store.updateRun(run.id, {
         qa_passed: qaResult.passed,
-        qa_screenshot_url: qaResult.screenshotUrl,
-        git_commit_sha: `c${randomUUID().replace(/-/g, '').slice(0, 7)}`,
+        qa_screenshot_url: qaResult.screenshotUrl || null,
+        // The real commit SHA is recorded by sync-out/pushit, not invented here.
+        git_commit_sha: null,
       });
     }
 
     // 6. Synthesize final output & save episodic memory to agent_memories (pgvector)
     finalSummary =
       finalSummary ||
-      `Completed execution in \`${primaryRepo}\` on branch \`${gitBranch}\` (Container \`${sandboxInfo.containerId}\`). Build & Playwright QA verified.`;
+      `Completed execution in \`${primaryRepo}\` on branch \`${gitBranch}\` (Container \`${sandboxInfo.containerId}\`). ${qaSummaryForFinal}`;
 
-    const episodicLesson = `[${agent.slug}] Completed task in ${primaryRepo} (${gitBranch}): ${params.inputPrompt.slice(0, 140)} -> Verified QA on ${sandboxInfo.previewUrl}.`;
-    this.store.addMemory({
-      agent_id: agent.id,
-      project_scope: agent.project_scope,
-      memory_type: 'EPISODIC_LESSON',
-      content: episodicLesson,
-      source_run_id: run.id,
-      is_pinned: false,
-    });
-
-    try {
-      await this.memoryEngine.recordEpisodicMemory({
-        agentId: agent.id,
-        projectScope: agent.project_scope,
-        memoryType: 'EPISODIC_LESSON',
+    if (!isConversationalFastPath) {
+      const episodicLesson = `[${agent.slug}] Completed task in ${primaryRepo} (${gitBranch}): ${params.inputPrompt.slice(0, 140)} -> Verified QA on ${sandboxInfo.previewUrl}.`;
+      this.store.addMemory({
+        agent_id: agent.id,
+        project_scope: agent.project_scope,
+        memory_type: 'EPISODIC_LESSON',
         content: episodicLesson,
-        sourceRunId: run.id,
-        isPinned: false,
+        source_run_id: run.id,
+        is_pinned: false,
       });
-    } catch {
-      // non-fatal
+
+      try {
+        await this.memoryEngine.recordEpisodicMemory({
+          agentId: agent.id,
+          projectScope: agent.project_scope,
+          memoryType: 'EPISODIC_LESSON',
+          content: episodicLesson,
+          sourceRunId: run.id,
+          isPinned: false,
+        });
+      } catch {
+        // non-fatal
+      }
     }
 
     // 7. Clock Out Agent & Update Cumulative Timesheet + Token Telemetry
@@ -1368,11 +1431,11 @@ export class AgentRunner {
           tool_args_json: args,
           tool_output_json: errOut,
           duration_ms: Date.now() - startMs,
-          tokens_in: 120,
-          tokens_cached: 80,
+          tokens_in: 0,
+          tokens_cached: 0,
           tokens_thinking: 0,
-          tokens_out: 60,
-          cost_usd: 0.0005,
+          tokens_out: 0,
+          cost_usd: 0,
         });
         return {
           codeModified: false,
@@ -1431,7 +1494,7 @@ export class AgentRunner {
             this.store.enqueueRunInboxMessage(run.id, {
               from_agent_slug: subResult.agent.slug,
               from_run_id: subResult.run.id,
-              content: subResult.outputSummary,
+              content: capUpwardReply(subResult.outputSummary, subResult.agent.slug, subResult.run.id).text,
             });
             const refreshedParent = this.store.getAgent(agent.id);
             if (refreshedParent) {
@@ -1463,11 +1526,11 @@ export class AgentRunner {
           tool_args_json: args,
           tool_output_json: asyncOut,
           duration_ms: Date.now() - startMs,
-          tokens_in: 120,
-          tokens_cached: 80,
-          tokens_thinking: 20,
-          tokens_out: 60,
-          cost_usd: 0.0005,
+          tokens_in: 0,
+          tokens_cached: 0,
+          tokens_thinking: 0,
+          tokens_out: 0,
+          cost_usd: 0,
         });
         return {
           codeModified: false,
@@ -1488,6 +1551,7 @@ export class AgentRunner {
         existingRunId: existingSessionRunId,
         maxSteps: 3,
       });
+      const upwardReply = capUpwardReply(subResult.outputSummary, subResult.agent.slug, subResult.run.id).text;
 
       const currentChildIds = this.store.runs.get(run.id)?.child_run_ids || [];
       if (!currentChildIds.includes(subResult.run.id)) {
@@ -1511,7 +1575,7 @@ export class AgentRunner {
         reusedSession: Boolean(existingSessionRunId),
         pausedForCeo: subResult.pausedForCeo,
         gateId: subResult.gateId,
-        summary: subResult.outputSummary,
+        summary: upwardReply,
       };
 
       this.store.addInferenceStep({
@@ -1519,16 +1583,16 @@ export class AgentRunner {
         step_type: 'SUBAGENT_CALL',
         model_used: agent.model_id,
         thinking_text: `Delegated sub-task to ${targetSlug} (Child Run ${subResult.run.id}${existingSessionRunId ? ', reused session' : ''}).`,
-        message_text: subResult.outputSummary,
+        message_text: upwardReply,
         tool_name: 'delegate_agent',
         tool_args_json: args,
         tool_output_json: toolOut,
         duration_ms: Date.now() - startMs,
-        tokens_in: 240,
-        tokens_cached: 160,
-        tokens_thinking: 60,
-        tokens_out: 180,
-        cost_usd: 0.002,
+        tokens_in: 0,
+        tokens_cached: 0,
+        tokens_thinking: 0,
+        tokens_out: 0,
+        cost_usd: 0,
       });
 
       if (subResult.pausedForCeo) {
@@ -1543,7 +1607,7 @@ export class AgentRunner {
         codeModified: true,
         pausedForCeo: subResult.pausedForCeo,
         gateId: subResult.gateId,
-        summary: `[Subagent ${subResult.agent.slug} (run=${subResult.run.id}) Reply]:\n${subResult.outputSummary}`,
+        summary: `[Subagent ${subResult.agent.slug} (run=${subResult.run.id}) Reply]:\n${upwardReply}`,
         output: toolOut,
       };
     }
@@ -1587,11 +1651,11 @@ export class AgentRunner {
           tool_args_json: args,
           tool_output_json: out,
           duration_ms: Date.now() - startMs,
-          tokens_in: 110,
-          tokens_cached: 80,
-          tokens_thinking: 10,
-          tokens_out: 50,
-          cost_usd: 0.0004,
+          tokens_in: 0,
+          tokens_cached: 0,
+          tokens_thinking: 0,
+          tokens_out: 0,
+          cost_usd: 0,
         });
         return {
           codeModified: false,
@@ -1612,13 +1676,14 @@ export class AgentRunner {
         existingRunId: targetRun?.id,
         maxSteps: 3,
       });
+      const upwardReply = capUpwardReply(subResult.outputSummary, subResult.agent.slug, subResult.run.id).text;
 
       const out = {
         ok: true,
         recipientRunId: subResult.run.id,
         recipientAgent: subResult.agent.slug,
         continuedExistingSession: Boolean(targetRun),
-        reply: subResult.outputSummary,
+        reply: upwardReply,
       };
 
       this.store.addInferenceStep({
@@ -1626,23 +1691,23 @@ export class AgentRunner {
         step_type: 'SUBAGENT_CALL',
         model_used: agent.model_id,
         thinking_text: `Messaged subagent ${subResult.agent.slug} (run=${subResult.run.id}) and awaited reply.`,
-        message_text: subResult.outputSummary,
+        message_text: upwardReply,
         tool_name: 'send_message',
         tool_args_json: args,
         tool_output_json: out,
         duration_ms: Date.now() - startMs,
-        tokens_in: 220,
-        tokens_cached: 150,
-        tokens_thinking: 40,
-        tokens_out: 160,
-        cost_usd: 0.0016,
+        tokens_in: 0,
+        tokens_cached: 0,
+        tokens_thinking: 0,
+        tokens_out: 0,
+        cost_usd: 0,
       });
 
       return {
         codeModified: false,
         pausedForCeo: subResult.pausedForCeo,
         gateId: subResult.gateId,
-        summary: `[Reply from ${subResult.agent.slug} (run=${subResult.run.id})]:\n${subResult.outputSummary}`,
+        summary: `[Reply from ${subResult.agent.slug} (run=${subResult.run.id})]:\n${upwardReply}`,
         output: out,
       };
     }
@@ -1703,20 +1768,11 @@ export class AgentRunner {
         tool_args_json: args,
         tool_output_json: out,
         duration_ms: Date.now() - startMs,
-        tokens_in: 150,
-        tokens_cached: 100,
-        tokens_thinking: 40,
-        tokens_out: 90,
-        cost_usd: 0.001,
-      });
-
-      await this.telegramPager.notifyQuestionWaitingForCeo({
-        agentSlug: agent.slug,
-        projectScope: agent.project_scope,
-        question,
-        threadId: run.chat_thread_id,
-        gateId: gate.id,
-        runId: run.id,
+        tokens_in: 0,
+        tokens_cached: 0,
+        tokens_thinking: 0,
+        tokens_out: 0,
+        cost_usd: 0,
       });
 
       return {
@@ -1761,11 +1817,11 @@ export class AgentRunner {
         tool_args_json: args,
         tool_output_json: out,
         duration_ms: Math.max(45, Date.now() - startMs),
-        tokens_in: 210,
-        tokens_cached: 140,
-        tokens_thinking: 50,
-        tokens_out: 160,
-        cost_usd: 0.0015,
+        tokens_in: 0,
+        tokens_cached: 0,
+        tokens_thinking: 0,
+        tokens_out: 0,
+        cost_usd: 0,
       });
 
       return {
@@ -1848,19 +1904,19 @@ export class AgentRunner {
         tool_args_json: args,
         tool_output_json: searchOutput,
         duration_ms: Math.max(80, Date.now() - startMs),
-        tokens_in: 260,
-        tokens_cached: 190,
-        tokens_thinking: 30,
-        tokens_out: 140,
-        cost_usd: 0.0012,
+        tokens_in: 0,
+        tokens_cached: 0,
+        tokens_thinking: 0,
+        tokens_out: 0,
+        cost_usd: 0,
       });
 
       this.accumulateRunTokens(run.id, {
-        tokens_in: 260,
-        tokens_cached: 190,
-        tokens_thinking: 30,
-        tokens_out: 140,
-        cost_usd: 0.0012,
+        tokens_in: 0,
+        tokens_cached: 0,
+        tokens_thinking: 0,
+        tokens_out: 0,
+        cost_usd: 0,
       });
 
       return {
@@ -1885,7 +1941,15 @@ export class AgentRunner {
       if (tc.name === 'read_file') {
         const relPath = String(args.path || 'README.md').replace(/^\/+/, '');
         const resolved = path.resolve(repoRoot, relPath);
-        if (resolved.startsWith(repoRoot) && fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+        if (!canReadRawSource(agent.slug || agent.id, relPath)) {
+          // Tier firewall: Root, Level 0, and Level 1 agents never ingest raw source.
+          toolOutputJson = {
+            ok: false,
+            path: relPath,
+            error: `Tier policy: ${agent.slug} may not read raw source. Delegate to @reader_scout for a symbol digest.`,
+          };
+          toolSummaryText = `Blocked read of \`${relPath}\`: delegate raw source reads to @reader_scout.`;
+        } else if (isInsideRoot(repoRoot, relPath) && fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
           const content = fs.readFileSync(resolved, 'utf8').slice(0, 32_000);
           toolOutputJson = {
             ok: true,
@@ -1896,11 +1960,11 @@ export class AgentRunner {
           toolSummaryText = `Read \`${relPath}\` (${Buffer.byteLength(content, 'utf8')} bytes):\n${content.slice(0, 4000)}`;
         } else {
           toolOutputJson = {
-            ok: true,
+            ok: false,
             path: relPath,
-            stdout: `✓ read_file inspected ${relPath} in ${primaryRepo}`,
+            error: `File not found or outside the ${primaryRepo} workspace: ${relPath}`,
           };
-          toolSummaryText = `Inspected \`${relPath}\` in \`${primaryRepo}\`.`;
+          toolSummaryText = `Could not read \`${relPath}\`: file not found or outside the workspace.`;
         }
       } else if (tc.name === 'write_file') {
         const relPath = String(args.path || '').replace(/^\/+/, '');
@@ -1908,7 +1972,7 @@ export class AgentRunner {
         const resolved = path.resolve(repoRoot, relPath);
         const isSafeWriteTarget =
           relPath.length > 0 &&
-          resolved.startsWith(repoRoot) &&
+          isInsideRoot(repoRoot, relPath) &&
           (resolved.includes(`${path.sep}.state${path.sep}mirror${path.sep}`) ||
             relPath.startsWith('contracts/') ||
             relPath.startsWith('worklist/') ||
@@ -1919,13 +1983,22 @@ export class AgentRunner {
           fs.mkdirSync(path.dirname(resolved), { recursive: true });
           fs.writeFileSync(resolved, content, 'utf8');
         }
-        toolOutputJson = {
-          ok: true,
-          path: relPath,
-          bytesWritten: Buffer.byteLength(content, 'utf8'),
-          persistedToDisk: isSafeWriteTarget,
-        };
-        toolSummaryText = `Wrote \`${relPath}\` (${Buffer.byteLength(content, 'utf8')} bytes).`;
+        toolOutputJson = isSafeWriteTarget
+          ? {
+              ok: true,
+              path: relPath,
+              bytesWritten: Buffer.byteLength(content, 'utf8'),
+              persistedToDisk: true,
+            }
+          : {
+              ok: false,
+              path: relPath,
+              persistedToDisk: false,
+              error: 'Write target is outside the allowed mirror/contracts/worklist/context/memory paths.',
+            };
+        toolSummaryText = isSafeWriteTarget
+          ? `Wrote \`${relPath}\` (${Buffer.byteLength(content, 'utf8')} bytes).`
+          : `Refused write to \`${relPath}\`: outside allowed paths.`;
       } else if (tc.name === 'edit_file') {
         const relPath = String(args.path || '').replace(/^\/+/, '');
         const targetStr = String(args.target ?? '');
@@ -1935,7 +2008,7 @@ export class AgentRunner {
         if (
           relPath.length > 0 &&
           targetStr.length > 0 &&
-          resolved.startsWith(repoRoot) &&
+          isInsideRoot(repoRoot, relPath) &&
           fs.existsSync(resolved) &&
           fs.statSync(resolved).isFile()
         ) {
@@ -1951,17 +2024,39 @@ export class AgentRunner {
           path: relPath,
           replacedOnDisk,
         };
-        toolSummaryText = `Edited \`${relPath}\` (${replacedOnDisk ? 'applied diff to disk' : 'validated diff in sandbox'}).`;
+        toolSummaryText = replacedOnDisk
+          ? `Edited \`${relPath}\` (applied diff to disk).`
+          : `Edit not applied to \`${relPath}\`: file missing or target text not found.`;
       } else if (tc.name === 'run_command') {
         const cmd = String(args.command || 'npm run build').trim();
-        toolOutputJson = {
-          ok: true,
-          exitCode: 0,
-          containerId,
-          command: cmd,
-          stdout: `[${containerId}] $ ${cmd}\n✓ 0 errors, build completed in 1.42s`,
-        };
-        toolSummaryText = `[${containerId}] $ ${cmd}\n✓ 0 errors, build completed in 1.42s`;
+        // Execute through the sandbox manager (PermissionGuard + Docker/local session).
+        // When no sandbox session exists the command is reported as not executed.
+        const modName = '@warden/sandbox';
+        const sandboxMod = await import(/* @vite-ignore */ modName).catch(() => null);
+        const exec = sandboxMod?.defaultSandboxManager?.execInSandbox
+          ? await sandboxMod.defaultSandboxManager.execInSandbox(run.id, cmd, 'run_command')
+          : null;
+        if (exec) {
+          toolOutputJson = {
+            ok: exec.ok,
+            exitCode: exec.exitCode,
+            containerId,
+            command: cmd,
+            stdout: exec.combinedOutput,
+            truncated: exec.truncated,
+            blockedByPermissionGuard: exec.blockedByPermissionGuard ?? false,
+          };
+          toolSummaryText = `[${containerId}] $ ${cmd} (exit ${exec.exitCode})\n${String(exec.combinedOutput).slice(0, 4000)}`;
+        } else {
+          toolOutputJson = {
+            ok: false,
+            exitCode: 127,
+            containerId,
+            command: cmd,
+            error: 'No sandbox session available; command was not executed.',
+          };
+          toolSummaryText = `Command not executed (no sandbox session): ${cmd}`;
+        }
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -1983,19 +2078,19 @@ export class AgentRunner {
       tool_args_json: args,
       tool_output_json: toolOutputJson,
       duration_ms: Math.max(80, Date.now() - startMs),
-      tokens_in: 260,
-      tokens_cached: 190,
-      tokens_thinking: 30,
-      tokens_out: 140,
-      cost_usd: 0.0012,
+      tokens_in: 0,
+      tokens_cached: 0,
+      tokens_thinking: 0,
+      tokens_out: 0,
+      cost_usd: 0,
     });
 
     this.accumulateRunTokens(run.id, {
-      tokens_in: 260,
-      tokens_cached: 190,
-      tokens_thinking: 30,
-      tokens_out: 140,
-      cost_usd: 0.0012,
+      tokens_in: 0,
+      tokens_cached: 0,
+      tokens_thinking: 0,
+      tokens_out: 0,
+      cost_usd: 0,
     });
 
     return {
@@ -2074,7 +2169,7 @@ export class AgentRunner {
             previewUrl,
           });
           return {
-            passed: res.passed ?? true,
+            passed: res.passed === true,
             screenshotUrl: res.screenshotUrl || screenshotUrl,
             summary:
               res.summary ||
@@ -2083,15 +2178,22 @@ export class AgentRunner {
           };
         }
       }
-    } catch {
-      // Use deterministic QA verification report
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        passed: false,
+        screenshotUrl: '',
+        summary: `QA gate error: ${msg}`,
+        durationMs: Date.now() - startMs,
+      };
     }
 
+    // No Playwright gate available: report QA as not run instead of passing it.
     return {
-      passed: true,
-      screenshotUrl,
-      summary: `✅ Build + Headless Playwright Chromium/WebGL Passed (HTTP 200, 0 console.error) — Live Preview ready at ${previewUrl}`,
-      durationMs: Math.max(310, Date.now() - startMs),
+      passed: false,
+      screenshotUrl: '',
+      summary: `QA not run: the Playwright gate is unavailable for ${previewUrl}.`,
+      durationMs: Date.now() - startMs,
     };
   }
 

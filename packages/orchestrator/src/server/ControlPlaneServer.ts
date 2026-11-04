@@ -27,7 +27,6 @@ import { HierarchyRouter } from '../engine/HierarchyRouter.js';
 import { StandupCoordinator } from '../engine/StandupCoordinator.js';
 import { HealthAndQuotaGuard } from '../watchdogs/HealthAndQuotaGuard.js';
 import { IdleBacklogMonitor } from '../watchdogs/IdleBacklogMonitor.js';
-import { TelegramPushPager } from '../telegram/TelegramPushPager.js';
 import { MediaUploadService, mediaUploadService } from '../media/MediaUploadService.js';
 import {
   handleWhatsAppRoutes,
@@ -57,7 +56,6 @@ export interface ControlPlaneServerOptions {
   https?: boolean;
   wardenRoot?: string;
   store?: OrchestratorStore;
-  telegramPager?: TelegramPushPager;
   healthGuard?: HealthAndQuotaGuard;
   idleMonitor?: IdleBacklogMonitor;
   agentRunner?: AgentRunner;
@@ -93,7 +91,6 @@ export class ControlPlaneServer {
   public readonly host: string;
   public readonly httpsEnabled: boolean;
   public readonly store: OrchestratorStore;
-  public readonly telegramPager: TelegramPushPager;
   public readonly healthGuard: HealthAndQuotaGuard;
   public readonly idleMonitor: IdleBacklogMonitor;
   public readonly agentRunner: AgentRunner;
@@ -131,24 +128,16 @@ export class ControlPlaneServer {
       this.broadcastEvent(event, payload)
     );
 
-    this.telegramPager =
-      options?.telegramPager ||
-      new TelegramPushPager({
-        onBroadcast: (event, payload) => this.broadcastEvent(event, payload),
-      });
-
     this.healthGuard =
       options?.healthGuard ||
       new HealthAndQuotaGuard({
         store: this.store,
-        telegramPager: this.telegramPager,
       });
 
     this.idleMonitor =
       options?.idleMonitor ||
       new IdleBacklogMonitor({
         store: this.store,
-        telegramPager: this.telegramPager,
       });
 
     this.agentRunner =
@@ -156,7 +145,6 @@ export class ControlPlaneServer {
       new AgentRunner({
         store: this.store,
         healthGuard: this.healthGuard,
-        telegramPager: this.telegramPager,
       });
 
     this.hierarchyRouter =
@@ -171,7 +159,6 @@ export class ControlPlaneServer {
       new StandupCoordinator({
         store: this.store,
         agentRunner: this.agentRunner,
-        telegramPager: this.telegramPager,
         idleMonitor: this.idleMonitor,
       });
 
@@ -317,7 +304,6 @@ export class ControlPlaneServer {
     console.log(`[WARDEN API] Source of truth: ${this.store.source.toUpperCase()}`);
 
     this.reminderScheduler = startReminderScheduler({
-      telegramPager: this.telegramPager,
       onFired: (event) => this.broadcastEvent('reminder:fired', event),
     });
 
@@ -482,7 +468,7 @@ export class ControlPlaneServer {
   }
 
   private setCorsHeaders(res: ServerResponse): void {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Origin', process.env.WARDEN_CORS_ORIGIN || '*');
     res.setHeader(
       'Access-Control-Allow-Methods',
       'GET, POST, PATCH, PUT, DELETE, OPTIONS'
@@ -655,15 +641,11 @@ export class ControlPlaneServer {
       theoretical_usd_burn_today: Number(
         (watchdogTelemetry.todayTokensBurned * 0.000003).toFixed(2)
       ),
-      telegram_pager_status: process.env.TELEGRAM_BOT_TOKEN
-        ? 'CONNECTED'
-        : 'SIMULATED',
       db_pgvector_status: this.store.isDatabaseConnected() ? 'ONLINE' : 'OFFLINE',
       warden_source: this.store.source,
       muse_cache_hit_rate_pct: cacheHitPct,
       routing_profile: this.store.getRoutingProfile(),
       sync_status: this.store.getSyncStatus(),
-      recent_telegram_alerts: this.telegramPager.getRecentAlerts(10),
     };
   }
 
@@ -1189,7 +1171,7 @@ export class ControlPlaneServer {
           permission_tier:
             (body.permission_tier as PermissionTier) || 'standard_autonomous',
           max_subagents: Number(body.max_subagents ?? 4),
-          max_run_duration_ms: Number(body.max_run_duration_ms ?? 86400000),
+          max_run_duration_ms: Number(body.max_run_duration_ms ?? 1800000),
           max_tokens_per_run: Number(body.max_tokens_per_run ?? 1000000),
         });
         this.sendJson(res, 201, this.serializeAgentForApi(created));
@@ -2262,11 +2244,6 @@ export class ControlPlaneServer {
           code_chunks_indexed: this.store.codeChunksCount,
           vector_dimensions: 768,
         });
-        return;
-      }
-
-      if (pathname === '/api/telegram/alerts' && method === 'GET') {
-        this.sendJson(res, 200, this.telegramPager.getRecentAlerts(50));
         return;
       }
 

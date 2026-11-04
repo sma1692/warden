@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "main": "./src/index.ts",
-  "description": "Warden Control Plane, Multi-Model Orchestrator, Watchdogs, Telegram Push Pager & WebSocket Server",
+  "description": "Warden Control Plane, Multi-Model Orchestrator, Watchdogs & WebSocket Server",
   "scripts": {
     "dev": "WARDEN_HTTPS=true tsx watch --include \"src/**/*\" src/index.ts",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "WARDEN_SOURCE=md tsx --test \"tests/*.test.ts\""
   },
   "dependencies": {
     "@warden/db": "*",

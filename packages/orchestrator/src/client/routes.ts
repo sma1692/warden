@@ -33,7 +33,7 @@ export async function handleClientRoutes(
   }
 
   if (pathname === '/api/client/enqueue' && method === 'POST') {
-    const body = await ctx.readJsonBody().catch(() => ({}));
+    const body: Record<string, any> = await ctx.readJsonBody().catch(() => ({}));
     const input = (body?.command ?? {}) as Record<string, unknown>;
     const queued = enqueueCommand(requestUserId, input);
     if (!queued.ok) {
@@ -52,7 +52,7 @@ export async function handleClientRoutes(
   }
 
   if (pathname === '/api/client/result' && method === 'POST') {
-    const body = await ctx.readJsonBody().catch(() => ({}));
+    const body: Record<string, any> = await ctx.readJsonBody().catch(() => ({}));
     const incoming = Array.isArray(body?.results) ? body.results : [];
     const stored = storeResults(requestUserId, incoming);
     ctx.sendJson(res, 200, { ok: true, stored });

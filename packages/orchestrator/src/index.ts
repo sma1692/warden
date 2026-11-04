@@ -55,7 +55,6 @@ export * from "./engine/HierarchyRouter.js";
 export * from "./engine/StandupCoordinator.js";
 export * from "./watchdogs/HealthAndQuotaGuard.js";
 export * from "./watchdogs/IdleBacklogMonitor.js";
-export * from "./telegram/TelegramPushPager.js";
 export * from "./server/ControlPlaneServer.js";
 export {
   ModelRouter,

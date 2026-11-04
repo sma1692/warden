@@ -4,7 +4,6 @@ import {
   InferenceStepRecord,
   OrchestratorStore,
 } from '../engine/OrchestratorStore.js';
-import { TelegramPushPager } from '../telegram/TelegramPushPager.js';
 
 export interface SandboxEmergencyAdapter {
   emergencySaveAndKill?: (
@@ -38,15 +37,15 @@ export interface SystemHealthTelemetry {
 }
 
 /**
- * HealthAndQuotaGuard — Runaway Agent Guardrails, 24-Hour Hard Kill & Live Health Watchdog
+ * HealthAndQuotaGuard — Runaway Agent Guardrails, 30-Minute Hard Kill & Live Health Watchdog
  * (the architecture spec Sections 4.6 & 4.7)
  *
  * Runs every 15 seconds to enforce:
  * 1. Strict Subagent Fan-Out Caps (anti-fork-bomb: max_subagents=4, max_spawns_per_run=12, MAX_DEPTH=4)
- * 2. 24-Hour Maximum Execution Timeout (saves uncommitted work to wip/timeout-<runId> & destroys container)
+ * 2. 30-Minute Maximum Execution Timeout (saves uncommitted work to wip/timeout-<runId> & destroys container)
  * 3. 30-Second Heartbeat Check & Zombie Detection (>3m no heartbeat -> ZOMBIE_NO_HEARTBEAT; >5m -> auto-restart/terminate)
  * 4. Repetitive Tool Loop Detection (3 identical failing tool calls -> STUCK_LOOP circuit breaker)
- * 5. Per-Run Token Cap (default 1,000,000 tokens -> PAUSED_TOKEN_CAP + Approval Gate + Telegram push)
+ * 5. Per-Run Token Cap (default 1,000,000 tokens -> PAUSED_TOKEN_CAP + Approval Gate)
  */
 export class HealthAndQuotaGuard {
   public static readonly WATCHDOG_INTERVAL_MS = 15_000;
@@ -55,24 +54,21 @@ export class HealthAndQuotaGuard {
   public static readonly ZOMBIE_TERMINATE_MS = 5 * 60 * 1000; // 5 minutes
   public static readonly MAX_SPAWNS_PER_RUN = 12;
   public static readonly MAX_HIERARCHY_LEVEL_FOR_SPAWN = 2; // Level 3 workers cannot delegate (MAX_DEPTH = 4: -1 -> 0 -> 1 -> 2 -> 3)
-  public static readonly DEFAULT_MAX_RUN_DURATION_MS =
-    Number(process.env.MAX_RUN_DURATION_MS) || 86_400_000; // 24 hours
+  // Demo-fixed: every run gets 30 minutes, then the hard kill fires.
+  public static readonly DEFAULT_MAX_RUN_DURATION_MS = 30 * 60 * 1000;
   public static readonly DEFAULT_MAX_TOKENS_PER_RUN =
     Number(process.env.MAX_TOKENS_PER_RUN) || 1_000_000;
 
   private store: OrchestratorStore;
-  private telegramPager: TelegramPushPager;
   private sandboxAdapter?: SandboxEmergencyAdapter;
   private watchdogTimer: NodeJS.Timeout | null = null;
   private lastHeartbeatTickAt = 0;
 
   constructor(options: {
     store: OrchestratorStore;
-    telegramPager: TelegramPushPager;
     sandboxAdapter?: SandboxEmergencyAdapter;
   }) {
     this.store = options.store;
-    this.telegramPager = options.telegramPager;
     this.sandboxAdapter = options.sandboxAdapter;
   }
 
@@ -161,7 +157,7 @@ export class HealthAndQuotaGuard {
       this.lastHeartbeatTickAt = nowMs;
     }
 
-    // 1. Inspect all RUNNING agent_runs for 24h timeout, repetitive tool loops, and 1M token cap
+    // 1. Inspect all RUNNING agent_runs for 30m timeout, repetitive tool loops, and 1M token cap
     for (const run of this.store.runs.values()) {
       if (run.status !== 'RUNNING') continue;
 
@@ -174,12 +170,12 @@ export class HealthAndQuotaGuard {
       // Update live active_duration_ms
       run.active_duration_ms = elapsedMs;
 
-      // A. 24-Hour Maximum Execution Timeout Check
+      // A. 30-Minute Maximum Execution Timeout Check
       const maxDurationMs =
         agent.max_run_duration_ms ||
         HealthAndQuotaGuard.DEFAULT_MAX_RUN_DURATION_MS;
       if (elapsedMs > maxDurationMs) {
-        await this.enforce24HourTimeoutKill(agent, run);
+        await this.enforceTimeoutKill(agent, run);
         continue;
       }
 
@@ -274,13 +270,6 @@ export class HealthAndQuotaGuard {
             await this.store.updateAgent(agent.id, {
               health_status: 'ZOMBIE_NO_HEARTBEAT',
             });
-            await this.telegramPager.sendAlert({
-              type: 'ZOMBIE_NO_HEARTBEAT',
-              agentSlug: agent.slug,
-              projectScope: agent.project_scope,
-              runId: agent.current_run_id,
-              details: `No heartbeat received for ${Math.round(silenceMs / 1000)}s.`,
-            });
           }
         } else if (shouldEmit30sHeartbeat && agent.current_run_id) {
           const activeRun = this.store.runs.get(agent.current_run_id);
@@ -299,12 +288,12 @@ export class HealthAndQuotaGuard {
   }
 
   /**
-   * Enforces the 24-Hour Hard Kill Timeout:
+   * Enforces the 30-Minute Hard Kill Timeout:
    * 1. Saves uncommitted work to wip/timeout-<runId> and destroys container.
    * 2. Marks run and agent TERMINATED_TIMEOUT / KILLED_24H_LIMIT.
-   * 3. Fires TelegramPushPager alert and broadcasts WebSocket event.
+   * 3. Broadcasts WebSocket event.
    */
-  public async enforce24HourTimeoutKill(
+  public async enforceTimeoutKill(
     agent: AgentRecord,
     run: AgentRunRecord
   ): Promise<void> {
@@ -313,7 +302,7 @@ export class HealthAndQuotaGuard {
       try {
         const res = await this.sandboxAdapter.emergencySaveAndKill(
           run.id,
-          '24H_TIMEOUT'
+          'TIMEOUT_30M'
         );
         if (res && typeof res === 'object' && res.recoveryBranch) {
           recoveryBranch = res.recoveryBranch;
@@ -337,14 +326,6 @@ export class HealthAndQuotaGuard {
       current_run_id: null,
       clocked_in_at: null,
       active_subagent_count: 0,
-    });
-
-    await this.telegramPager.notifyKilled24hLimit({
-      agentSlug: agent.slug,
-      projectScope: agent.project_scope,
-      runId: run.id,
-      recoveryBranch,
-      threadId: run.chat_thread_id,
     });
   }
 
@@ -407,15 +388,6 @@ export class HealthAndQuotaGuard {
         run_id: run.id,
       });
     }
-
-    await this.telegramPager.sendAlert({
-      type: 'STUCK_LOOP',
-      agentSlug: agent.slug,
-      projectScope: agent.project_scope,
-      runId: run.id,
-      threadId: run.chat_thread_id,
-      details: summary,
-    });
   }
 
   private async pauseRunForTokenCap(
@@ -435,7 +407,7 @@ export class HealthAndQuotaGuard {
       status: 'PAUSED_TOKEN_CAP',
     });
 
-    const gate = this.store.createApprovalGate({
+    this.store.createApprovalGate({
       run_id: run.id,
       thread_id: run.chat_thread_id,
       agent_id: agent.id,
@@ -449,16 +421,6 @@ export class HealthAndQuotaGuard {
         max_tokens: maxTokens,
       },
       telegram_notified_at: new Date().toISOString(),
-    });
-
-    await this.telegramPager.sendAlert({
-      type: 'TOKEN_CAP',
-      agentSlug: agent.slug,
-      projectScope: agent.project_scope,
-      runId: run.id,
-      threadId: run.chat_thread_id,
-      gateId: gate.id,
-      details: promptText,
     });
   }
 
@@ -478,7 +440,7 @@ export class HealthAndQuotaGuard {
 
     if (skipGate) return;
 
-    const gate = this.store.createApprovalGate({
+    this.store.createApprovalGate({
       user_id: run.user_id ?? null,
       run_id: run.id,
       thread_id: run.chat_thread_id,
@@ -493,16 +455,6 @@ export class HealthAndQuotaGuard {
         max_tokens: maxTokens,
       },
       telegram_notified_at: new Date().toISOString(),
-    });
-
-    await this.telegramPager.sendAlert({
-      type: 'TOKEN_CAP',
-      agentSlug: agent.slug,
-      projectScope: agent.project_scope,
-      runId: run.id,
-      threadId: run.chat_thread_id,
-      gateId: gate.id,
-      details: promptText,
     });
   }
 

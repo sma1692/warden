@@ -407,7 +407,6 @@ export interface SystemHealthTelemetry {
   active_docker_sandboxes: number;
   total_tokens_today: number;
   theoretical_usd_burn_today: number;
-  telegram_pager_status: 'CONNECTED' | 'DEGRADED' | 'SIMULATED';
   db_pgvector_status: 'ONLINE' | 'FALLBACK_SEED';
   muse_cache_hit_rate_pct: number;
   active_routing_profile?: GlobalRoutingProfile;

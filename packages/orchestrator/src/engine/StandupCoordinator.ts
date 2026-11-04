@@ -9,7 +9,6 @@ import {
   SprintWeeklyPlanEntry,
 } from './OrchestratorStore.js';
 import { AgentRunner } from './AgentRunner.js';
-import { TelegramPushPager } from '../telegram/TelegramPushPager.js';
 import { IdleBacklogMonitor } from '../watchdogs/IdleBacklogMonitor.js';
 
 export interface TriggerStandupResult {
@@ -34,24 +33,21 @@ export interface ApproveSprintResult {
  * 1. Polls `@pm`, each project's `@pm:<project>` / `@tech_lead:<project>`, `@infra_head`, and `@seo_aeo_head`.
  * 2. Triages raw `INBOX` items into `TODO` with assigned priority & executor agent.
  * 3. Synthesizes `mom_summary_md` in `sprints` (`AWAITING_CEO_APPROVAL`).
- * 4. Creates a `STANDUP_SIGN_OFF` ApprovalGate and fires a 1-way Telegram Push Pager alert.
+ * 4. Creates a `STANDUP_SIGN_OFF` ApprovalGate for CEO review.
  * 5. When the CEO taps [Approve & Execute Sprint], dispatches the assigned agents in parallel.
  */
 export class StandupCoordinator {
   private store: OrchestratorStore;
   private agentRunner: AgentRunner;
-  private telegramPager: TelegramPushPager;
   private idleMonitor?: IdleBacklogMonitor;
 
   constructor(options: {
     store: OrchestratorStore;
     agentRunner: AgentRunner;
-    telegramPager: TelegramPushPager;
     idleMonitor?: IdleBacklogMonitor;
   }) {
     this.store = options.store;
     this.agentRunner = options.agentRunner;
-    this.telegramPager = options.telegramPager;
     this.idleMonitor = options.idleMonitor;
   }
 
@@ -297,15 +293,6 @@ export class StandupCoordinator {
         sprint_id: sprint.id,
       },
       telegram_notified_at: new Date().toISOString(),
-    });
-
-    // 5. Fire Telegram Push Pager alert
-    await this.telegramPager.notifyStandupReady({
-      sprintId: sprint.id,
-      dateIst,
-      summaryPreview: `${activeSprintItems.length} prioritized tasks across ${scopeNames} ready for parallel execution.`,
-      threadId: thread.id,
-      gateId: gate.id,
     });
 
     if (options?.autoExecute) {

@@ -123,12 +123,6 @@ export const HealthTelemetryBar: React.FC<HealthTelemetryBarProps> = ({
             <Database className="h-3 w-3 text-[var(--surface-accent-gold)]" />
             <span>pgvector 768d Pinned</span>
           </div>
-
-          {/* Telegram Pager Status */}
-          <div className="hidden 2xl:flex items-center gap-1.5 rounded-md bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-2 py-1 text-[var(--surface-text-secondary)] font-mono text-[11px]">
-            <Send className="h-3 w-3 text-[var(--surface-accent-gold)]" />
-            <span>Telegram: {telemetry.telegram_pager_status}</span>
-          </div>
         </div>
 
         {/* Right Action Triggers */}

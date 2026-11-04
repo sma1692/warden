@@ -1049,9 +1049,15 @@ export const App: React.FC<AppProps> = ({
                   <DemoDeployCard onError={showError} />
                 </div>
                 <HomeChatStrip
-                  onStartChat={(message) => {
+                  onStartChat={async (message) => {
+                    const created = await apiClient.createChatThread({
+                      title: message.slice(0, 64),
+                      target_agent_id: '@warden',
+                      project_scope: 'ALL',
+                    });
+                    setThreads((prev) => [created, ...prev]);
                     setHomeChatDraft(message);
-                    handleOpenAgentWindowTab('@warden');
+                    handleOpenThreadByObject(created);
                   }}
                 />
                 <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-2 gap-4">

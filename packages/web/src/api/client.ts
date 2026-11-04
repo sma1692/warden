@@ -942,14 +942,12 @@ class WardenApiClient {
       };
     }
 
-    // Fallback if backend server unreachable: Create a linked AgentRun + InferenceStep trace
+    // Backend unreachable: record an honest FAILED run. Nothing was executed, so the
+    // run carries no container, branch, commit, QA result, or token usage.
     const targetAgent =
       this.agents.find((a) => a.slug === payload.target_agent_id) || this.agents[0];
-    const runId = `run_${Date.now()}`;
-    const attachmentNote =
-      payload.attachments.length > 0
-        ? ` Analyzed ${payload.attachments.length} multimodal attachment(s) (${payload.attachments.map((a) => a.filename).join(', ')}) via Meta Muse media fileData.`
-        : '';
+    const runId = `run_offline_${Date.now()}`;
+    const attachmentNote = '';
 
     const createdRun: AgentRun = {
       id: runId,
@@ -960,73 +958,28 @@ class WardenApiClient {
       backlog_item_id: null,
       trigger_type: payload.target_agent_id === '@warden' ? 'CEO_CHAT' : 'DIRECT_MENTION',
       input_prompt: payload.content || '(Multimodal attachment inspection)',
-      output_summary: `Executed directive via ${targetAgent.slug} (${targetAgent.model_id}).${attachmentNote}`,
-      status: 'COMPLETED',
-      container_id: `ctr-${targetAgent.slug.replace(/[^a-z0-9]/gi, '')}-${Math.floor(100 + Math.random() * 899)}`,
-      git_branch: `agent/${targetAgent.slug.replace(/[^a-z0-9-]/gi, '')}/task-${Math.floor(10 + Math.random() * 89)}`,
-      git_commit_sha: Math.random().toString(16).slice(2, 9),
-      preview_url: PREVIEW_URL_EXAMPLE,
-      qa_passed: true,
-      qa_screenshot_url: INITIAL_AGENT_RUNS[0].qa_screenshot_url,
+      output_summary: 'Not executed: the control plane API is unreachable.',
+      status: 'FAILED',
+      container_id: null,
+      git_branch: null,
+      git_commit_sha: null,
+      preview_url: null,
+      qa_passed: false,
+      qa_screenshot_url: null,
       qa_console_errors: 0,
       started_at: nowIso,
-      ended_at: new Date(Date.now() + 3400).toISOString(),
-      active_duration_ms: 3_420,
+      ended_at: nowIso,
+      active_duration_ms: 0,
       pause_duration_ms: 0,
-      tokens_in: 19_400,
-      tokens_cached: 68_000,
-      tokens_thinking: 12_300,
-      tokens_out: 8_900,
-      cost_usd: 0.34,
+      tokens_in: 0,
+      tokens_cached: 0,
+      tokens_thinking: 0,
+      tokens_out: 0,
+      cost_usd: 0,
     };
 
     this.runs = [createdRun, ...this.runs];
-    this.stepsByRun[runId] = [
-      {
-        id: `step_${runId}_1`,
-        run_id: runId,
-        step_index: 1,
-        step_type: 'LLM_INFERENCE',
-        model_used: `${targetAgent.model_provider}/${targetAgent.model_id}`,
-        thinking_text: `Parsing CEO prompt for ${targetAgent.slug}.${attachmentNote} Querying pgvector agent memory (top-5 cosine similarity) and deterministic repo architecture map.`,
-        message_text: `Synthesizing execution plan for: "${payload.content.slice(0, 100)}"`,
-        tool_name: null,
-        tool_args_json: null,
-        tool_output_json: null,
-        duration_ms: 1_480,
-        tokens_in: 9_800,
-        tokens_cached: 34_000,
-        tokens_thinking: 7_200,
-        tokens_out: 3_400,
-        created_at: nowIso,
-      },
-      {
-        id: `step_${runId}_2`,
-        run_id: runId,
-        step_index: 2,
-        step_type: 'TOOL_CALL',
-        model_used: `${targetAgent.model_provider}/${targetAgent.model_id}`,
-        thinking_text: `Executing verification inside ephemeral sandbox ${createdRun.container_id} on branch ${createdRun.git_branch}.`,
-        message_text: `Container verification & Playwright check passed (0 console errors).`,
-        tool_name: 'sandbox_exec_and_qa',
-        tool_args_json: {
-          container_id: createdRun.container_id,
-          branch: createdRun.git_branch,
-          attachments_count: payload.attachments.length,
-        },
-        tool_output_json: {
-          exit_code: 0,
-          stdout: `✓ Branch ${createdRun.git_branch} checked out\n✓ Typecheck & build green\n✓ Headless Playwright WebGL verification: PASS`,
-          preview_url: createdRun.preview_url || undefined,
-        },
-        duration_ms: 1_940,
-        tokens_in: 9_600,
-        tokens_cached: 34_000,
-        tokens_thinking: 5_100,
-        tokens_out: 5_500,
-        created_at: new Date().toISOString(),
-      },
-    ];
+    this.stepsByRun[runId] = [];
 
     const prefix =
       payload.target_agent_id === '@warden'
@@ -1039,7 +992,7 @@ class WardenApiClient {
       sender_type: 'AGENT',
       sender_agent_id: payload.target_agent_id,
       recipient_agent_id: 'CEO',
-      content: `${prefix} Processed your directive.${attachmentNote}\n\n- **Sandbox Container:** \`${createdRun.container_id}\` (\`${createdRun.git_branch}\`)\n- **Model & Memory:** \`${targetAgent.model_provider}:${targetAgent.model_id}\` + \`pgvector\` memory recall\n- **Live Preview:** \`${createdRun.preview_url}\``,
+      content: `${prefix} Could not reach the Warden control plane, so this directive was not executed. Start the API (\`npm run dev:api\`) and resend.${attachmentNote}`,
       run_id: runId,
       attachments_json: [],
       created_at: new Date().toISOString(),

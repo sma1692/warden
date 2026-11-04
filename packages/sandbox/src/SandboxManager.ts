@@ -47,6 +47,11 @@ async function resolveEphemeralInfraCli(): Promise<string> {
 
 const execFileAsync = promisify(execFile);
 
+/** Quotes one value for safe interpolation into a `bash -lc` script. */
+export function shq(value: string): string {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
 export interface SandboxTelemetry {
   runId: string;
   containerId: string;
@@ -161,7 +166,7 @@ export class SandboxManager {
     if (activeShift && now < activeShift.cloudInstance.expiresAt - 15 * 60 * 1000) {
       // Warm handoff
       try {
-        await execFileAsync('ssh', ['-S', `/tmp/warden-ssh-${activeShift.shortRunId}.sock`, 'warden@127.0.0.1', 'bash', '-lc', `cd /workspace/repos/${repoSlug} && git checkout -B ${gitBranch}`]);
+        await execFileAsync('ssh', ['-S', `/tmp/warden-ssh-${activeShift.shortRunId}.sock`, 'warden@127.0.0.1', 'bash', '-lc', `cd ${shq(`/workspace/repos/${repoSlug}`)} && git checkout -B ${shq(gitBranch)}`]);
         activeShift.runId = opts.runId;
         activeShift.shortRunId = shortRunId;
         activeShift.taskId = opts.taskId || shortRunId;
@@ -207,7 +212,7 @@ export class SandboxManager {
       sshArgs.push(`${sshUser}@${instanceIp}`);
       await execFileAsync('ssh', sshArgs);
 
-      await execFileAsync('ssh', ['-S', sockPath, `${sshUser}@127.0.0.1`, 'bash', '-lc', `mkdir -p /workspace/repos/${repoSlug} && cd /workspace/repos/${repoSlug} && git checkout -B ${gitBranch}`]).catch(() => {});
+      await execFileAsync('ssh', ['-S', sockPath, `${sshUser}@127.0.0.1`, 'bash', '-lc', `mkdir -p ${shq(`/workspace/repos/${repoSlug}`)} && cd ${shq(`/workspace/repos/${repoSlug}`)} && git checkout -B ${shq(gitBranch)}`]).catch(() => {});
 
       const expiresAt = result.expiresAt ? new Date(result.expiresAt).getTime() : now + ttl * 1000;
       const session: CloudShiftSession = {
@@ -371,6 +376,17 @@ export class SandboxManager {
     const useDocker =
       !opts.preferLocalFallback &&
       (await this.isDockerWorkspaceAvailable(dockerImage));
+
+    if (!useDocker && process.env.WARDEN_REQUIRE_DOCKER === '1') {
+      throw new Error(
+        'WARDEN_REQUIRE_DOCKER=1 but the Docker workspace image is unavailable; refusing host (local) execution.'
+      );
+    }
+    if (!useDocker) {
+      console.warn(
+        `[SandboxManager] Docker unavailable for run ${opts.runId}; using LOCAL mode (host process, PermissionGuard only). Set WARDEN_REQUIRE_DOCKER=1 to forbid this.`
+      );
+    }
 
     let mode: 'docker' | 'local' | 'cloud-ephemeral' = 'local';
     let containerId = `local-${shortRunId}`;
@@ -543,7 +559,7 @@ export class SandboxManager {
                 'warden@127.0.0.1',
                 'bash',
                 '-lc',
-                `cd ${session.workspacePath} && ${command}`
+                `cd ${shq(session.workspacePath)} && ${command}`
               ],
               { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }
             )
@@ -663,7 +679,7 @@ export class SandboxManager {
           'warden@127.0.0.1',
           'bash',
           '-lc',
-          `cat ${session.workspacePath}/${relativePath}`
+          `cat ${shq(`${session.workspacePath}/${relativePath}`)}`
         ]);
         content = stdout;
       } else if (session.mode === 'docker') {
@@ -759,7 +775,7 @@ export class SandboxManager {
           'warden@127.0.0.1',
           'bash',
           '-lc',
-          `mkdir -p "${session.workspacePath}/${dir}" && echo "${b64}" | base64 -d > "${session.workspacePath}/${relativePath}"`
+          `mkdir -p ${shq(`${session.workspacePath}/${dir}`)} && echo ${shq(b64)} | base64 -d > ${shq(`${session.workspacePath}/${relativePath}`)}`
         ]);
       } else if (session.mode === 'docker') {
         const b64 = Buffer.from(content, 'utf8').toString('base64');
@@ -864,14 +880,14 @@ export class SandboxManager {
   }
 
   /**
-   * Section 4.6 24-Hour Hard Kill & Emergency Recovery (`HealthAndQuotaGuard`):
+   * Section 4.6 30-Minute Hard Kill & Emergency Recovery (`HealthAndQuotaGuard`):
    * 1. Commits any uncommitted container work to recovery branch `wip/timeout-<shortRunId>`
    * 2. Sends `SIGTERM` -> `SIGKILL` and destroys the Docker container cleanly
    * 3. Releases the preview port and stops the heartbeat timer.
    */
   async emergencySaveAndKill(
     runId: string,
-    reason = 'Exceeded 24-hour maximum runtime limit (HARD_KILL_TIMEOUT)'
+    reason = 'Exceeded 30-minute maximum runtime limit (HARD_KILL_TIMEOUT)'
   ): Promise<EmergencyKillResult> {
     const session = this.sessions.get(runId);
     const shortId = toShortRunId(runId);

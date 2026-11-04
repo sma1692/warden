@@ -1,5 +1,4 @@
 import { execFile } from 'node:child_process';
-import { TelegramPushPager } from '../telegram/TelegramPushPager.js';
 import type { ReminderChannel, ReminderRecord } from './ReminderService.js';
 import { REMINDER_CHANNELS } from './ReminderService.js';
 
@@ -10,8 +9,6 @@ export interface ChannelResult {
 }
 
 export interface ReminderChannelOptions {
-  /** Share the server's pager so reminder pushes show up in the Dashboard Telegram feed. */
-  telegramPager?: TelegramPushPager;
   /** Per-channel timeout in ms (default 20s). */
   timeoutMs?: number;
 }
@@ -50,7 +47,7 @@ export async function isWhatsAppAvailable(): Promise<boolean> {
 }
 
 /**
- * Default channels: env REMINDER_DEFAULT_CHANNELS (comma list), else telegram + macos (+ whatsapp when configured).
+ * Default channels: env REMINDER_DEFAULT_CHANNELS (comma list), else macos (+ whatsapp when configured).
  */
 export async function resolveDefaultChannels(): Promise<ReminderChannel[]> {
   const envList = (process.env.REMINDER_DEFAULT_CHANNELS || '')
@@ -59,7 +56,7 @@ export async function resolveDefaultChannels(): Promise<ReminderChannel[]> {
     .filter((c): c is ReminderChannel => REMINDER_CHANNELS.includes(c as ReminderChannel));
   if (envList.length > 0) return [...new Set(envList)];
 
-  const channels: ReminderChannel[] = ['telegram', 'macos'];
+  const channels: ReminderChannel[] = ['macos'];
   if (await isWhatsAppAvailable()) channels.unshift('whatsapp');
   return channels;
 }
@@ -84,20 +81,6 @@ function runOsascript(args: string[], timeoutMs: number): Promise<{ ok: boolean;
       }
     });
   });
-}
-
-async function sendTelegram(
-  reminder: ReminderRecord,
-  options: ReminderChannelOptions
-): Promise<{ ok: boolean; error?: string }> {
-  const pager = options.telegramPager ?? new TelegramPushPager();
-  const record = await pager.sendAlert({
-    type: 'QUESTION',
-    agentSlug: '@warden',
-    projectScope: 'Reminders',
-    headline: formatReminderMessage(reminder),
-  });
-  return record.deliveredViaApi ? { ok: true } : { ok: false, error: record.error ?? 'Telegram not delivered' };
 }
 
 async function sendMacNotification(
@@ -171,9 +154,6 @@ export async function sendToChannel(
   try {
     let result: { ok: boolean; error?: string };
     switch (channel) {
-      case 'telegram':
-        result = await withTimeout(sendTelegram(reminder, options), timeoutMs, 'telegram');
-        break;
       case 'macos':
         result = await sendMacNotification(reminder, timeoutMs);
         break;

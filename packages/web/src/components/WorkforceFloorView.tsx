@@ -90,7 +90,7 @@ export const WorkforceFloorView: React.FC<WorkforceFloorViewProps> = ({
   const [sortKey, setSortKey] = useState<SortColumnKey | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  // 1-second live stopwatch ticker for WORKING agents & 24h hard-kill countdown
+  // 1-second live stopwatch ticker for WORKING agents & 30m hard-kill countdown
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 1000);
     return () => window.clearInterval(id);
@@ -206,7 +206,7 @@ export const WorkforceFloorView: React.FC<WorkforceFloorViewProps> = ({
     const elapsedMs = agent.clocked_in_at
       ? Math.max(0, nowTick - new Date(agent.clocked_in_at).getTime())
       : 0;
-    const maxDurationMs = agent.max_run_duration_ms || 86_400_000;
+    const maxDurationMs = agent.max_run_duration_ms || 1_800_000;
     const remainingKillMs = Math.max(0, maxDurationMs - elapsedMs);
 
     if (agent.health_status === 'ZOMBIE_NO_HEARTBEAT' || agent.status === 'ERROR') {
@@ -235,7 +235,7 @@ export const WorkforceFloorView: React.FC<WorkforceFloorViewProps> = ({
           </span>
           <span
             className="text-[10px] font-mono text-[var(--text-muted)]"
-            title="24-Hour Watchdog hard-kill limit"
+            title="30-minute Watchdog hard-kill limit"
           >
             ⏳ {formatStopwatch(remainingKillMs)} left
           </span>

@@ -80,7 +80,7 @@ export function loadSeedData(now: string, today: string, readMd: ReadMdFn): {
 }
 
 const ZERO_STATS = {
-  max_run_duration_ms: 86400000,
+  max_run_duration_ms: 1800000,
   total_work_time_ms: 0,
   today_work_time_ms: 0,
   total_runs: 0,

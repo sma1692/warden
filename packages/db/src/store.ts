@@ -759,7 +759,7 @@ export class DatabaseStore {
       last_heartbeat_at: r.last_heartbeat_at ? new Date(r.last_heartbeat_at).toISOString() : null,
       max_subagents: Number(r.max_subagents ?? 4),
       active_subagent_count: Number(r.active_subagent_count ?? 0),
-      max_run_duration_ms: Number(r.max_run_duration_ms ?? 86_400_000),
+      max_run_duration_ms: Number(r.max_run_duration_ms ?? 1_800_000),
       current_run_id: r.current_run_id ?? null,
       clocked_in_at: r.clocked_in_at ? new Date(r.clocked_in_at).toISOString() : null,
       total_work_time_ms: Number(r.total_work_time_ms ?? 0),
@@ -892,7 +892,7 @@ export class DatabaseStore {
       active_subagent_count:
         input.active_subagent_count ?? existing?.active_subagent_count ?? 0,
       max_run_duration_ms:
-        input.max_run_duration_ms ?? existing?.max_run_duration_ms ?? 86_400_000,
+        input.max_run_duration_ms ?? existing?.max_run_duration_ms ?? 1_800_000,
       current_run_id:
         input.current_run_id !== undefined
           ? input.current_run_id

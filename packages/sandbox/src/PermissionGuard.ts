@@ -195,8 +195,7 @@ export function redactSecrets(input: string): string {
   return input
     .replace(/\b(AKIA[0-9A-Z]{16})\b/g, 'AKIA****************')
     .replace(/(AWS_SECRET_ACCESS_KEY\s*=\s*)([^\s"']+)/gi, '$1[REDACTED]')
-    .replace(/(CLOUDFLARE_API_TOKEN\s*=\s*)([^\s"']+)/gi, '$1[REDACTED]')
-    .replace(/(TELEGRAM_BOT_TOKEN\s*=\s*)([^\s"']+)/gi, '$1[REDACTED]');
+    .replace(/(CLOUDFLARE_API_TOKEN\s*=\s*)([^\s"']+)/gi, '$1[REDACTED]');
 }
 
 /**

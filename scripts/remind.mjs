@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Tiny CLI for the Warden reminders API.
 //   node scripts/remind.mjs "tomorrow 6pm call the design team"
-//   node scripts/remind.mjs "every weekday at 9am standup prep" --channels telegram,macos
+//   node scripts/remind.mjs "every weekday at 9am standup prep" --channels whatsapp,macos
 //   node scripts/remind.mjs --list [--status PENDING]
 //   node scripts/remind.mjs --cancel <id>
 //   node scripts/remind.mjs --fire <id>
@@ -12,7 +12,7 @@ const TZ = process.env.REMINDER_TZ || 'Asia/Kolkata';
 
 function usage() {
   console.log(`Usage:
-  node scripts/remind.mjs "<when> <what>" [--channels telegram,macos,whatsapp,apple_reminders]
+  node scripts/remind.mjs "<when> <what>" [--channels whatsapp,macos,apple_reminders]
   node scripts/remind.mjs --list [--status PENDING|FIRED|CANCELLED|FAILED]
   node scripts/remind.mjs --cancel <id>
   node scripts/remind.mjs --fire <id>`);

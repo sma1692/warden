@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import * as chrono from 'chrono-node';
 import { CronExpressionParser } from 'cron-parser';
 
-export type ReminderChannel = 'whatsapp' | 'telegram' | 'macos' | 'apple_reminders';
+export type ReminderChannel = 'whatsapp' | 'macos' | 'apple_reminders';
 export type ReminderStatus = 'PENDING' | 'FIRED' | 'CANCELLED' | 'FAILED';
 export type ReminderCreatedVia = 'api' | 'chat' | 'whatsapp' | 'cli';
 
-export const REMINDER_CHANNELS: ReminderChannel[] = ['whatsapp', 'telegram', 'macos', 'apple_reminders'];
+export const REMINDER_CHANNELS: ReminderChannel[] = ['whatsapp', 'macos', 'apple_reminders'];
 export const REMINDER_STATUSES: ReminderStatus[] = ['PENDING', 'FIRED', 'CANCELLED', 'FAILED'];
 const CREATED_VIA: ReminderCreatedVia[] = ['api', 'chat', 'whatsapp', 'cli'];
 

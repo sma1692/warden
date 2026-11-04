@@ -6,7 +6,6 @@ import {
   OrchestratorStore,
   SuggestedBacklogSpec,
 } from '../engine/OrchestratorStore.js';
-import { TelegramPushPager } from '../telegram/TelegramPushPager.js';
 import { loadPrivateData } from '../config/projectRegistry.js';
 
 interface IdleMonitorPrivateData {
@@ -49,17 +48,14 @@ export class IdleBacklogMonitor {
     Number(process.env.IDLE_WATCHDOG_COOLDOWN_MS) || 4 * 60 * 60 * 1000; // 4 hours
 
   private store: OrchestratorStore;
-  private telegramPager: TelegramPushPager;
   private cooldownMs: number;
   private cronTimer: NodeJS.Timeout | null = null;
 
   constructor(options: {
     store: OrchestratorStore;
-    telegramPager: TelegramPushPager;
     cooldownMs?: number;
   }) {
     this.store = options.store;
-    this.telegramPager = options.telegramPager;
     this.cooldownMs =
       options.cooldownMs ?? IdleBacklogMonitor.DEFAULT_COOLDOWN_MS;
   }
@@ -240,7 +236,7 @@ export class IdleBacklogMonitor {
       backlog_item_id: null,
       trigger_type: 'IDLE_WATCHDOG',
       input_prompt: `Department "${cfg.scope}" queue is empty. Inspect recent completed tasks, repo tech debt, and product funnel goals to draft 3 high-impact recommended backlog initiatives.`,
-      output_summary: `Drafted 3 high-impact initiatives for ${cfg.scope} and notified CEO via Dashboard & Telegram Push Pager.`,
+      output_summary: `Drafted 3 template-based initiatives (no LLM call) for ${cfg.scope} and notified CEO via Dashboard.`,
       status: 'COMPLETED',
       container_id: null,
       git_branch: null,
@@ -251,12 +247,12 @@ export class IdleBacklogMonitor {
     });
     this.store.updateRun(run.id, {
       ended_at: new Date().toISOString(),
-      active_duration_ms: 2400,
-      tokens_in: 1850,
-      tokens_cached: 1200,
-      tokens_thinking: 420,
-      tokens_out: 680,
-      cost_usd: 0.01,
+      active_duration_ms: 0,
+      tokens_in: 0,
+      tokens_cached: 0,
+      tokens_thinking: 0,
+      tokens_out: 0,
+      cost_usd: 0,
     });
 
     this.store.addInferenceStep({
@@ -268,12 +264,12 @@ export class IdleBacklogMonitor {
       tool_name: null,
       tool_args_json: null,
       tool_output_json: { suggested_count: suggestedSpecs.length },
-      duration_ms: 2400,
-      tokens_in: 1850,
-      tokens_cached: 1200,
-      tokens_thinking: 420,
-      tokens_out: 680,
-      cost_usd: 0.01,
+      duration_ms: 0,
+      tokens_in: 0,
+      tokens_cached: 0,
+      tokens_thinking: 0,
+      tokens_out: 0,
+      cost_usd: 0,
     });
 
     // 2. Create BACKLOG_REQUEST chat thread + message from the Senior Agent
@@ -323,17 +319,6 @@ export class IdleBacklogMonitor {
         suggested_tasks: suggestedSpecs,
       },
       telegram_notified_at: new Date().toISOString(),
-    });
-
-    // 4. Fire TelegramPushPager notification immediately
-    await this.telegramPager.notifyEmptyBacklog({
-      agentSlug: cfg.seniorAgentSlug,
-      projectScope: cfg.scope,
-      suggestedTitles: suggestedSpecs.map(
-        (s) => `[${s.priority}] ${s.title}`
-      ),
-      threadId: thread.id,
-      gateId: gate.id,
     });
 
     return {

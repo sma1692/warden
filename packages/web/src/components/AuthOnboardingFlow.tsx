@@ -1183,13 +1183,13 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   {/* Row 1: Card 1 Text & Subtext -> Image */}
                   <div className="grid grid-cols-2 gap-3 items-center">
                     <div className="rounded-2xl border border-[#C6A664]/35 bg-[#14161A]/95 p-3.5 sm:p-4 flex flex-col justify-center space-y-1.5 h-full">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
-                        01 • Company Brain
+                      <span className="text-[11px] font-mono uppercase tracking-wider text-[#D4B475]">
+                        Company Brain
                       </span>
-                      <h3 className="text-sm sm:text-base font-black text-white leading-snug">
+                      <h3 className="text-base sm:text-lg font-black text-white leading-snug">
                         Shared memory, 90% lower token burn
                       </h3>
-                      <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                         One brain holds your repos, backlogs, and decisions. Tiered context firewalls slash token costs so you never pay to re-explain.
                       </p>
                     </div>
@@ -1214,13 +1214,13 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                       />
                     </div>
                     <div className="rounded-2xl border border-[#C6A664]/35 bg-[#162030]/95 p-3.5 sm:p-4 flex flex-col justify-center space-y-1.5 h-full">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
-                        02 • Transient Workforce
+                      <span className="text-[11px] font-mono uppercase tracking-wider text-[#D4B475]">
+                        Transient Workforce
                       </span>
-                      <h3 className="text-sm sm:text-base font-black text-white leading-snug">
+                      <h3 className="text-base sm:text-lg font-black text-white leading-snug">
                         Ephemeral agents at a button click
                       </h3>
-                      <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                         Spin up on-demand agentic employees for a single mission. They ship the patch or campaign and dissolve—zero idle overhead.
                       </p>
                     </div>
@@ -1229,13 +1229,13 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   {/* Row 3: Card 3 Text & Subtext -> Image */}
                   <div className="grid grid-cols-2 gap-3 items-center">
                     <div className="rounded-2xl border border-[#C6A664]/35 bg-[#14161A]/95 p-3.5 sm:p-4 flex flex-col justify-center space-y-1.5 h-full">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#D4B475]">
-                        03 • Force Multiplier
+                      <span className="text-[11px] font-mono uppercase tracking-wider text-[#D4B475]">
+                        Force Multiplier
                       </span>
-                      <h3 className="text-sm sm:text-base font-black text-white leading-snug">
+                      <h3 className="text-base sm:text-lg font-black text-white leading-snug">
                         Augment every employee with an AI twin
                       </h3>
-                      <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                         Pair your team with autonomous agents that crush busywork, clear ticket queues, and bring down operational drag.
                       </p>
                     </div>
@@ -1278,22 +1278,22 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                     </span>
                   </div>
 
-                  {/* Pillar 01 — Featured Wide Showcase */}
-                  <div className="relative overflow-hidden rounded-2xl border border-[#C6A664]/35 bg-gradient-to-r from-[#14161A] via-[#131923] to-[#0B121C] p-5 xl:p-6 flex items-center justify-between gap-6">
+                  {/* Pillar 1 — Featured Wide Showcase */}
+                  <div className="relative overflow-hidden rounded-2xl border border-[#C6A664]/35 bg-gradient-to-r from-[#14161A] via-[#131923] to-[#0B121C] p-6 xl:p-7 flex items-center justify-between gap-6">
                     <div className="pointer-events-none absolute -right-10 -top-10 h-52 w-52 rounded-full bg-[#C6A664]/15 blur-3xl" />
-                    <div className="space-y-2 max-w-md z-10">
-                      <div className="inline-flex items-center gap-2">
-                        <span className="rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-[#D4B475]">
-                          01 • Company Brain
+                    <div className="space-y-2.5 max-w-lg z-10">
+                      <div className="inline-flex items-center gap-2.5">
+                        <span className="rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2.5 py-0.5 text-[11px] font-mono font-bold uppercase tracking-wider text-[#D4B475]">
+                          Company Brain
                         </span>
-                        <span className="text-[11px] font-mono text-[#D4B475]/80">
+                        <span className="text-xs font-mono text-[#D4B475]/80">
                           −90% Token Burn
                         </span>
                       </div>
-                      <h3 className="text-lg xl:text-xl font-black text-white leading-snug">
+                      <h3 className="text-xl xl:text-2xl font-black text-white leading-snug">
                         Shared memory, 90% lower token burn
                       </h3>
-                      <p className="text-xs xl:text-sm text-slate-300 leading-relaxed">
+                      <p className="text-sm xl:text-[15px] text-slate-300 leading-relaxed">
                         One brain holds your repos, backlogs, and decisions. Tiered context firewalls slash token costs so you never pay to re-explain.
                       </p>
                     </div>
@@ -1307,47 +1307,57 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                     </div>
                   </div>
 
-                  {/* Pillars 02 & 03 — Balanced Architectural Pair */}
+                  {/* Pillars 2 & 3 — Balanced Architectural Pair */}
                   <div className="grid grid-cols-2 gap-5">
-                    {/* Pillar 02 */}
-                    <div className="relative overflow-hidden rounded-2xl border border-[#C6A664]/30 bg-gradient-to-b from-[#162030]/90 to-[#0B121C]/95 p-5 flex flex-col justify-between gap-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-[#D4B475]">
-                          02 • Transient Workforce
-                        </span>
+                    {/* Pillar 2 */}
+                    <div className="relative overflow-hidden rounded-2xl border border-[#C6A664]/30 bg-gradient-to-b from-[#162030]/90 to-[#0B121C]/95 p-5 xl:p-6 flex flex-col justify-between gap-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <span className="inline-block rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2.5 py-0.5 text-[11px] font-mono font-bold uppercase tracking-wider text-[#D4B475]">
+                            Transient Workforce
+                          </span>
+                          <div className="text-xs font-mono text-[#D4B475]/80">
+                            Zero Idle Overhead
+                          </div>
+                        </div>
                         <img
                           src="/landing-ephemeral-agents.png"
                           alt="Ephemeral Agentic Workforce"
-                          className="h-24 w-24 xl:h-28 xl:w-28 object-contain mix-blend-lighten drop-shadow-[0_0_22px_rgba(212,180,117,0.25)] -mt-1 -mr-1 shrink-0"
+                          className="h-20 w-20 xl:h-24 xl:w-24 object-contain mix-blend-lighten drop-shadow-[0_0_22px_rgba(212,180,117,0.25)] shrink-0"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <h3 className="text-base xl:text-lg font-black text-white leading-snug">
+                      <div className="space-y-2">
+                        <h3 className="text-lg xl:text-xl font-black text-white leading-snug">
                           Ephemeral agents at a button click
                         </h3>
-                        <p className="text-xs text-slate-300 leading-relaxed">
+                        <p className="text-sm text-slate-300 leading-relaxed">
                           Spin up on-demand agentic employees for a single mission. They ship the patch or campaign and dissolve—zero idle overhead.
                         </p>
                       </div>
                     </div>
 
-                    {/* Pillar 03 */}
-                    <div className="relative overflow-hidden rounded-2xl border border-[#C6A664]/30 bg-gradient-to-b from-[#14161A]/95 to-[#0B121C]/95 p-5 flex flex-col justify-between gap-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-[#D4B475]">
-                          03 • Force Multiplier
-                        </span>
+                    {/* Pillar 3 */}
+                    <div className="relative overflow-hidden rounded-2xl border border-[#C6A664]/30 bg-gradient-to-b from-[#14161A]/95 to-[#0B121C]/95 p-5 xl:p-6 flex flex-col justify-between gap-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <span className="inline-block rounded-md bg-[#C6A664]/15 border border-[#C6A664]/35 px-2.5 py-0.5 text-[11px] font-mono font-bold uppercase tracking-wider text-[#D4B475]">
+                            Force Multiplier
+                          </span>
+                          <div className="text-xs font-mono text-[#D4B475]/80">
+                            24/7 Parallel Execution
+                          </div>
+                        </div>
                         <img
                           src="/landing-augmented-team.png"
                           alt="Human Augmented with Autonomous Agent Twin"
-                          className="h-24 w-24 xl:h-28 xl:w-28 object-contain mix-blend-lighten drop-shadow-[0_0_22px_rgba(212,180,117,0.25)] -mt-1 -mr-1 shrink-0"
+                          className="h-20 w-20 xl:h-24 xl:w-24 object-contain mix-blend-lighten drop-shadow-[0_0_22px_rgba(212,180,117,0.25)] shrink-0"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <h3 className="text-base xl:text-lg font-black text-white leading-snug">
+                      <div className="space-y-2">
+                        <h3 className="text-lg xl:text-xl font-black text-white leading-snug">
                           Augment every employee with an AI twin
                         </h3>
-                        <p className="text-xs text-slate-300 leading-relaxed">
+                        <p className="text-sm text-slate-300 leading-relaxed">
                           Pair your team with autonomous agents that crush busywork, clear ticket queues, and bring down operational drag.
                         </p>
                       </div>

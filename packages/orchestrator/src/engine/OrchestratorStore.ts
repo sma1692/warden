@@ -450,7 +450,7 @@ export function isCloudMode(): boolean {
 
 export function resolveWardenSource(): WardenSource {
   if (isCloudMode()) return 'db';
-  return (process.env.WARDEN_SOURCE || '').trim().toLowerCase() === 'db' ? 'db' : 'md';
+  return (process.env.WARDEN_SOURCE || 'db').trim().toLowerCase() === 'md' ? 'md' : 'db';
 }
 
 /**
@@ -903,7 +903,7 @@ export class OrchestratorStore {
               : new Date().toISOString(),
             max_subagents: Number(row.max_subagents ?? 4),
             active_subagent_count: Number(row.active_subagent_count ?? 0),
-            max_run_duration_ms: Number(row.max_run_duration_ms ?? 86400000),
+            max_run_duration_ms: Number(row.max_run_duration_ms ?? 1800000),
             current_run_id: row.current_run_id ?? null,
             clocked_in_at: row.clocked_in_at
               ? new Date(row.clocked_in_at).toISOString()
@@ -1403,7 +1403,7 @@ export class OrchestratorStore {
       last_heartbeat_at: now,
       max_subagents: input.max_subagents ?? 4,
       active_subagent_count: 0,
-      max_run_duration_ms: input.max_run_duration_ms ?? 86400000,
+      max_run_duration_ms: input.max_run_duration_ms ?? 1800000,
       current_run_id: null,
       clocked_in_at: null,
       total_work_time_ms: 0,

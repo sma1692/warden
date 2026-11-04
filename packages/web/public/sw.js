@@ -35,7 +35,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Handle Web Push / Telegram Companion Deep-Link Notifications
+// Handle Web Push Companion Deep-Link Notifications
 self.addEventListener('push', (event) => {
   let payload = {
     title: 'Warden Alert',

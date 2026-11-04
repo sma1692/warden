@@ -51,3 +51,6 @@ dist*/
 .state/demo-workspaces/
 packages/orchestrator/.state/
 saved-changes.diff
+
+# Model-generated scratch images
+generated_images/
