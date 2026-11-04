@@ -54,9 +54,9 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
     name: 'read_file',
     description: 'Read a file inside the isolated Docker sandbox or repository mirror.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        path: { type: 'STRING', description: 'Relative path inside repository' },
+        path: { type: 'string', description: 'Relative path inside repository' },
       },
       required: ['path'],
     },
@@ -65,10 +65,10 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
     name: 'write_file',
     description: 'Create or overwrite a file inside the isolated Docker sandbox or repository mirror.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        path: { type: 'STRING', description: 'Relative path inside repository' },
-        content: { type: 'STRING', description: 'Full file content' },
+        path: { type: 'string', description: 'Relative path inside repository' },
+        content: { type: 'string', description: 'Full file content' },
       },
       required: ['path', 'content'],
     },
@@ -77,11 +77,11 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
     name: 'edit_file',
     description: 'Replace target text in an existing file inside the sandbox or repository mirror.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        path: { type: 'STRING', description: 'Relative path inside repository' },
-        target: { type: 'STRING', description: 'Exact text to replace' },
-        replacement: { type: 'STRING', description: 'Replacement text' },
+        path: { type: 'string', description: 'Relative path inside repository' },
+        target: { type: 'string', description: 'Exact text to replace' },
+        replacement: { type: 'string', description: 'Replacement text' },
       },
       required: ['path', 'target', 'replacement'],
     },
@@ -90,9 +90,9 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
     name: 'run_command',
     description: 'Run a build, test, or git command inside the isolated Docker container or repo mirror.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        command: { type: 'STRING', description: 'Shell command to execute' },
+        command: { type: 'string', description: 'Shell command to execute' },
       },
       required: ['command'],
     },
@@ -102,22 +102,22 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
     description:
       'Delegate a sub-task to a subordinate or peer agent in the hierarchy, await its reply (or dispatch asynchronously), and receive its output summary.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
         target_agent_slug: {
-          type: 'STRING',
+          type: 'string',
           description: 'Slug of the target agent (e.g. @backend_dev:<project>, @tech_lead:<project>, @pm)',
         },
         task_prompt: {
-          type: 'STRING',
+          type: 'string',
           description: 'Detailed specification or directive for the subagent',
         },
         wait: {
-          type: 'BOOLEAN',
+          type: 'boolean',
           description: 'Whether to await the subagent completion and receive its reply in this turn (default true)',
         },
         reuse_session: {
-          type: 'BOOLEAN',
+          type: 'boolean',
           description: 'Whether to reuse an active subagent session in this thread if one exists (default true for Level 0/1)',
         },
       },
@@ -129,18 +129,18 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
     description:
       'Send a follow-up message to an existing subagent session (by runId or @agent_slug), continuing its conversation context.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
         recipient: {
-          type: 'STRING',
+          type: 'string',
           description: 'Target subagent runId (e.g. run_...) or agent slug (e.g. @tech_lead:<project>)',
         },
         message: {
-          type: 'STRING',
+          type: 'string',
           description: 'Message or follow-up instruction to send to the subagent',
         },
         wait: {
-          type: 'BOOLEAN',
+          type: 'boolean',
           description: 'If true (default), resumes the subagent immediately and returns its reply; if false, enqueues into its reactive inbox.',
         },
       },
@@ -152,12 +152,12 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
     description:
       'Pause execution in WAITING_FOR_CEO state, checkpoint the current conversation history, create an ApprovalGate, and send a 1-way Telegram Push Pager alert.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        question: { type: 'STRING', description: 'Question or decision needed from the CEO' },
+        question: { type: 'string', description: 'Question or decision needed from the CEO' },
         choices: {
-          type: 'ARRAY',
-          items: { type: 'STRING' },
+          type: 'array',
+          items: { type: 'string' },
           description: 'Optional 1-tap decision choices for the CEO',
         },
       },
@@ -169,11 +169,11 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
     description:
       'Lock a shared API / state contract between backend_dev and frontend_dev before cross-stack implementation.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        project_slug: { type: 'STRING', description: 'Project slug (from projects.yaml)' },
-        feature_slug: { type: 'STRING', description: 'Feature slug' },
-        contract_md: { type: 'STRING', description: 'Markdown API & payload contract' },
+        project_slug: { type: 'string', description: 'Project slug (from projects.yaml)' },
+        feature_slug: { type: 'string', description: 'Feature slug' },
+        contract_md: { type: 'string', description: 'Markdown API & payload contract' },
       },
       required: ['project_slug', 'feature_slug', 'contract_md'],
     },
@@ -183,12 +183,12 @@ const AGENT_TOOLS_BASE: ToolDeclaration[] = [
     description:
       'Search past chat messages when asked what was discussed before. Returns top matching snippets with thread id, sender, and timestamp. Read-only.',
     parameters: {
-      type: 'OBJECT',
+      type: 'object',
       properties: {
-        query: { type: 'STRING', description: 'Keywords or question to search past chats for' },
-        top_k: { type: 'NUMBER', description: 'Max snippets to return (default 5, max 10)' },
-        thread_id: { type: 'STRING', description: 'Optional thread id to restrict the search' },
-        since_days: { type: 'NUMBER', description: 'Optional recency window in days' },
+        query: { type: 'string', description: 'Keywords or question to search past chats for' },
+        top_k: { type: 'number', description: 'Max snippets to return (default 5, max 10)' },
+        thread_id: { type: 'string', description: 'Optional thread id to restrict the search' },
+        since_days: { type: 'number', description: 'Optional recency window in days' },
       },
       required: ['query'],
     },
@@ -733,7 +733,7 @@ export class AgentRunner {
         );
         const fanOutResults = await Promise.all(
           turnToolCalls.map((tc) =>
-            this.executeToolCall(
+            this.executeToolCallSafe(
               agent,
               run,
               tc,
@@ -795,7 +795,7 @@ export class AgentRunner {
             await new Promise((resolve) => setTimeout(resolve, 180));
           }
 
-          const toolRes = await this.executeToolCall(
+          const toolRes = await this.executeToolCallSafe(
             agent,
             run,
             tc,
@@ -1274,6 +1274,66 @@ export class AgentRunner {
     ];
   }
 
+  /**
+   * Runs one tool call without ever throwing: a failing tool records an error
+   * `TOOL_CALL` step and feeds the error back to the LLM for retry/replan, so
+   * a single tool crash cannot kill a multi-minute run. A rejected operator
+   * key deep in a delegation chain still pauses with a key-update gate.
+   */
+  private async executeToolCallSafe(
+    agent: AgentRecord,
+    run: AgentRunRecord,
+    tc: ToolCallInvocation,
+    containerId: string,
+    primaryRepo = 'warden'
+  ): Promise<{
+    codeModified: boolean;
+    pausedForCeo: boolean;
+    gateId?: string;
+    summary?: string;
+    output?: Record<string, unknown>;
+  }> {
+    try {
+      return await this.executeToolCall(agent, run, tc, containerId, primaryRepo);
+    } catch (err) {
+      if (err instanceof UserKeyError && run.user_id) {
+        const paused = await this.pauseRunForBadUserKey(agent, run, run.user_id, err);
+        return {
+          codeModified: false,
+          pausedForCeo: true,
+          gateId: paused.gateId,
+          summary: paused.outputSummary,
+          output: { ok: false, paused: true, gateId: paused.gateId },
+        };
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[🔧 TOOL FAIL] ${agent.slug} -> ${tc.name}: ${message}`);
+      const output: Record<string, unknown> = { ok: false, error: message, tool: tc.name };
+      this.store.addInferenceStep({
+        run_id: run.id,
+        step_type: 'TOOL_CALL',
+        model_used: agent.model_id,
+        thinking_text: `Tool ${tc.name} threw; feeding the error back so the agent can retry or replan.`,
+        message_text: `Tool ${tc.name} failed: ${message}`,
+        tool_name: tc.name,
+        tool_args_json: tc.args || {},
+        tool_output_json: output,
+        duration_ms: 0,
+        tokens_in: 0,
+        tokens_cached: 0,
+        tokens_thinking: 0,
+        tokens_out: 0,
+        cost_usd: 0,
+      });
+      return {
+        codeModified: false,
+        pausedForCeo: false,
+        summary: `Tool ${tc.name} failed: ${message}`,
+        output,
+      };
+    }
+  }
+
   private async executeToolCall(
     agent: AgentRecord,
     run: AgentRunRecord,
@@ -1597,7 +1657,7 @@ export class AgentRunner {
         : ['APPROVE', 'REVISE'];
 
       const gate = this.store.createApprovalGate({
-        user_id: run.user_id ?? params.userId ?? null,
+        user_id: run.user_id ?? null,
         run_id: run.id,
         thread_id: run.chat_thread_id,
         agent_id: agent.id,

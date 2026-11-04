@@ -556,7 +556,7 @@ export class ContextCompactor {
     this.pruneExpiredCaches();
 
     const scope = params.projectScope || 'GLOBAL';
-    const modelId = params.modelId || 'muse-wonder-1.0';
+    const modelId = params.modelId || 'muse-spark-1.3';
     const ttlSeconds = params.ttlSeconds ?? DEFAULT_CONTEXT_CACHE_TTL_SECONDS;
     const contentHash = crypto
       .createHash('sha256')

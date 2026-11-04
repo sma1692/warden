@@ -598,6 +598,25 @@ export interface ToolParameterSchema {
   enum?: string[];
 }
 
+function normalizeToolParameterSchema(schema: ToolParameterSchema): ToolParameterSchema {
+  const normalized: ToolParameterSchema = {
+    ...schema,
+    type: typeof schema.type === 'string' ? schema.type.toLowerCase() : schema.type,
+  };
+  if (schema.properties) {
+    normalized.properties = Object.fromEntries(
+      Object.entries(schema.properties).map(([key, prop]) => [
+        key,
+        normalizeToolParameterSchema(prop),
+      ])
+    );
+  }
+  if (schema.items) {
+    normalized.items = normalizeToolParameterSchema(schema.items);
+  }
+  return normalized;
+}
+
 export interface ToolDeclaration {
   name: string;
   description: string;
@@ -876,6 +895,13 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
   return denom === 0 ? 0 : dot / denom;
 }
 
+/** Per-inference HTTP timeout. Deep reasoning steps on muse-wonder-1.0 can take minutes. */
+const LLM_CALL_TIMEOUT_MS = 120_000;
+/** Transient-error retry delays before failing over to the next key / model. */
+const TRANSIENT_RETRY_DELAYS_MS = [1_500, 3_000];
+/** HTTP statuses worth retrying on the same credential before rotation. */
+const TRANSIENT_HTTP_STATUSES = new Set([429, 502, 503, 504]);
+
 export class ModelRouter {
   private readonly tokenTracker: TokenTracker;
   private readonly contextCompactor: ContextCompactor;
@@ -988,8 +1014,8 @@ export class ModelRouter {
           primaryProvider: params.provider || 'meta_muse',
           primaryModelId: params.modelId || cfg.proModel,
           fallbackProvider: 'meta_muse',
-          fallbackModelId: 'muse-spark-1.3',
-          reason: 'Apply pass Tier 1 (Architect / L0-L1) high-reasoning model',
+          fallbackModelId: 'muse-light',
+          reason: 'Apply pass Tier 1 (Architect / L0-L1) high-reasoning model (muse-spark-1.3)',
         };
       }
 
@@ -1021,11 +1047,11 @@ export class ModelRouter {
             primaryModelId:
               cfg.wardenL2ModelProvider === 'muse-flash' ? 'muse-flash' : 'muse-light',
             fallbackProvider: 'meta_muse',
-            fallbackModelId: cfg.defaultModel,
+            fallbackModelId: 'muse-spark-1.3',
             reason: 'Apply pass Tier 2 Fast File Applier routed to Muse Light',
           };
         }
-        // Default: muse-spark
+        // Default: muse-light
         return {
           routingProfile,
           stepPhase,
@@ -1033,7 +1059,7 @@ export class ModelRouter {
           primaryModelId: cfg.defaultModel,
           fallbackProvider: 'ollama',
           fallbackModelId: 'muse-glimmer-30b',
-          reason: 'Apply pass Tier 2 Fast File Applier routed to Muse Spark',
+          reason: 'Apply pass Tier 2 Fast File Applier routed to Muse Light',
         };
       }
     }
@@ -1058,7 +1084,7 @@ export class ModelRouter {
           primaryProvider: 'meta_muse',
           primaryModelId: 'muse-image',
           fallbackProvider: 'meta_muse',
-          fallbackModelId: 'muse-wonder-1.0',
+          fallbackModelId: 'muse-spark-1.3',
           reason: 'META_MUSE_HACKATHON creative visual step routed to muse-image',
         };
       }
@@ -1073,28 +1099,28 @@ export class ModelRouter {
           reason: 'META_MUSE_HACKATHON context compaction routed to muse-glimmer-30b',
         };
       }
-      if (isExecutive || stepPhase === 'planning') {
+      if (isExecutive || isLead || stepPhase === 'planning') {
         return {
           routingProfile,
           stepPhase,
           primaryProvider: 'meta_muse',
-          primaryModelId: 'muse-wonder-1.0',
+          primaryModelId: 'muse-spark-1.3',
           fallbackProvider: 'meta_muse',
-          fallbackModelId: 'muse-spark-1.3',
+          fallbackModelId: 'muse-light',
           reason:
             stepPhase === 'planning'
-              ? 'META_MUSE_HACKATHON Tier-C planning phase routed to muse-wonder-1.0'
-              : 'META_MUSE_HACKATHON executive reasoning routed to muse-wonder-1.0',
+              ? 'META_MUSE_HACKATHON Tier-C planning phase routed to muse-spark-1.3'
+              : 'META_MUSE_HACKATHON executive reasoning routed to muse-spark-1.3',
         };
       }
       return {
         routingProfile,
         stepPhase,
         primaryProvider: 'meta_muse',
-        primaryModelId: 'muse-spark-1.3',
+        primaryModelId: 'muse-light',
         fallbackProvider: 'ollama',
         fallbackModelId: 'muse-glimmer-30b',
-        reason: 'META_MUSE_HACKATHON Level 1/2 coding & tool loop routed to muse-spark-1.3',
+        reason: 'META_MUSE_HACKATHON Level 2 coding & tool loop routed to muse-light',
       };
     }
 
@@ -1184,13 +1210,13 @@ export class ModelRouter {
 
     if (!params.modelId && stepPhase === 'planning') {
       if (baseProvider === 'meta_muse') {
-        primaryModelId = 'muse-wonder-1.0';
-        reason = 'Tier-C planning phase upgraded to muse-wonder-1.0';
+        primaryModelId = 'muse-spark-1.3';
+        reason = 'Tier-C planning phase upgraded to muse-spark-1.3';
       }
     } else if (!params.modelId && stepPhase === 'tool_loop') {
       if (baseProvider === 'meta_muse') {
-        primaryModelId = 'muse-spark-1.3';
-        reason = 'Tier-C tool_loop routed to high-speed muse-spark-1.3';
+        primaryModelId = 'muse-light';
+        reason = 'Tier-C tool_loop routed to high-speed muse-light';
       }
     } else if (!params.modelId && stepPhase === 'compaction') {
       if (baseProvider === 'meta_muse') {
@@ -1236,10 +1262,10 @@ export class ModelRouter {
 
   private getConfig() {
     return {
-      proModel: process.env.WARDEN_PRO_MODEL || 'muse-wonder-1.0',
-      defaultModel: process.env.WARDEN_DEFAULT_MODEL || 'muse-spark-1.3',
+      proModel: process.env.WARDEN_PRO_MODEL || 'muse-spark-1.3',
+      defaultModel: process.env.WARDEN_DEFAULT_MODEL || 'muse-light',
       wardenExecutionMode: (process.env.WARDEN_EXECUTION_MODE || 'case_2b').toLowerCase(),
-      wardenL2ModelProvider: (process.env.WARDEN_L2_MODEL_PROVIDER || 'muse-spark').toLowerCase(),
+      wardenL2ModelProvider: (process.env.WARDEN_L2_MODEL_PROVIDER || 'muse-light').toLowerCase(),
       localLlmBaseUrl: (
         process.env.LOCAL_LLM_BASE_URL ||
         process.env.OLLAMA_BASE_URL ||
@@ -1759,6 +1785,51 @@ export class ModelRouter {
   }
 
   /**
+   * POSTs with a fresh 120s timeout per attempt and up to 2 retries (1.5s, 3s
+   * backoff) on transient failures: timeouts, connection resets, and HTTP
+   * 429/502/503/504. Auth/quota rejections (401/402/403) return immediately so
+   * the credential pool can rotate or raise a key gate without delay.
+   */
+  private async fetchWithTransientRetry(
+    url: string,
+    init: RequestInit,
+    label: string
+  ): Promise<Response> {
+    let lastError: unknown = null;
+    const attempts = 1 + TRANSIENT_RETRY_DELAYS_MS.length;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        const res = await fetch(url, {
+          ...init,
+          signal: AbortSignal.timeout(LLM_CALL_TIMEOUT_MS),
+        });
+        if (res.ok || !TRANSIENT_HTTP_STATUSES.has(res.status) || attempt === attempts - 1) {
+          return res;
+        }
+        console.warn(
+          `[ModelRouter] ${label} transient HTTP ${res.status}; retry ${attempt + 1}/${attempts - 1} in ${TRANSIENT_RETRY_DELAYS_MS[attempt]}ms`
+        );
+        await res.arrayBuffer().catch(() => undefined);
+        await new Promise((r) => setTimeout(r, TRANSIENT_RETRY_DELAYS_MS[attempt]));
+      } catch (err) {
+        lastError = err;
+        const name = err instanceof Error ? err.name : '';
+        const msg = err instanceof Error ? err.message : String(err);
+        const transient =
+          name === 'TimeoutError' ||
+          name === 'AbortError' ||
+          /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|network/i.test(msg);
+        if (!transient || attempt === attempts - 1) throw err;
+        console.warn(
+          `[ModelRouter] ${label} transient network error (${msg.slice(0, 120)}); retry ${attempt + 1}/${attempts - 1} in ${TRANSIENT_RETRY_DELAYS_MS[attempt]}ms`
+        );
+        await new Promise((r) => setTimeout(r, TRANSIENT_RETRY_DELAYS_MS[attempt]));
+      }
+    }
+    throw lastError || new Error(`${label} failed after ${attempts} attempts`);
+  }
+
+  /**
    * First-Class Adapter for Meta Muse Model API (`https://api.meta.ai/v1`):
    * - `muse-wonder-1.0` (`@warden` / `@cto` frontier reasoning)
    * - `muse-spark-1.3` (Level 1/2 high-speed coding & tool loops)
@@ -1856,7 +1927,7 @@ export class ModelRouter {
             function: {
               name: t.name,
               description: t.description,
-              parameters: t.parameters,
+              parameters: normalizeToolParameterSchema(t.parameters),
             },
           }))
         : undefined;
@@ -1889,15 +1960,18 @@ export class ModelRouter {
     console.log(
       `[🌐 MODEL CALL] POST ${endpoint} | model=${modelId} | key=${apiKey.slice(0, 8)}...`
     );
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+    const res = await this.fetchWithTransientRetry(
+      endpoint,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(30_000),
-    });
+      `Meta Muse ${modelId}`
+    );
 
     if (!res.ok) {
       const errText = await res.text();
@@ -2068,25 +2142,28 @@ export class ModelRouter {
             function: {
               name: t.name,
               description: t.description,
-              parameters: t.parameters,
+              parameters: normalizeToolParameterSchema(t.parameters),
             },
           }))
         : undefined;
 
-    const res = await fetch(`${baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: modelId,
-        messages: ollamaMessages,
-        tools: ollamaTools,
-        stream: false,
-        options: {
-          temperature: req.temperature ?? 0.2,
-        },
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
+    const res = await this.fetchWithTransientRetry(
+      `${baseUrl}/api/chat`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: modelId,
+          messages: ollamaMessages,
+          tools: ollamaTools,
+          stream: false,
+          options: {
+            temperature: req.temperature ?? 0.2,
+          },
+        }),
+      },
+      `Ollama ${modelId}`
+    );
 
     if (!res.ok) {
       throw new ProviderHttpError(
@@ -2234,23 +2311,26 @@ export class ModelRouter {
             function: {
               name: t.name,
               description: t.description,
-              parameters: t.parameters,
+              parameters: normalizeToolParameterSchema(t.parameters),
             },
           }))
         : undefined;
 
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: modelId,
-        messages,
-        tools,
-        temperature: req.temperature ?? 0.2,
-        max_tokens: req.maxOutputTokens ?? 4096,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
+    const res = await this.fetchWithTransientRetry(
+      `${baseUrl}/chat/completions`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: modelId,
+          messages,
+          tools,
+          temperature: req.temperature ?? 0.2,
+          max_tokens: req.maxOutputTokens ?? 4096,
+        }),
+      },
+      `vLLM ${modelId}`
+    );
 
     if (!res.ok) {
       throw new ProviderHttpError(

@@ -66,9 +66,9 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
   const [modelProvider, setModelProvider] = useState<ModelProvider>('meta_muse');
   const [modelId, setModelId] = useState('');
   const [fallbackProvider, setFallbackProvider] = useState<ModelProvider>('meta_muse');
-  const [fallbackModelId, setFallbackModelId] = useState('muse-spark-1.3');
-  const [planningModel, setPlanningModel] = useState('meta_muse:muse-wonder-1.0');
-  const [toolLoopModel, setToolLoopModel] = useState('meta_muse:muse-spark-1.3');
+  const [fallbackModelId, setFallbackModelId] = useState('muse-light');
+  const [planningModel, setPlanningModel] = useState('meta_muse:muse-spark-1.3');
+  const [toolLoopModel, setToolLoopModel] = useState('meta_muse:muse-light');
   const [compactionModel, setCompactionModel] = useState('ollama:llama-3.3-70b');
   const [permissionTier, setPermissionTier] = useState<PermissionTier>('full_overdrive');
   const [maxSubagents, setMaxSubagents] = useState(4);
@@ -91,14 +91,14 @@ export const AgentInspectorDrawer: React.FC<AgentInspectorDrawerProps> = ({
     setModelProvider(agent.model_provider);
     setModelId(agent.model_id);
     setFallbackProvider(agent.fallback_provider || 'meta_muse');
-    setFallbackModelId(agent.fallback_model_id || 'muse-spark-1.3');
+    setFallbackModelId(agent.fallback_model_id || 'muse-light');
     setPlanningModel(
       agent.step_routing?.planning_model || `${agent.model_provider}:${agent.model_id}`
     );
     setToolLoopModel(
       agent.step_routing?.tool_loop_model ||
         (agent.model_provider === 'meta_muse'
-          ? 'meta_muse:muse-spark-1.3'
+          ? 'meta_muse:muse-light'
           : 'ollama:llama-3.3-70b')
     );
     setCompactionModel(

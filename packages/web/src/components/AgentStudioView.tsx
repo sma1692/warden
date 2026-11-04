@@ -96,7 +96,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Root (L-1)',
     supervisorHandle: 'CEO (Founder)',
     model_provider: 'meta_muse',
-    model_id: 'muse-wonder-1.0',
+    model_id: 'muse-spark-1.3',
     status: 'WORKING',
     payloadTokens: 920,
     turnCapLabel: '<= 1.5K tok/turn',
@@ -116,7 +116,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 0 (CXO)',
     supervisorHandle: '@warden',
     model_provider: 'meta_muse',
-    model_id: 'muse-wonder-1.0',
+    model_id: 'muse-spark-1.3',
     status: 'WORKING',
     payloadTokens: 1840,
     turnCapLabel: '<= 4.0K tok/turn',
@@ -156,7 +156,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 1 (Lead)',
     supervisorHandle: '@cto',
     model_provider: 'meta_muse',
-    model_id: 'muse-wonder-1.0',
+    model_id: 'muse-spark-1.3',
     status: 'WAITING_FOR_CEO',
     payloadTokens: 1410,
     turnCapLabel: '<= 150w upward',
@@ -176,7 +176,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 2 (Dev)',
     supervisorHandle: '@tech_lead',
     model_provider: 'meta_muse',
-    model_id: 'muse-spark-1.3',
+    model_id: 'muse-light',
     status: 'WORKING',
     payloadTokens: 1290,
     turnCapLabel: '<= 200w upward',
@@ -196,7 +196,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 2 (Dev)',
     supervisorHandle: '@tech_lead',
     model_provider: 'meta_muse',
-    model_id: 'muse-spark-1.3',
+    model_id: 'muse-light',
     status: 'WORKING',
     payloadTokens: 1180,
     turnCapLabel: '<= 200w upward',
@@ -236,7 +236,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 1 (Lead)',
     supervisorHandle: '@cto',
     model_provider: 'meta_muse',
-    model_id: 'muse-wonder-1.0',
+    model_id: 'muse-spark-1.3',
     status: 'IDLE',
     payloadTokens: 410,
     turnCapLabel: '<= 150w upward',
@@ -258,7 +258,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 0 (CXO)',
     supervisorHandle: '@warden',
     model_provider: 'meta_muse',
-    model_id: 'muse-wonder-1.0',
+    model_id: 'muse-spark-1.3',
     status: 'WORKING',
     payloadTokens: 1150,
     turnCapLabel: '<= 4.0K tok/turn',
@@ -278,7 +278,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 1 (Lead)',
     supervisorHandle: '@cbo',
     model_provider: 'meta_muse',
-    model_id: 'muse-wonder-1.0',
+    model_id: 'muse-spark-1.3',
     status: 'WAITING_FOR_CEO',
     payloadTokens: 890,
     turnCapLabel: '<= 150w upward',
@@ -298,7 +298,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 2 (Exec)',
     supervisorHandle: '@aeo_lead',
     model_provider: 'meta_muse',
-    model_id: 'muse-spark-1.3',
+    model_id: 'muse-light',
     status: 'WORKING',
     payloadTokens: 660,
     turnCapLabel: '<= 200w upward',
@@ -320,7 +320,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 1 (Lead)',
     supervisorHandle: '@cbo',
     model_provider: 'meta_muse',
-    model_id: 'muse-wonder-1.0',
+    model_id: 'muse-spark-1.3',
     status: 'WAITING_FOR_CEO',
     payloadTokens: 1140,
     turnCapLabel: '<= 150w upward',
@@ -340,7 +340,7 @@ const CANONICAL_VERTICAL_ROSTER: {
     levelBadge: 'Level 2 (Exec)',
     supervisorHandle: '@social_lead',
     model_provider: 'meta_muse',
-    model_id: 'muse-spark-1.3',
+    model_id: 'muse-light',
     status: 'WORKING',
     payloadTokens: 860,
     turnCapLabel: '<= 200w upward',
@@ -401,10 +401,10 @@ const FIRST_TEMPLATE = PRESET_TEMPLATES[0];
 const getTierBadge = (modelId: string, modelProvider: string) => {
   const modelStr = modelId.toLowerCase();
   const title = `${modelProvider}:${modelId}`;
-  if (modelStr.includes('pro') || modelStr.includes('wonder') || modelStr.includes('70b') || modelStr.includes('32b')) {
+  if (modelStr.includes('spark') || modelStr.includes('pro') || modelStr.includes('wonder') || modelStr.includes('70b') || modelStr.includes('32b')) {
     return <span title={title} className="cursor-help rounded bg-[var(--semantic-alert)]/15 border border-[var(--semantic-alert)]/40 text-[var(--semantic-alert)] px-2 py-0.5 text-[10px] font-bold">High</span>;
   }
-  if (modelStr.includes('flash') || modelStr.includes('sonnet') || modelStr.includes('spark')) {
+  if (modelStr.includes('light') || modelStr.includes('flash') || modelStr.includes('sonnet')) {
     return <span title={title} className="cursor-help rounded bg-[var(--semantic-warning)]/15 border border-[var(--semantic-warning)]/40 text-[var(--semantic-warning)] px-2 py-0.5 text-[10px] font-bold">Medium</span>;
   }
   return <span title={title} className="cursor-help rounded bg-[var(--semantic-success)]/15 border border-[var(--semantic-success)]/40 text-[var(--semantic-success)] px-2 py-0.5 text-[10px] font-bold">Low</span>;
@@ -449,11 +449,11 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
   );
   const [projectScope, setProjectScope] = useState<string>(FIRST_TEMPLATE.project_scope);
   const [modelProvider, setModelProvider] = useState<ModelProvider>('meta_muse');
-  const [modelId, setModelId] = useState('muse-spark-1.3');
+  const [modelId, setModelId] = useState('muse-light');
   const [fallbackProvider, setFallbackProvider] = useState<ModelProvider>('meta_muse');
-  const [fallbackModelId, setFallbackModelId] = useState('muse-wonder-1.0');
-  const [planningModel, setPlanningModel] = useState('meta_muse:muse-wonder-1.0');
-  const [toolLoopModel, setToolLoopModel] = useState('meta_muse:muse-spark-1.3');
+  const [fallbackModelId, setFallbackModelId] = useState('muse-spark-1.3');
+  const [planningModel, setPlanningModel] = useState('meta_muse:muse-spark-1.3');
+  const [toolLoopModel, setToolLoopModel] = useState('meta_muse:muse-light');
   const [compactionModel, setCompactionModel] = useState('meta_muse:muse-glimmer-30b');
   const [permissionTier, setPermissionTier] = useState<PermissionTier>('full_overdrive');
   const [maxSubagents, setMaxSubagents] = useState(4);
@@ -495,9 +495,11 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
               name: c.name,
               role_title: c.role_title,
               hierarchy_level: c.hierarchy_level,
-              status: c.status,
-              active_task_title: c.active_task_title,
-              active_git_branch: c.active_git_branch,
+              // Live execution state: never overwrite with canonical demo values,
+              // or every agent shows WORKING regardless of reality.
+              status: matched.status,
+              active_task_title: matched.active_task_title ?? null,
+              active_git_branch: matched.active_git_branch ?? null,
               project_scope: c.project_scope,
               today_tokens_used: c.payloadTokens,
             }
@@ -521,16 +523,17 @@ export const AgentStudioView: React.FC<AgentStudioViewProps> = ({
               init_prompt: `You are ${c.slug} (${c.role_title}). Strictly enforce the Warden token firewall.`,
               allowed_repos: c.project_scope.split(','),
               permission_tier: 'full_overdrive',
-              status: c.status,
+              // No live agent behind this row: show IDLE, never a fake run.
+              status: 'IDLE',
               health_status: 'HEALTHY',
               last_heartbeat_at: new Date().toISOString(),
               max_subagents: 4,
-              active_subagent_count: c.status === 'WORKING' ? 2 : 0,
+              active_subagent_count: 0,
               max_run_duration_ms: 86_400_000,
-              current_run_id: `run_${cleanHandle}_01`,
-              clocked_in_at: new Date(Date.now() - 1800_000).toISOString(),
-              active_git_branch: c.active_git_branch,
-              active_task_title: c.active_task_title,
+              current_run_id: null,
+              clocked_in_at: null,
+              active_git_branch: null,
+              active_task_title: null,
               today_work_time_ms: 5_400_000,
               total_work_time_ms: 48_000_000,
               total_runs: 18,

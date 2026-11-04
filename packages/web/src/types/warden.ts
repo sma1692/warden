@@ -22,12 +22,12 @@ export type GlobalRoutingProfile =
 
 export const PROVIDER_MODELS: Record<ModelProvider, string[]> = {
   meta_muse: [
-    'muse-wonder-1.0',
-    'muse-pro',
     'muse-spark-1.3',
     'muse-light',
-    'muse-flash',
     'muse-glimmer-30b',
+    'muse-flash',
+    'muse-pro',
+    'muse-wonder-1.0',
     'muse-image',
     'muse-voice',
   ],

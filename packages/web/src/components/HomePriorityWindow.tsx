@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUpRight,
-  Check,
   CheckCircle2,
   Cpu,
+  Eye,
   HelpCircle,
   Megaphone,
+  MessageSquare,
   MessageSquarePlus,
   RotateCcw,
   Search,
@@ -20,7 +21,9 @@ import {
   type ConsultationLevel,
   type VerticalScope,
 } from './ConsultationKnob';
-import type { BacklogItem } from '../types/warden';
+import type { BacklogItem, ChatThread } from '../types/warden';
+import { DEMO_ORIGIN_THREAD_BY_BACKLOG, spawnThreadPrefix } from '../data/demoLinks';
+import { TrophyAssetPreview } from './TrophyAssetPreview';
 
 export interface PriorityQuestionOption {
   id: string;
@@ -50,6 +53,48 @@ export interface PriorityDecisionItem {
 }
 
 const PRIORITY_ITEMS: PriorityDecisionItem[] = [
+  {
+    id: 'prio_tech_lobby_bootstrap',
+    vertical: 'TECH',
+    verticalLabel: 'Tech',
+    projectSlug: 'demo-project',
+    agentSlug: '@frontend_dev',
+    agentRole: 'Frontend Dev + game team',
+    priority: 'P0',
+    impactBadge: 'Entry flow unblocked',
+    decisiveTitle: 'Lobby bootstrap: loading screen + logo + Play',
+    decisiveSummary:
+      '@tech_lead scoped the entry flow: branded loading screen with the proper logo, then a lobby with a Play button. Pure agentic build, no art generation.',
+    decisiveCtaLabel: 'Approve',
+    questionTitle: 'Lobby scope for launch',
+    questionPrompt:
+      'How much lobby should ship before the trophy launch?',
+    principleTag: 'Entry scope',
+    options: [
+      {
+        id: 'opt_lobby_play_only',
+        label: 'A. Loading + lobby + Play',
+        summary: 'Branded loader, logo lockup, lobby with one Play button. Ships today.',
+        recommended: true,
+      },
+      {
+        id: 'opt_lobby_presence',
+        label: 'B. Plus presence',
+        summary: 'Adds live player counts and lobby presence. One extra day.',
+      },
+      {
+        id: 'opt_lobby_matchmaking',
+        label: 'C. Plus matchmaking',
+        summary: 'Full queue + party invites. Slips the trophy launch.',
+      },
+    ],
+    coArchitectFollowUp: 'Where should the logo lockup live?',
+    coArchitectPills: [
+      'Shared game-client header',
+      'Loader only, lobby stays clean',
+      'Loader + lobby + PWA icon',
+    ],
+  },
   {
     id: 'prio_tech_trophy_assets',
     vertical: 'TECH',
@@ -228,6 +273,9 @@ function findMatchingBacklogItem(
   return backlogItems.find((b) => {
     const t = b.title.toLowerCase();
     const id = b.id.toLowerCase();
+    if (item.id === 'prio_tech_lobby_bootstrap') {
+      return id.includes('lobby_bootstrap') || t.includes('lobby with play');
+    }
     if (item.id === 'prio_tech_trophy_assets') {
       return (
         id.includes('trophy_assets') ||
@@ -256,9 +304,11 @@ interface HomePriorityWindowProps {
   activeVertical?: VerticalScope;
   knobConfig?: ConsultationKnobConfig;
   backlogItems?: BacklogItem[];
+  threads?: ChatThread[];
   onApproveBacklogItem?: (itemId: string, summary: string) => Promise<void> | void;
   onOpenAgentTab?: (agentSlug: string) => void;
   onOpenBacklogsTab?: () => void;
+  onOpenThread?: (threadId: string) => void;
   onDecisionRecorded?: (summary: string) => void;
 }
 
@@ -266,9 +316,11 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
   activeVertical = 'ALL',
   knobConfig: externalKnobConfig,
   backlogItems,
+  threads,
   onApproveBacklogItem,
   onOpenAgentTab,
   onOpenBacklogsTab,
+  onOpenThread,
   onDecisionRecorded,
 }) => {
   const [knobConfig, setKnobConfig] = useState<ConsultationKnobConfig>(() =>
@@ -276,6 +328,7 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
   );
 
   const [selectedOptionById, setSelectedOptionById] = useState<Record<string, string>>({
+    prio_tech_lobby_bootstrap: 'opt_lobby_play_only',
     prio_tech_trophy_assets: 'opt_neon_arcade',
     prio_tech_crash_patch: 'opt_guard_test',
     prio_social_trophy_launch: 'opt_player_flex',
@@ -283,6 +336,7 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
   });
 
   const [selectedCoPillById, setSelectedCoPillById] = useState<Record<string, string>>({
+    prio_tech_lobby_bootstrap: 'Shared game-client header',
     prio_tech_trophy_assets: 'Sprite atlas in the game bundle',
     prio_tech_crash_patch: 'Auto-reply with the fix + deploy link',
     prio_social_trophy_launch: 'Reels + Shorts first',
@@ -292,7 +346,7 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
   const [customNoteById, setCustomNoteById] = useState<Record<string, string>>({});
 
   const [resolvedById, setResolvedById] = useState<
-    Record<string, { decisionText: string; resolvedAt: string; levelUsed: ConsultationLevel }>
+    Record<string, { decisionText: string; resolvedAt: string; levelUsed: ConsultationLevel; running: boolean }>
   >({});
 
   // Modal state: clicking a card opens the deeper details modal
@@ -347,6 +401,19 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
             })
           : 'Saved',
         levelUsed: 1 as ConsultationLevel,
+        running: false,
+      };
+    }
+    if (
+      matched &&
+      matched.stage === 'IN_PROGRESS' &&
+      (matched.last_movement_note || '').startsWith('Approved')
+    ) {
+      return {
+        decisionText: matched.last_movement_note || `Approved "${item.decisiveTitle}"`,
+        resolvedAt: 'Running',
+        levelUsed: 1 as ConsultationLevel,
+        running: true,
       };
     }
     return undefined;
@@ -376,6 +443,7 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
           minute: '2-digit',
         }),
         levelUsed: level,
+        running: true,
       },
     }));
     const matchedBacklogItem = findMatchingBacklogItem(item, backlogItems);
@@ -410,7 +478,7 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
         {/* Top Window Header */}
         <div className="flex items-center justify-between gap-3 border-b border-[var(--surface-border)] px-4 py-3.5 shrink-0 bg-[var(--surface-elevated)] z-10">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/30 text-[var(--surface-accent-gold)]">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-accent-gold)]/15 border border-[var(--surface-accent-gold)]/30 text-[var(--surface-accent-gold)] motion-safe:animate-pulse">
               <AlertTriangle className="h-4 w-4 text-[var(--surface-accent-gold)]" />
             </div>
             <h2 className="text-sm sm:text-base font-bold text-[var(--surface-text)]">
@@ -470,21 +538,28 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
                 </span>
 
                 {resolved ? (
-                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--surface-accent-gold)]/40 bg-[var(--surface-accent-gold)]/15 px-3 py-1.5 text-xs font-bold text-[var(--surface-accent-gold)]">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    <span>Approved</span>
-                  </span>
+                  resolved.running ? (
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--semantic-success)]/40 bg-[var(--semantic-success)]/15 px-3 py-1.5 text-xs font-bold text-[var(--semantic-success)]">
+                      <span className="h-2 w-2 rounded-full bg-[var(--semantic-success)] animate-pulse" />
+                      <span>Running</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--surface-accent-gold)]/40 bg-[var(--surface-accent-gold)]/15 px-3 py-1.5 text-xs font-bold text-[var(--surface-accent-gold)]">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Approved</span>
+                    </span>
+                  )
                 ) : (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleResolveItem(item, 1);
+                      setActiveModalItemId(item.id);
                     }}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--surface-accent-gold)] hover:brightness-110 text-black px-3.5 py-1.5 text-xs font-bold shadow-xs transition cursor-pointer"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--surface-accent-gold)]/60 bg-[var(--surface-accent-gold)]/35 hover:bg-[var(--surface-accent-gold)]/50 px-3.5 py-1.5 text-xs font-bold text-[var(--surface-text)] shadow-xs transition cursor-pointer"
                   >
-                    <Check className="h-3.5 w-3.5" />
-                    <span>Approve</span>
+                    <Eye className="h-3.5 w-3.5" />
+                    <span>View</span>
                   </button>
                 )}
               </div>
@@ -505,6 +580,18 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
           selectedCoPillById[activeModalItem.id] || activeModalItem.coArchitectPills[0];
         const isEditingDecision = editingDecisionId === activeModalItem.id;
         const showResolvedState = Boolean(resolved) && !isEditingDecision;
+        const matchedBacklog = findMatchingBacklogItem(activeModalItem, backlogItems);
+        const originThreadId = matchedBacklog
+          ? DEMO_ORIGIN_THREAD_BY_BACKLOG[matchedBacklog.id]
+          : undefined;
+        const originThread = originThreadId
+          ? threads?.find((t) => t.id === originThreadId)
+          : undefined;
+        const spawnedThread =
+          matchedBacklog && threads
+            ? threads.find((t) => t.id.startsWith(spawnThreadPrefix(matchedBacklog.id)))
+            : undefined;
+        const isLocked = Boolean(resolved?.running) || matchedBacklog?.stage === 'DONE';
         const chosenOpt =
           activeModalItem.options.find((o) => o.id === selectedOptId) ||
           activeModalItem.options[0];
@@ -569,12 +656,78 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
                 {activeModalItem.decisiveSummary}
               </p>
 
+              {/* Origin chat + linked backlog task */}
+              {(originThreadId || matchedBacklog) && (
+                <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-muted)] p-3 space-y-2">
+                  {originThreadId && (
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-[var(--surface-text-secondary)]">
+                        <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[var(--surface-accent)]" />
+                        <span className="font-semibold text-[var(--surface-text)]">Origin chat:</span>
+                        <span className="truncate">
+                          {originThread?.title || originThreadId}
+                        </span>
+                      </div>
+                      {onOpenThread && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveModalItemId(null);
+                            onOpenThread(originThreadId);
+                          }}
+                          className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-[var(--surface-accent)]/40 bg-[var(--surface-accent)]/10 hover:bg-[var(--surface-accent)]/20 px-2.5 py-1 text-[11px] font-semibold text-[var(--surface-accent)] transition cursor-pointer"
+                        >
+                          <span>Open chat</span>
+                          <ArrowUpRight className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {matchedBacklog && (
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-[var(--surface-text-secondary)]">
+                        <span className="font-semibold text-[var(--surface-text)]">Task:</span>
+                        <span className="truncate">{matchedBacklog.title}</span>
+                        <span className="shrink-0 rounded bg-[var(--surface-panel)] border border-[var(--surface-border)] px-1.5 py-0.5 text-[10px] font-mono">
+                          {matchedBacklog.stage}
+                        </span>
+                      </div>
+                      {onOpenBacklogsTab && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveModalItemId(null);
+                            onOpenBacklogsTab();
+                          }}
+                          className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] hover:bg-[var(--surface-elevated)] px-2.5 py-1 text-[11px] font-semibold text-[var(--surface-text-secondary)] hover:text-[var(--surface-text)] transition cursor-pointer"
+                        >
+                          <span>Backlogs</span>
+                          <ArrowUpRight className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Generated output for the trophy art task */}
+              {matchedBacklog?.id === 'bl_trophy_assets' && (
+                <TrophyAssetPreview
+                  generated={
+                    Boolean(resolved?.running) ||
+                    matchedBacklog.stage === 'IN_PROGRESS' ||
+                    matchedBacklog.stage === 'QA_REVIEW' ||
+                    matchedBacklog.stage === 'DONE'
+                  }
+                />
+              )}
+
               {/* Approved items show their decision; the question flow returns only via Change decision */}
               {showResolvedState && resolved ? (
                 <div className="rounded-xl border border-[var(--surface-accent-gold)]/40 bg-[var(--surface-accent-gold)]/10 p-4 space-y-2.5">
                   <div className="flex items-center gap-2 text-sm font-bold text-[var(--surface-accent-gold)]">
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>Approved ({resolved.resolvedAt})</span>
+                    <span>{resolved.running ? 'Running' : 'Approved'} ({resolved.resolvedAt})</span>
                   </div>
                   <p className="text-xs sm:text-sm text-[var(--surface-text)] leading-relaxed">
                     {resolved.decisionText}
@@ -586,14 +739,35 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
                     {' — '}
                     {chosenOpt.summary}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditingDecisionId(activeModalItem.id)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-1.5 text-xs font-semibold text-[var(--surface-text-secondary)] hover:text-[var(--surface-text)] transition cursor-pointer"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    <span>Change decision</span>
-                  </button>
+                  {isLocked ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-mono text-[var(--surface-text-secondary)]">
+                        {resolved.running ? 'Team spawned — executing, no further approval needed.' : 'Task complete.'}
+                      </span>
+                      {resolved.running && spawnedThread && onOpenThread && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveModalItemId(null);
+                            onOpenThread(spawnedThread.id);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--semantic-success)]/40 bg-[var(--semantic-success)]/10 hover:bg-[var(--semantic-success)]/20 px-3 py-1.5 text-xs font-semibold text-[var(--semantic-success)] transition cursor-pointer"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          <span>Open run chat</span>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEditingDecisionId(activeModalItem.id)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-1.5 text-xs font-semibold text-[var(--surface-text-secondary)] hover:text-[var(--surface-text)] transition cursor-pointer"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Change decision</span>
+                    </button>
+                  )}
                 </div>
               ) : (
               <>
@@ -736,7 +910,7 @@ export const HomePriorityWindow: React.FC<HomePriorityWindowProps> = ({
                       className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-accent-gold)] hover:brightness-110 text-black px-4 py-2 text-xs font-bold shadow-md transition cursor-pointer"
                     >
                       <Send className="h-3.5 w-3.5" />
-                      <span>{resolved ? 'Update Approval' : 'Approve'}</span>
+                      <span>{resolved ? 'Update Approval' : 'Approve & spawn team'}</span>
                     </button>
                   )}
                 </div>

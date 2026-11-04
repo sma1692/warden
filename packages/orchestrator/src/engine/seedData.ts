@@ -113,7 +113,7 @@ function agent(
   return {
     slug: `@${a.id}`,
     model_provider: 'meta_muse',
-    model_id: a.model_id || (isExecOrLead ? 'muse-wonder-1.0' : 'muse-spark-1.3'),
+    model_id: a.model_id || (isExecOrLead ? 'muse-spark-1.3' : 'muse-light'),
     permission_tier: a.permission_tier || 'standard_autonomous',
     max_subagents: a.max_subagents ?? 4,
     ...ZERO_STATS,

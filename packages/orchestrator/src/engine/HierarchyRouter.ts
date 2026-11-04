@@ -3,6 +3,7 @@ import {
   AgentRunRecord,
   ChatMessageRecord,
   ChatThreadMode,
+  ChatThreadRecord,
   MediaAttachment,
   OrchestratorStore,
 } from './OrchestratorStore.js';
@@ -21,6 +22,23 @@ export interface RouteChatMessageParams {
   mode?: ChatThreadMode;
   attachments?: MediaAttachment[];
   userId?: string | null;
+  /**
+   * Async dispatch: skip thread/user-message creation (already done by
+   * `beginRouteMessage`) and resume `rootRunId` as the primary run so the
+   * tracking handle returned with HTTP 202 matches the executed run.
+   */
+  precreated?: {
+    userMessage: ChatMessageRecord;
+    rootRunId: string;
+  };
+}
+
+export interface BeginRouteResult {
+  thread: ChatThreadRecord;
+  userMessage: ChatMessageRecord;
+  rootRun: AgentRunRecord;
+  targetAgent: AgentRecord;
+  isDirect: boolean;
 }
 
 export interface RouteChatMessageResult {
@@ -145,12 +163,14 @@ export class HierarchyRouter {
   }
 
   /**
-   * Routes a CEO message through either Direct `@agent` Granular Mode or
-   * Default Executive Mode (`@warden` -> `@cto` / `@cmo` -> Level 1 -> Level 2).
+   * Sync preflight for async dispatch: ensures the thread exists, records the
+   * CEO message, and initializes the root `RUNNING` run. Returns in <100ms so
+   * the HTTP layer can answer 202 immediately; the caller then runs
+   * `routeMessage({ ...params, precreated })` in the background.
    */
-  public async routeMessage(
+  public async beginRouteMessage(
     params: RouteChatMessageParams
-  ): Promise<RouteChatMessageResult> {
+  ): Promise<BeginRouteResult> {
     let thread = this.store.threads.get(params.threadId);
     if (!thread) {
       thread = this.store.createThread({
@@ -168,7 +188,6 @@ export class HierarchyRouter {
       params.mode || thread.mode
     );
 
-    // Record the CEO's message in chat_messages
     const userMessage = this.store.addChatMessage({
       thread_id: thread.id,
       sender_type: 'CEO',
@@ -177,6 +196,103 @@ export class HierarchyRouter {
       content: params.content,
       attachments_json: params.attachments || [],
     });
+
+    // Reuse a live direct-session run when one exists so the tracking handle
+    // matches the primary run the background pass will resume.
+    let rootRun: AgentRunRecord | undefined;
+    if (parsed.isDirect) {
+      const sessionRunId = this.store.getSubagentSessionRunId(
+        thread.id,
+        parsed.targetAgent.id,
+        parsed.targetAgent.project_scope
+      );
+      const sessionRun = sessionRunId ? this.store.runs.get(sessionRunId) : undefined;
+      if (
+        sessionRun &&
+        (sessionRun.status === 'RUNNING' ||
+          sessionRun.status === 'PAUSED_FOR_CEO' ||
+          sessionRun.status === 'PAUSED_TOKEN_CAP')
+      ) {
+        rootRun =
+          this.store.updateRun(sessionRun.id, {
+            status: 'RUNNING',
+            pending_gate_id: null,
+            pending_tool_call_id: null,
+            pending_tool_name: null,
+          }) ?? sessionRun;
+      }
+    }
+
+    if (!rootRun) {
+      rootRun = this.store.createRun({
+        user_id: params.userId ?? thread.user_id ?? null,
+        agent_id: parsed.targetAgent.id,
+        agent_slug: parsed.targetAgent.slug,
+        parent_run_id: null,
+        chat_thread_id: thread.id,
+        sprint_id: null,
+        backlog_item_id: null,
+        trigger_type: parsed.isDirect ? 'DIRECT_MENTION' : 'CEO_CHAT',
+        input_prompt: parsed.cleanPrompt,
+        output_summary: null,
+        status: 'RUNNING',
+        container_id: null,
+        git_branch: null,
+        git_commit_sha: null,
+        preview_url: null,
+        qa_passed: null,
+        qa_screenshot_url: null,
+        project_scope: parsed.targetAgent.project_scope,
+        child_run_ids: [],
+        inbox_messages: [],
+      });
+    }
+
+    return {
+      thread,
+      userMessage,
+      rootRun,
+      targetAgent: parsed.targetAgent,
+      isDirect: parsed.isDirect,
+    };
+  }
+
+  /**
+   * Routes a CEO message through either Direct `@agent` Granular Mode or
+   * Default Executive Mode (`@warden` -> `@cto` / `@cmo` -> Level 1 -> Level 2).
+   */
+  public async routeMessage(
+    params: RouteChatMessageParams
+  ): Promise<RouteChatMessageResult> {
+    const precreated = params.precreated;
+    let thread = this.store.threads.get(params.threadId);
+    if (!thread) {
+      thread = this.store.createThread({
+        id: params.threadId,
+        user_id: params.userId ?? null,
+        title: params.content.slice(0, 64) || 'Executive Session',
+        mode: params.mode || 'WARDEN_EXECUTIVE',
+        target_agent_id: params.targetAgentId || 'warden',
+      });
+    }
+
+    const parsed = await this.parseDirectMention(
+      params.content,
+      params.targetAgentId || thread.target_agent_id,
+      params.mode || thread.mode
+    );
+
+    // Record the CEO's message in chat_messages (skipped when beginRouteMessage already did)
+    const userMessage =
+      precreated?.userMessage ??
+      this.store.addChatMessage({
+        thread_id: thread.id,
+        sender_type: 'CEO',
+        sender_agent_id: null,
+        recipient_agent_id: parsed.targetAgent.id,
+        content: params.content,
+        attachments_json: params.attachments || [],
+      });
 
     // ========================================================================
     // MODE A: Direct-to-Agent (@agent) 1-on-1 Granular Mode
@@ -198,11 +314,13 @@ export class HierarchyRouter {
         timestamp: new Date().toISOString(),
       });
 
-      const existingDirectSessionId = this.store.getSubagentSessionRunId(
-        thread.id,
-        parsed.targetAgent.id,
-        parsed.targetAgent.project_scope
-      );
+      const existingDirectSessionId =
+        precreated?.rootRunId ??
+        this.store.getSubagentSessionRunId(
+          thread.id,
+          parsed.targetAgent.id,
+          parsed.targetAgent.project_scope
+        );
 
       const directResult = await this.agentRunner.runTask({
         userId: params.userId ?? undefined,
@@ -248,17 +366,17 @@ export class HierarchyRouter {
 
     // If CEO is greeting, asking a conversational question, or pinging Warden:
     if (this.isConversationalPrompt(parsed.cleanPrompt)) {
-      console.log(`[⚡ ROUTER] Executive conversational prompt -> @warden (muse-wonder-1.0)`);
+      console.log(`[⚡ ROUTER] Executive conversational prompt -> @warden (muse-spark-1.3)`);
       this.store.emit('brain:status', {
         thread_id: thread.id,
         run_id: null,
         agent_id: 'warden',
         agent_slug: '@warden',
         phase: 'ROUTING',
-        model_used: 'meta_muse/muse-wonder-1.0',
+        model_used: 'meta_muse/muse-spark-1.3',
         thought: `Evaluating executive prompt from CEO in @warden Chief of Staff context.`,
         completed_step: `Recorded CEO message in thread ${thread.id}`,
-        next_action: `Synthesizing executive response with muse-wonder-1.0`,
+        next_action: `Synthesizing executive response with muse-spark-1.3`,
         timestamp: new Date().toISOString(),
       });
 
@@ -270,6 +388,7 @@ export class HierarchyRouter {
         attachments: params.attachments,
         maxSteps: 2,
         userId: params.userId ?? undefined,
+        existingRunId: precreated?.rootRunId ?? undefined,
       });
 
       const replyContent = wardenRunRes.outputSummary;
@@ -303,10 +422,10 @@ export class HierarchyRouter {
       agent_id: 'warden',
       agent_slug: '@warden',
       phase: 'ROUTING',
-      model_used: 'meta_muse/muse-wonder-1.0',
+      model_used: 'meta_muse/muse-spark-1.3',
       thought: `Triage complete: routing directive down chain @warden -> @${chain.cSuiteAgentId} -> @${chain.level1LeadId} -> @${chain.level2ExecutorId}.`,
       completed_step: `Resolved command chain (@${chain.cSuiteAgentId} -> @${chain.level1LeadId} -> @${chain.level2ExecutorId})`,
-      next_action: `Step 1/4: Running @warden Chief of Staff intake (muse-wonder-1.0)`,
+      next_action: `Step 1/4: Running @warden Chief of Staff intake (muse-spark-1.3)`,
       timestamp: new Date().toISOString(),
     });
 
@@ -319,6 +438,7 @@ export class HierarchyRouter {
       attachments: params.attachments,
       maxSteps: 3,
       userId: params.userId ?? undefined,
+      existingRunId: precreated?.rootRunId ?? undefined,
     });
 
     const delegatedRuns: AgentRunRecord[] = [];
@@ -362,10 +482,10 @@ export class HierarchyRouter {
       agent_id: chain.cSuiteAgentId,
       agent_slug: `@${chain.cSuiteAgentId}`,
       phase: 'DELEGATING',
-      model_used: 'meta_muse/muse-wonder-1.0',
+      model_used: 'meta_muse/muse-spark-1.3',
       thought: `@warden completed intake. Handing off directive to Level 0 C-Suite (@${chain.cSuiteAgentId}) for cross-project architecture & priority alignment.`,
       completed_step: `Step 1/4 Done: @warden intake complete`,
-      next_action: `Step 2/4: Dispatching @${chain.cSuiteAgentId} on muse-wonder-1.0`,
+      next_action: `Step 2/4: Dispatching @${chain.cSuiteAgentId} on muse-spark-1.3`,
       timestamp: new Date().toISOString(),
     });
 
@@ -388,7 +508,7 @@ export class HierarchyRouter {
       agent_id: chain.level1LeadId,
       agent_slug: `@${chain.level1LeadId}`,
       phase: 'DELEGATING',
-      model_used: 'meta_muse/muse-wonder-1.0',
+      model_used: 'meta_muse/muse-spark-1.3',
       thought: `@${chain.cSuiteAgentId} locked technical direction. Delegating contract & repo verification to Level 1 Lead (@${chain.level1LeadId}).`,
       completed_step: `Step 2/4 Done: @${chain.cSuiteAgentId} architectural review complete`,
       next_action: `Step 3/4: Dispatching Level 1 Lead @${chain.level1LeadId}`,
@@ -413,7 +533,7 @@ export class HierarchyRouter {
       agent_id: chain.level2ExecutorId,
       agent_slug: `@${chain.level2ExecutorId}`,
       phase: 'DELEGATING',
-      model_used: 'meta_muse/muse-spark-1.3',
+      model_used: 'meta_muse/muse-light',
       thought: `@${chain.level1LeadId} locked repo contract. Spawning Level 2 Executor (@${chain.level2ExecutorId}) for code execution & Playwright WebGL QA.`,
       completed_step: `Step 3/4 Done: @${chain.level1LeadId} contract handshake locked`,
       next_action: `Step 4/4: Executing tools & Playwright QA via @${chain.level2ExecutorId}`,
@@ -456,7 +576,7 @@ export class HierarchyRouter {
         `Routed down hierarchy to ${subRun.agent_slug} (Run ${subRun.id}).`;
       const subModel =
         subSteps.find((s) => s.step_type === 'LLM_INFERENCE')?.model_used ||
-        'meta_muse/muse-wonder-1.0';
+        'meta_muse/muse-spark-1.3';
 
       this.store.addInferenceStep({
         run_id: wardenRunRes.run.id,

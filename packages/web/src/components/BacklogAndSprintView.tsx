@@ -3,13 +3,16 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
   CheckCircle2,
   Cpu,
+  FileText,
   Globe,
   HelpCircle,
   Kanban,
   KeyRound,
   LayoutList,
+  MessageSquare,
   Plus,
   Search,
   Share2,
@@ -17,18 +20,23 @@ import {
   Sparkles,
   Wand2,
   Wrench,
+  X,
 } from 'lucide-react';
 import type {
   Agent,
   BacklogItem,
   BacklogStage,
+  ChatThread,
   InterventionCategory,
   PriorityLevel,
   Sprint,
 } from '../types/warden';
+import { DEMO_ORIGIN_THREAD_BY_BACKLOG, spawnThreadPrefix } from '../data/demoLinks';
+import { UNIFIED_REPORTS_CATALOG } from './ReportsView';
 import type { VerticalScope } from './ConsultationKnob';
 import { AsyncButton, useAsyncState } from './AsyncButton';
 import { SpriteTaskPreview } from './SpriteTaskPreview';
+import { TrophyAssetPreview } from './TrophyAssetPreview';
 import {
   PRIMARY_PROJECT,
   PROJECT_CATALOG,
@@ -258,6 +266,12 @@ interface BacklogAndSprintViewProps {
   sprint: Sprint;
   backlogItems: BacklogItem[];
   agents?: Agent[];
+  threads?: ChatThread[];
+  /** Deep-link a task from chat, reports, or Needs Action. */
+  focusedItemId?: string | null;
+  onFocusConsumed?: () => void;
+  onOpenThread?: (threadId: string) => void;
+  onOpenReportsTab?: () => void;
   onApproveSprint: (ceoNotes?: string) => Promise<void>;
   onRunStandupPollNow?: () => Promise<void>;
   onCreateBacklogItem: (payload: {
@@ -303,6 +317,11 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
   activeVertical = 'ALL',
   sprint,
   backlogItems,
+  threads,
+  focusedItemId,
+  onFocusConsumed,
+  onOpenThread,
+  onOpenReportsTab,
   onApproveSprint,
   onCreateBacklogItem,
   onMoveBacklogItem,
@@ -321,6 +340,7 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
   // Local state for extra vertical items stage changes
   const [extraItems, setExtraItems] = useState(EXTRA_VERTICAL_BACKLOG_ITEMS);
   const [resolutionTextById, setResolutionTextById] = useState<Record<string, string>>({});
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   // Quick-add form state
   const [newTitle, setNewTitle] = useState('');
@@ -333,6 +353,13 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
   useEffect(() => {
     setLocalVertical(activeVertical);
   }, [activeVertical]);
+
+  useEffect(() => {
+    if (focusedItemId) {
+      setSelectedItemId(focusedItemId);
+      onFocusConsumed?.();
+    }
+  }, [focusedItemId, onFocusConsumed]);
 
   const combinedItems = useMemo(() => {
     const existingIds = new Set(backlogItems.map((i) => i.id));
@@ -452,6 +479,29 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
       ).length,
     [combinedItems]
   );
+
+  const selectedItem = useMemo(
+    () => combinedItems.find((i) => i.id === selectedItemId) || null,
+    [combinedItems, selectedItemId]
+  );
+
+  const selectedOriginThreadId = selectedItem
+    ? DEMO_ORIGIN_THREAD_BY_BACKLOG[selectedItem.id]
+    : undefined;
+  const selectedOriginThread = selectedOriginThreadId
+    ? threads?.find((t) => t.id === selectedOriginThreadId)
+    : undefined;
+  const selectedSpawnedThreads = useMemo(() => {
+    if (!selectedItem || !threads) return [];
+    const prefix = spawnThreadPrefix(selectedItem.id);
+    return threads.filter((t) => t.id.startsWith(prefix));
+  }, [selectedItem, threads]);
+  const selectedLinkedReports = useMemo(() => {
+    if (!selectedItem) return [];
+    return UNIFIED_REPORTS_CATALOG.filter((r) =>
+      (r.linkedBacklogIds || []).includes(selectedItem.id)
+    );
+  }, [selectedItem]);
 
   return (
     <div className="space-y-4">
@@ -783,15 +833,28 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
               </div>
 
               <div>
-                <h3 className="text-xs font-bold text-[var(--text-main)] leading-snug">
+                <button
+                  type="button"
+                  onClick={() => setSelectedItemId(item.id)}
+                  className="text-xs font-bold text-[var(--text-main)] leading-snug text-left hover:text-[var(--surface-accent)] hover:underline transition cursor-pointer"
+                >
                   {item.title}
-                </h3>
+                </button>
                 <p className="text-[11px] text-[var(--text-muted)] mt-1 line-clamp-2">
                   {item.spec_md}
                 </p>
               </div>
 
               {item.id === 'bl_sprite_401' && <SpriteTaskPreview />}
+              {item.id === 'bl_trophy_assets' && (
+                <TrophyAssetPreview
+                  generated={
+                    item.stage === 'IN_PROGRESS' ||
+                    item.stage === 'QA_REVIEW' ||
+                    item.stage === 'DONE'
+                  }
+                />
+              )}
 
               {needsCeo && (
                 <div className="rounded-xl border border-[var(--semantic-alert)]/40 bg-[var(--surface-elevated)] p-2.5 space-y-2">
@@ -880,15 +943,30 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
                       </td>
 
                       <td className="py-3 px-3 max-w-md">
-                        <div className="font-bold text-[var(--text-main)] leading-snug">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedItemId(item.id)}
+                          className="font-bold text-[var(--text-main)] leading-snug text-left hover:text-[var(--surface-accent)] hover:underline transition cursor-pointer"
+                        >
                           {item.title}
-                        </div>
+                        </button>
                         <div className="text-[11px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
                           {item.spec_md}
                         </div>
                         {item.id === 'bl_sprite_401' && (
                           <div className="mt-2">
                             <SpriteTaskPreview />
+                          </div>
+                        )}
+                        {item.id === 'bl_trophy_assets' && (
+                          <div className="mt-2">
+                            <TrophyAssetPreview
+                              generated={
+                                item.stage === 'IN_PROGRESS' ||
+                                item.stage === 'QA_REVIEW' ||
+                                item.stage === 'DONE'
+                              }
+                            />
                           </div>
                         )}
                         {needsCeo && item.intervention_prompt && (
@@ -994,7 +1072,16 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
                     return (
                       <div
                         key={item.id}
-                        className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-2.5 space-y-2 hover:border-[var(--surface-border-strong)] transition shadow-xs"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedItemId(item.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedItemId(item.id);
+                          }
+                        }}
+                        className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-2.5 space-y-2 hover:border-[var(--surface-accent)]/60 transition shadow-xs cursor-pointer"
                       >
                         <div className="flex items-center justify-between gap-1">
                           <span className="text-[10px] font-mono font-bold text-[var(--semantic-alert)]">
@@ -1022,6 +1109,198 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
           })}
         </div>
       )}
+
+      {/* Task detail drawer: spec plus its chats and reports */}
+      {selectedItem && (() => {
+        const needsCeo =
+          selectedItem.stage === 'NEEDS_CEO' ||
+          (selectedItem.requires_human_intervention && !selectedItem.human_resolved_at);
+        return (
+          <div
+            className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs"
+            role="dialog"
+            aria-modal="true"
+            aria-label={selectedItem.title}
+            onClick={() => setSelectedItemId(null)}
+          >
+            <div
+              className="w-full max-w-md h-full overflow-y-auto border-l border-[var(--surface-border)] bg-[var(--surface-panel)] text-[var(--text-main)] p-5 space-y-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded bg-[var(--surface-accent)]/15 border border-[var(--surface-accent)]/30 px-1.5 py-0.5 text-[10px] font-mono font-bold text-[var(--surface-accent)]">
+                    {selectedItem.priority}
+                  </span>
+                  <span className="rounded bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-1.5 py-0.5 text-[10px] font-mono">
+                    {selectedItem.stage}
+                  </span>
+                  <span className="rounded bg-[var(--surface-elevated)] border border-[var(--surface-border)] px-1.5 py-0.5 text-[10px] font-mono uppercase">
+                    {selectedItem.project_slug}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedItemId(null)}
+                  className="rounded-lg p-1 text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                  aria-label="Close task details"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <h2 className="text-base font-bold leading-snug">{selectedItem.title}</h2>
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">{selectedItem.spec_md}</p>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-mono text-[var(--text-muted)]">
+                <span>
+                  Assigned: <strong className="text-[var(--surface-accent)]">{selectedItem.assigned_agent_id || '@pm'}</strong>
+                </span>
+                {selectedItem.pm_owner_id && <span>PM: {selectedItem.pm_owner_id}</span>}
+              </div>
+
+              {needsCeo && selectedItem.intervention_prompt && (
+                <div className="rounded-xl border border-[var(--semantic-alert)]/40 bg-[var(--semantic-alert)]/10 p-3 text-[11px] text-[var(--semantic-alert)] font-medium">
+                  🚨 {selectedItem.intervention_prompt}
+                </div>
+              )}
+
+              {selectedItem.id === 'bl_trophy_assets' && (
+                <TrophyAssetPreview
+                  generated={
+                    selectedItem.stage === 'IN_PROGRESS' ||
+                    selectedItem.stage === 'QA_REVIEW' ||
+                    selectedItem.stage === 'DONE'
+                  }
+                />
+              )}
+
+              {/* Linked chats */}
+              <div className="space-y-2">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  Linked chats
+                </h3>
+                {selectedOriginThreadId ? (
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-2.5">
+                    <div className="flex items-center gap-1.5 min-w-0 text-[11px]">
+                      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[var(--surface-accent)]" />
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-mono text-[var(--text-muted)]">Origin chat</div>
+                        <div className="font-semibold truncate">
+                          {selectedOriginThread?.title || selectedOriginThreadId}
+                        </div>
+                      </div>
+                    </div>
+                    {onOpenThread && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedItemId(null);
+                          onOpenThread(selectedOriginThreadId);
+                        }}
+                        className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-[var(--surface-accent)]/40 bg-[var(--surface-accent)]/10 hover:bg-[var(--surface-accent)]/20 px-2.5 py-1 text-[11px] font-semibold text-[var(--surface-accent)] transition cursor-pointer"
+                      >
+                        <span>Open</span>
+                        <ArrowUpRight className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-[var(--text-muted)]">No origin chat linked.</p>
+                )}
+                {selectedSpawnedThreads.map((thr) => (
+                  <div
+                    key={thr.id}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-[var(--semantic-success)]/30 bg-[var(--semantic-success)]/5 p-2.5"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0 text-[11px]">
+                      <span className="h-2 w-2 rounded-full bg-[var(--semantic-success)] animate-pulse shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-mono text-[var(--text-muted)]">Spawned run chat</div>
+                        <div className="font-semibold truncate">{thr.title}</div>
+                      </div>
+                    </div>
+                    {onOpenThread && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedItemId(null);
+                          onOpenThread(thr.id);
+                        }}
+                        className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-[var(--semantic-success)]/40 bg-[var(--semantic-success)]/10 hover:bg-[var(--semantic-success)]/20 px-2.5 py-1 text-[11px] font-semibold text-[var(--semantic-success)] transition cursor-pointer"
+                      >
+                        <span>Open</span>
+                        <ArrowUpRight className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Linked reports */}
+              <div className="space-y-2">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  Linked reports
+                </h3>
+                {selectedLinkedReports.length > 0 ? (
+                  selectedLinkedReports.map((rep) => (
+                    <button
+                      key={rep.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedItemId(null);
+                        onOpenReportsTab?.();
+                      }}
+                      className="w-full flex items-center gap-2 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] hover:border-[var(--surface-accent)]/50 p-2.5 text-left transition cursor-pointer"
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--surface-accent-gold)]" />
+                      <span className="text-[11px] font-semibold truncate">{rep.title}</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-[11px] text-[var(--text-muted)]">No reports linked yet.</p>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 pt-2 border-t border-[var(--surface-border)]">
+                {needsCeo ? (
+                  <AsyncButton
+                    type="button"
+                    action={() => handleQuickResolve(selectedItem.id)}
+                    spinnerClassName="h-3.5 w-3.5"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--semantic-success)] hover:bg-[var(--semantic-success)]/90 text-white px-4 py-2 text-xs font-bold transition cursor-pointer shadow-xs"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>Approve & unblock</span>
+                  </AsyncButton>
+                ) : selectedItem.stage === 'TODO' ? (
+                  <AsyncButton
+                    type="button"
+                    action={() => handleStageChange(selectedItem.id, 'IN_PROGRESS')}
+                    spinnerClassName="h-3.5 w-3.5"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--surface-accent)] hover:bg-[var(--surface-accent-hover)] text-white px-4 py-2 text-xs font-bold transition cursor-pointer shadow-xs"
+                  >
+                    <span>Start work</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </AsyncButton>
+                ) : (
+                  <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                    {selectedItem.last_movement_note || `Stage: ${selectedItem.stage}`}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedItemId(null)}
+                  className="rounded-xl border border-[var(--surface-border)] px-3.5 py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -29,6 +29,7 @@ import {
 } from '../data/reportsData';
 import type { VerticalScope } from './ConsultationKnob';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import type { BacklogItem } from '../types/warden';
 
 export interface UnifiedReportItem {
   id: string;
@@ -45,12 +46,16 @@ export interface UnifiedReportItem {
   status: 'ACTION_NEEDED' | 'VERIFIED' | 'LIVE_AUDIT';
   markdownContent: string;
   isStandupMom?: boolean;
+  /** Backlog tasks this report covers. Powers report <-> task jumps. */
+  linkedBacklogIds?: string[];
 }
 
 interface ReportsViewProps {
   activeVertical?: VerticalScope;
+  backlogItems?: BacklogItem[];
   onTriggerStandupNow: () => Promise<void>;
   onOpenBacklog?: () => void;
+  onOpenBacklogItem?: (itemId: string) => void;
   onOpenChatWithAgent?: (slug: string) => void;
   onOpenReportWindowTab?: (report: UnifiedReportItem) => void;
 }
@@ -75,137 +80,89 @@ export const UNIFIED_REPORTS_CATALOG: UnifiedReportItem[] = [
       INITIAL_STANDUP_REPORTS[0]?.markdown_content ||
       '# Daily Standup MoM — 2026-10-27\n\nAll Level 1 & Level 2 agents reported on schedule.',
     isStandupMom: true,
+    linkedBacklogIds: ['bl_crash_patch'],
   },
   {
-    id: 'rep-token-firewall-audit',
-    title: 'Bottom-Heavy Token Firewall Consumption Audit',
-    subtitle: 'Net payload tokens vs raw repo file reads prevented across Root, Level 0, Level 1, and Level 2.',
-    vertical: 'TECH',
-    authorSlug: '@warden',
-    projectSlug: 'warden',
-    date: '2026-10-27',
-    cadenceLabel: 'Per-Session Auto',
-    keyMetric: '11.1K net vs 192K raw',
-    tokenBurnLabel: '1.1K tok',
-    filePath: 'standups/token-report-2026-10-27.md',
-    status: 'VERIFIED',
-    markdownContent: `# Token Firewall Consumption Audit (2026-10-27)
-
-## Executive Telemetry Summary
-- **Net Payload Consumed**: \`11,140 tokens\` across 13 turns (\`~857 tok/turn\`)
-- **Context Firewall Savings**: \`94.2%\` (\`181.4K tokens\` saved by keeping source reads in Level 2 mirrors)
-- **Root (\`warden\`) Turn Average**: \`920 tok/turn\` (Budget cap: \`<= 1,500 tok/turn\`)
-- **Level 0 (\`cto\` / \`cbo\`) Turn Average**: \`2,640 tok/turn\` (Budget cap: \`<= 4,000 tok/turn\`)
-
-## Per-Vertical Breakdown
-- **Tech Vertical**: \`5.8K tok\` across \`@cto\`, \`@pm\`, \`@tech_lead\`, \`@frontend_dev\`, \`@backend_dev\`
-- **SEO / AEO Vertical**: \`2.9K tok\` across \`@cbo\`, \`@aeo_lead\`, \`@aeo_specialist\`
-- **Social Media Vertical**: \`2.4K tok\` across \`@social_lead\`, \`@social_creator\``,
-  },
-  {
-    id: 'rep-pulse-checkout-latency',
-    title: 'NovaPulse Checkout WebSocket Sync & Edge Build Audit',
-    subtitle: 'Deterministic cart state checksums, multi-region edge rollout, and Stripe webhook idempotency readiness.',
+    id: 'rep-trophy-art-qa',
+    title: 'Trophy art set QA: sprite atlas + unlock animations',
+    subtitle: '12-sprite trophy ladder in the locked style, packed atlas, 4 unlock animations with frame proofs.',
     vertical: 'TECH',
     authorSlug: '@tech_lead',
-    projectSlug: 'pulse-core',
+    projectSlug: 'demo-project',
     date: '2026-10-27',
-    cadenceLabel: 'Sprint Milestone',
-    keyMetric: '14ms RTT • 99.98% uptime',
-    tokenBurnLabel: '3.1K tok',
-    filePath: 'context/pulse-core/pulse-api.md',
-    status: 'LIVE_AUDIT',
-    markdownContent: `# NovaPulse Checkout & Multi-Region Edge Technical Audit
-
-## Key Telemetry
-- **Active Storefront Traffic**: \`~14,200 sessions/day\` across North America & EU edge PoPs (\`~1,850 checkouts/day\`)
-- **Cart State Sync Tick**: \`20Hz\` authoritative state sync with \`14ms\` median RTT
-- **Edge Bundle Optimization**: Reduced initial storefront JS hydration footprint by \`38%\` on mobile Safari
-- **Next Gate**: Approve Cloudflare Workers edge bundle and enterprise SLA failover verification.`,
-  },
-  {
-    id: 'rep-aeo-citation-share',
-    title: 'LLM Citation Share & Answer Engine Visibility Audit',
-    subtitle: 'Share-of-voice tracking across Meta AI answers and Muse for AI Commerce & Growth SaaS queries.',
-    vertical: 'SEO_AEO',
-    authorSlug: '@aeo_lead',
-    projectSlug: 'pulse-seo',
-    date: '2026-10-27',
-    cadenceLabel: 'Weekly AEO Audit',
-    keyMetric: '34.8% Citation Share (+9.2%)',
-    tokenBurnLabel: '1.9K tok',
-    filePath: 'reports/aeo-citation-audit-2026-10.md',
+    cadenceLabel: 'Launch Gate',
+    keyMetric: '12 sprites + 4 anims',
+    tokenBurnLabel: '2.2K tok',
+    filePath: 'reports/trophy-art-qa.md',
     status: 'ACTION_NEEDED',
-    markdownContent: `# Answer Engine Optimization (AEO) Citation Audit
+    markdownContent: `# Trophy Art Set QA (Launch Gate)
 
-## LLM Citation Share by Engine
-- **Perplexity AI**: \`41.2%\` citation rate on *"best AI commerce growth engine"* and *"automated AEO schema SaaS"*
-- **Meta AI answers**: \`32.5%\` direct link inclusion when querying AI-native storefront optimization platforms
-- **Meta AI summaries**: \`30.7%\` structured card presence via \`SoftwareApplication\` JSON-LD schema
+## What shipped
+- **12 trophy sprites** generated against \`ASSETS_MANIFEST.md\` in the locked neon-arcade style
+- **Sprite atlas** packed into the demo game bundle (single draw call per ladder row)
+- **4 unlock animations** (bronze to silver to gold to mythic) with per-frame timing proofs
 
-## Recommended High-EV Actions
-- Publish \`/llms.txt\` and \`/llms-full.txt\` on \`novapulse.io\` and \`docs.novapulse.io\`
-- Expand FAQ schema blocks comparing instant edge storefront hydration vs legacy monolithic commerce stacks`,
+## Verification
+- Atlas loads in the game client render loop with zero missing frames
+- Unlock sequence plays end to end in the Playwright capture
+
+## Next gate
+Approve the trophy asset task to spawn the art team run and attach the live preview here.`,
+    linkedBacklogIds: ['bl_trophy_assets'],
   },
   {
-    id: 'rep-seo-jsonld-clusters',
-    title: 'Programmatic JSON-LD Schema & High-Intent Keyword Clusters',
-    subtitle: 'Structured data validation and zero-click SERP snippet optimization across NovaPulse product & comparison pages.',
+    id: 'rep-trophy-seo-cluster',
+    title: 'Trophy launch SEO cluster: 4 guides + FAQ schema',
+    subtitle: 'How-to trophy guides with FAQPage schema so launch searches land on the demo game.',
     vertical: 'SEO_AEO',
-    authorSlug: '@aeo_specialist',
-    projectSlug: 'pulse-seo',
-    date: '2026-10-26',
-    cadenceLabel: 'Bi-Weekly Crawl',
-    keyMetric: '100% Schema Valid • +420 clicks/wk',
-    tokenBurnLabel: '2.1K tok',
-    filePath: 'reports/seo-jsonld-clusters.md',
+    authorSlug: '@seo_aeo_head',
+    projectSlug: 'demo-project',
+    date: '2026-10-27',
+    cadenceLabel: 'Launch Week',
+    keyMetric: '4 guides + FAQ schema',
+    tokenBurnLabel: '1.6K tok',
+    filePath: 'reports/trophy-seo-cluster.md',
     status: 'VERIFIED',
-    markdownContent: `# Programmatic JSON-LD & Keyword Cluster Report
+    markdownContent: `# Trophy Launch SEO Cluster
 
-## Schema Validation Status
-- **\`Product\` + \`SoftwareApplication\` JSON-LD**: Validated across 14 static routes with zero warnings
-- **Top Converting Queries**: *"autonomous AI commerce checkout"*, *"programmatic AEO llms.txt generator"*, *"sub-15ms headless storefront"*
-- **Core Web Vitals**: LCP \`1.1s\` on Cloudflare Pages edge cache`,
+## Coverage
+- **4 how-to guides** (unlock every trophy, ladder rewards, mythic chase, season reset)
+- **FAQPage schema** on each guide for answer-engine pickup
+- Internal links wired from the launch notes hub
+
+## Verification
+- Schema validates with zero warnings; guides render the locked trophy art set
+
+## Next gate
+Approve the SEO task to publish the cluster on launch day.`,
+    linkedBacklogIds: ['bl_trophy_seo'],
   },
   {
-    id: 'rep-social-hook-retention',
-    title: 'Short-Form Product Demo Hook Retention & Viral Velocity Report',
-    subtitle: '3-second thumb-stop rate and completion telemetry across X, Reels, Shorts, and LinkedIn product cuts.',
+    id: 'rep-trophy-launch-pack',
+    title: 'Trophy launch pack: 5 clips + announcement thread',
+    subtitle: 'Player-flex clips cut from the new art set plus the launch thread, premiering on Reels + Shorts.',
     vertical: 'SOCIAL',
     authorSlug: '@social_lead',
-    projectSlug: 'pulse-social',
+    projectSlug: 'demo-project',
     date: '2026-10-27',
-    cadenceLabel: '48h Creative Loop',
-    keyMetric: '68.4% 3s Hold • +18.4K views',
-    tokenBurnLabel: '1.7K tok',
-    filePath: 'reports/social-hook-retention.md',
-    status: 'ACTION_NEEDED',
-    markdownContent: `# Short-Form Video Hook Retention Report
-
-## Creative Variant Performance
-- **Hook Variant A (0.8s Live Revenue Ticker Morph → Instant AI Checkout)**: \`68.4%\` 3-second hold rate, \`41.2%\` full-watch completion
-- **Hook Variant B (Split-Screen Legacy Storefront vs NovaPulse Edge)**: \`61.9%\` 3-second hold rate, \`3.8%\` link click-through rate
-- **Action Needed**: Approve batch scheduling of 5 new product demo clips for peak US/EU SaaS buyer hours`,
-  },
-  {
-    id: 'rep-social-founder-funnel',
-    title: 'Founder X / LinkedIn Build-in-Public Growth & Demo Funnel Report',
-    subtitle: 'Technical build-in-public thread impressions, community signups, and enterprise inbound metrics.',
-    vertical: 'SOCIAL',
-    authorSlug: '@social_creator',
-    projectSlug: 'pulse-social',
-    date: '2026-10-26',
-    cadenceLabel: 'Weekly Funnel',
-    keyMetric: '4.6% Engagement • 310 clicks',
-    tokenBurnLabel: '1.5K tok',
-    filePath: 'reports/founder-social-funnel.md',
+    cadenceLabel: 'Launch Week',
+    keyMetric: '5 clips + thread',
+    tokenBurnLabel: '1.4K tok',
+    filePath: 'reports/trophy-launch-pack.md',
     status: 'VERIFIED',
-    markdownContent: `# Founder X & LinkedIn Build-in-Public Funnel
+    markdownContent: `# Trophy Launch Pack
 
-## Channel Highlights
-- **X (Twitter) Engineering Threads**: Sub-15ms edge checkout & webhook idempotency thread reached \`24.5K impressions\` (\`4.9%\` engagement)
-- **LinkedIn Executive Posts**: Autonomous Workforce OS & AI Commerce architecture post drove \`310 outbound clicks\`
-- **Next Scheduled Post**: Behind-the-scenes showcase of Autonomous Support Deflection in \`pulse-support\``,
+## Contents
+- **5 player-flex clips** cut from the new trophy art set (unlock moments, ladder climbs)
+- **Announcement thread** drafted from the art frames with premiere scheduling
+- Premiere order: Reels + Shorts first, X thread follows
+
+## Verification
+- All clips render the final locked sprites; thread links the playable preview
+
+## Next gate
+Approve the social task to schedule the premiere.`,
+    linkedBacklogIds: ['bl_trophy_social'],
   },
 ];
 
@@ -232,8 +189,10 @@ const VERTICAL_BADGE_STYLE: Record<
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
   activeVertical = 'ALL',
+  backlogItems,
   onTriggerStandupNow,
   onOpenBacklog,
+  onOpenBacklogItem,
   onOpenChatWithAgent,
   onOpenReportWindowTab,
 }) => {
@@ -569,6 +528,35 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <h2 className="text-sm sm:text-base font-bold text-[var(--text-main)] mt-1">
                 {activeReport.title}
               </h2>
+              {(activeReport.linkedBacklogIds || []).length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
+                    Linked tasks:
+                  </span>
+                  {(activeReport.linkedBacklogIds || []).map((taskId) => {
+                    const task = (backlogItems || []).find((b) => b.id === taskId);
+                    return (
+                      <button
+                        key={taskId}
+                        type="button"
+                        onClick={() => {
+                          if (onOpenBacklogItem) onOpenBacklogItem(taskId);
+                          else onOpenBacklog?.();
+                        }}
+                        title={task?.title || taskId}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-accent)]/40 bg-[var(--surface-accent)]/10 hover:bg-[var(--surface-accent)]/20 px-2 py-1 text-[11px] font-semibold text-[var(--surface-accent)] transition cursor-pointer max-w-[260px]"
+                      >
+                        <span className="truncate">{task?.title || taskId}</span>
+                        {task && (
+                          <span className="shrink-0 font-mono text-[10px] opacity-80">
+                            {task.stage}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">

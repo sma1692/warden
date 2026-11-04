@@ -161,13 +161,13 @@ export class DatabaseStore {
                   fallback_provider:
                     a.fallback_provider || seed?.fallback_provider || 'meta_muse',
                   fallback_model_id:
-                    a.fallback_model_id || seed?.fallback_model_id || 'muse-spark-1.3',
+                    a.fallback_model_id || seed?.fallback_model_id || 'muse-light',
                   step_routing_json:
                     a.step_routing_json && Object.keys(a.step_routing_json).length > 0
                       ? a.step_routing_json
                       : seed?.step_routing_json || {
-                          planning: { provider: 'meta_muse', modelId: 'muse-wonder-1.0' },
-                          tool_loop: { provider: 'meta_muse', modelId: 'muse-spark-1.3' },
+                          planning: { provider: 'meta_muse', modelId: 'muse-spark-1.3' },
+                          tool_loop: { provider: 'meta_muse', modelId: 'muse-light' },
                           compaction: { provider: 'ollama', modelId: 'muse-glimmer-30b' },
                         },
                 };
@@ -741,9 +741,12 @@ export class DatabaseStore {
       parent_agent_id: r.parent_agent_id ?? null,
       project_scope: r.project_scope ?? null,
       model_provider: (r.model_provider || 'meta_muse') as ModelProvider,
-      model_id: String(r.model_id || 'muse-wonder-1.0'),
+      model_id:
+        r.model_id && r.model_id !== 'muse-wonder-1.0'
+          ? String(r.model_id)
+          : 'muse-spark-1.3',
       fallback_provider: (r.fallback_provider || 'meta_muse') as ModelProvider,
-      fallback_model_id: String(r.fallback_model_id || 'muse-spark-1.3'),
+      fallback_model_id: String(r.fallback_model_id || 'muse-light'),
       step_routing_json:
         r.step_routing_json && typeof r.step_routing_json === 'object'
           ? (r.step_routing_json as StepRoutingConfig)
@@ -863,16 +866,16 @@ export class DatabaseStore {
           ? input.project_scope
           : (existing?.project_scope ?? 'GLOBAL'),
       model_provider: input.model_provider || existing?.model_provider || 'meta_muse',
-      model_id: input.model_id || existing?.model_id || 'muse-wonder-1.0',
+      model_id: input.model_id || existing?.model_id || 'muse-spark-1.3',
       fallback_provider:
         input.fallback_provider || existing?.fallback_provider || 'meta_muse',
       fallback_model_id:
-        input.fallback_model_id || existing?.fallback_model_id || 'muse-spark-1.3',
+        input.fallback_model_id || existing?.fallback_model_id || 'muse-light',
       step_routing_json:
         input.step_routing_json ??
         existing?.step_routing_json ?? {
-          planning: { provider: 'meta_muse', modelId: 'muse-wonder-1.0' },
-          tool_loop: { provider: 'meta_muse', modelId: 'muse-spark-1.3' },
+          planning: { provider: 'meta_muse', modelId: 'muse-spark-1.3' },
+          tool_loop: { provider: 'meta_muse', modelId: 'muse-light' },
           compaction: { provider: 'ollama', modelId: 'muse-glimmer-30b' },
         },
       init_prompt: input.init_prompt ?? existing?.init_prompt ?? '',

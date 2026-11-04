@@ -47,6 +47,11 @@ import {
   executorForProject,
   pmForProject,
 } from '../data/workspaceProfile';
+import {
+  DEMO_SPAWN_TREE_BY_BACKLOG,
+  flattenSpawnTree,
+  spawnThreadPrefix,
+} from '../data/demoLinks';
 
 export type WsEventPayload = {
   type:
@@ -108,6 +113,36 @@ export interface UserTokenTelemetry {
     SEO_AEO: { tokens: number; costUsd: number; runs: number; sharePct: number };
     SOCIAL: { tokens: number; costUsd: number; runs: number; sharePct: number };
   };
+}
+
+export interface SlimRunStatus {
+  id: string;
+  agent_id: string;
+  agent_slug: string;
+  status: string;
+  output_summary: string | null;
+  started_at: string;
+  ended_at: string | null;
+  error: string | null;
+  child_run_ids: string[];
+}
+
+export interface RunStatusResponse {
+  run: SlimRunStatus;
+  latestStep: InferenceStep | null;
+  replyMessage: ChatMessage | null;
+  waitingForCeo?: boolean;
+  error?: string | null;
+}
+
+export interface ThreadStatusResponse {
+  threadId: string;
+  thread: ChatThread;
+  runningRuns: SlimRunStatus[];
+  latestRun: SlimRunStatus | null;
+  latestStep: InferenceStep | null;
+  lastReply: ChatMessage | null;
+  pendingGates: unknown[];
 }
 
 class WardenApiClient {
@@ -195,6 +230,19 @@ class WardenApiClient {
             const run = parsed.data as AgentRun;
             if (run.id) {
               this.runs = [run, ...this.runs.filter((r) => r.id !== run.id)];
+            }
+          } else if (parsed.type === 'CHAT_MESSAGE' && parsed.data) {
+            const msg = parsed.data as ChatMessage;
+            if (msg.thread_id && msg.id) {
+              const list = this.messagesByThread[msg.thread_id] || [];
+              if (!list.some((m) => m.id === msg.id)) {
+                this.messagesByThread[msg.thread_id] = [...list, msg];
+              }
+              this.threads = this.threads.map((t) =>
+                t.id === msg.thread_id
+                  ? { ...t, updated_at: msg.created_at || t.updated_at }
+                  : t
+              );
             }
           }
           this.emit(parsed);
@@ -364,6 +412,45 @@ class WardenApiClient {
     ];
     this.stepsByRun[runId] = fallbackSteps;
     return fallbackSteps;
+  }
+
+  /**
+   * Polls one run's live status: slim run row, most recent inference step,
+   * and the final agent reply once the run completes. Returns null offline.
+   */
+  public async getRunStatus(runId: string): Promise<RunStatusResponse | null> {
+    const remote = await this.safeFetch<RunStatusResponse>(
+      `/runs/${encodeURIComponent(runId)}`
+    );
+    if (!remote || !remote.run) return null;
+    if (remote.latestStep?.run_id) {
+      const existing = this.stepsByRun[remote.latestStep.run_id] || [];
+      if (!existing.some((s) => s.id === remote.latestStep!.id)) {
+        this.stepsByRun[remote.latestStep.run_id] = [...existing, remote.latestStep];
+      }
+    }
+    if (remote.replyMessage?.thread_id && remote.replyMessage.id) {
+      const list = this.messagesByThread[remote.replyMessage.thread_id] || [];
+      if (!list.some((m) => m.id === remote.replyMessage!.id)) {
+        this.messagesByThread[remote.replyMessage.thread_id] = [
+          ...list,
+          remote.replyMessage,
+        ];
+      }
+    }
+    return remote;
+  }
+
+  /**
+   * Polls a thread's execution state: in-flight runs, latest run/step, last
+   * agent reply, and pending gates. Used to resume progress UI after refresh.
+   */
+  public async getThreadStatus(threadId: string): Promise<ThreadStatusResponse | null> {
+    const remote = await this.safeFetch<ThreadStatusResponse>(
+      `/threads/${encodeURIComponent(threadId)}/status`
+    );
+    if (!remote || !remote.threadId) return null;
+    return remote;
   }
 
   public async getAgentMemories(agentId: string): Promise<AgentMemory[]> {
@@ -750,7 +837,15 @@ class WardenApiClient {
     target_agent_id: string;
     content: string;
     attachments: MediaAttachment[];
-  }): Promise<{ ceoMessage: ChatMessage; agentReply: ChatMessage; createdRun: AgentRun }> {
+  }): Promise<{
+    ceoMessage: ChatMessage;
+    agentReply?: ChatMessage;
+    createdRun?: AgentRun;
+    runId?: string;
+    agentId?: string;
+    agentSlug?: string;
+    status?: string;
+  }> {
     const nowIso = new Date().toISOString();
     const ceoMessage: ChatMessage = {
       id: `msg_ceo_${Date.now()}`,
@@ -767,13 +862,19 @@ class WardenApiClient {
     const existing = this.messagesByThread[payload.thread_id] || [];
     this.messagesByThread[payload.thread_id] = [...existing, ceoMessage];
 
-    // Attempt backend POST
+    // Attempt backend POST (HTTP 202: returns a run tracking handle, never blocks)
     const remote = await this.safeFetch<{
       ceoMessage?: ChatMessage;
       agentReply?: ChatMessage;
       createdRun?: AgentRun;
       delegatedRuns?: AgentRun[];
       traceSteps?: InferenceStep[];
+      runId?: string;
+      agentId?: string;
+      agentSlug?: string;
+      threadId?: string;
+      status?: string;
+      async?: boolean;
     }>(`/threads/${encodeURIComponent(payload.thread_id)}/messages`, {
       method: 'POST',
       body: JSON.stringify({
@@ -782,6 +883,30 @@ class WardenApiClient {
         attachments_json: payload.attachments,
       }),
     });
+
+    // Async dispatch (HTTP 202): no reply yet — track via runId polling + WS push.
+    if (remote && remote.runId && !remote.agentReply) {
+      const realCeo = remote.ceoMessage || ceoMessage;
+      this.messagesByThread[payload.thread_id] = (
+        this.messagesByThread[payload.thread_id] || []
+      ).filter((m) => m.id !== ceoMessage.id && m.id !== realCeo.id);
+      this.messagesByThread[payload.thread_id] = [
+        ...this.messagesByThread[payload.thread_id],
+        realCeo,
+      ];
+      this.threads = this.threads.map((t) =>
+        t.id === payload.thread_id
+          ? { ...t, updated_at: new Date().toISOString(), target_agent_id: payload.target_agent_id }
+          : t
+      );
+      return {
+        ceoMessage: realCeo,
+        runId: remote.runId,
+        agentId: remote.agentId,
+        agentSlug: remote.agentSlug,
+        status: remote.status || 'RUNNING',
+      };
+    }
 
     if (remote && remote.agentReply) {
       const realCeo = remote.ceoMessage || ceoMessage;
@@ -1237,6 +1362,162 @@ class WardenApiClient {
       this.emit({ type: 'BACKLOG_UPDATED', data: updated });
     }
     return updated;
+  }
+
+  /**
+   * Demo approval flow: approving a task starts work. The task moves to
+   * IN_PROGRESS and a new lead chat with @warden spawns, playing out the
+   * scripted delegation tree (@warden -> @cto/@cmo -> leads -> devs) as
+   * linked runs and messages so the spawn depth stays traversable.
+   */
+  public async spawnDemoTaskRun(
+    itemId: string,
+    decisionSummary: string
+  ): Promise<{ thread: ChatThread; item: BacklogItem } | null> {
+    const existing = this.backlog.find((i) => i.id === itemId);
+    if (!existing) return null;
+    const nowIso = new Date().toISOString();
+    const stamp = Date.now();
+
+    const updated: BacklogItem = {
+      ...existing,
+      stage: 'IN_PROGRESS',
+      requires_human_intervention: false,
+      human_resolution: decisionSummary,
+      human_resolved_at: nowIso,
+      last_moved_at: nowIso,
+      last_movement_note: `Approved: ${decisionSummary}`,
+    };
+    this.backlog = this.backlog.map((item) => (item.id === itemId ? updated : item));
+    await this.safeFetch(`/backlog/${encodeURIComponent(itemId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ stage: 'IN_PROGRESS', reason: decisionSummary }),
+    });
+
+    const thread: ChatThread = {
+      id: `${spawnThreadPrefix(itemId)}${stamp}`,
+      title: `Lead: ${existing.title.slice(0, 52)}`,
+      mode: 'WARDEN_EXECUTIVE',
+      target_agent_id: '@warden',
+      project_scope: existing.project_slug,
+      status: 'ACTIVE',
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+    await this.safeFetch('/threads', {
+      method: 'POST',
+      body: JSON.stringify(thread),
+    });
+    this.threads = [thread, ...this.threads];
+
+    const tree = DEMO_SPAWN_TREE_BY_BACKLOG[itemId];
+    const flat = tree ? flattenSpawnTree(tree) : [];
+    const messages: ChatMessage[] = [
+      {
+        id: `msg_spawn_${stamp}_sys`,
+        thread_id: thread.id,
+        sender_type: 'SYSTEM',
+        sender_agent_id: '@warden',
+        recipient_agent_id: 'CEO',
+        content: `Approved by CEO: "${decisionSummary}" — spawning the execution team for **${existing.title}**.`,
+        run_id: null,
+        attachments_json: [],
+        created_at: nowIso,
+      },
+    ];
+
+    // One run per spawn node, chained through parent_run_id.
+    const runIds: string[] = [];
+    flat.forEach(({ node }, idx) => {
+      const runId = `run_spawn_${stamp}_${idx}`;
+      runIds.push(runId);
+      const agent =
+        this.agents.find((a) => a.slug === node.agentSlug) || this.agents[0];
+      const createdRun: AgentRun = {
+        id: runId,
+        agent_id: agent.id,
+        parent_run_id: idx === 0 ? null : runIds[idx - 1],
+        chat_thread_id: thread.id,
+        sprint_id: this.sprint.id,
+        backlog_item_id: itemId,
+        trigger_type: idx === 0 ? 'CEO_CHAT' : 'DELEGATION',
+        input_prompt: node.summary,
+        output_summary: node.summary,
+        status: 'RUNNING',
+        container_id: null,
+        git_branch: null,
+        git_commit_sha: null,
+        preview_url: null,
+        qa_passed: null,
+        qa_screenshot_url: null,
+        started_at: nowIso,
+        ended_at: null,
+        active_duration_ms: 0,
+        pause_duration_ms: 0,
+        tokens_in: 0,
+        tokens_cached: 0,
+        tokens_thinking: 0,
+        tokens_out: 0,
+        cost_usd: 0,
+      };
+      this.runs = [createdRun, ...this.runs.filter((r) => r.id !== runId)];
+      const childSlugs = (node.children || []).map((c) => c.agentSlug).join(', ');
+      this.stepsByRun[runId] = [
+        {
+          id: `step_${runId}_delegate`,
+          run_id: runId,
+          step_index: 1,
+          step_type: childSlugs ? 'SUBAGENT_CALL' : 'LLM_INFERENCE',
+          model_used: `${agent.model_provider}/${agent.model_id}`,
+          thinking_text: node.summary,
+          message_text: childSlugs
+            ? `${node.agentSlug} delegating to ${childSlugs}`
+            : `${node.agentSlug} executing: ${existing.title}`,
+          tool_name: childSlugs ? 'delegate_to_subagents' : null,
+          tool_args_json: childSlugs ? { delegates: childSlugs } : null,
+          tool_output_json: null,
+          duration_ms: 0,
+          tokens_in: 0,
+          tokens_cached: 0,
+          tokens_thinking: 0,
+          tokens_out: 0,
+          created_at: nowIso,
+        },
+      ];
+      messages.push({
+        id: `msg_spawn_${stamp}_${idx}`,
+        thread_id: thread.id,
+        sender_type: 'AGENT',
+        sender_agent_id: node.agentSlug,
+        recipient_agent_id: 'CEO',
+        content: `**[${node.agentSlug}]** ${node.summary}`,
+        run_id: runId,
+        attachments_json: [],
+        created_at: nowIso,
+      });
+    });
+    this.messagesByThread[thread.id] = messages;
+
+    const movement: SprintTaskMovementEntry = {
+      item_id: existing.id,
+      title: existing.title,
+      project_slug: existing.project_slug,
+      from_stage: existing.stage,
+      to_stage: 'IN_PROGRESS',
+      from_priority: existing.priority,
+      to_priority: existing.priority,
+      moved_by_agent: 'CEO',
+      reason: `CEO approved from Needs Action: ${decisionSummary}`,
+      moved_at: nowIso,
+    };
+    this.sprint = {
+      ...this.sprint,
+      task_movements_json: [movement, ...(this.sprint.task_movements_json || [])],
+    };
+
+    this.emit({ type: 'BACKLOG_UPDATED', data: updated });
+    this.emit({ type: 'CHAT_MESSAGE', data: { thread_id: thread.id } });
+    return { thread, item: updated };
   }
 
   public async runPmInboxTriage(): Promise<BacklogItem[]> {

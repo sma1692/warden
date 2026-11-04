@@ -43,15 +43,15 @@ function makeSeedAgent(
   const isExecutor = partial.hierarchy_level >= 2;
   return {
     fallback_provider: isExecutor ? 'ollama' : 'meta_muse',
-    fallback_model_id: isExecutor ? 'llama-3.3-70b' : 'muse-spark-1.3',
+    fallback_model_id: isExecutor ? 'llama-3.3-70b' : 'muse-light',
     step_routing_json: {
       planning: {
         provider: 'meta_muse',
-        modelId: 'muse-wonder-1.0',
+        modelId: 'muse-spark-1.3',
       },
       tool_loop: {
         provider: 'meta_muse',
-        modelId: isExecutor ? 'muse-spark-1.3' : 'muse-wonder-1.0',
+        modelId: isExecutor ? 'muse-light' : 'muse-spark-1.3',
       },
       compaction: {
         provider: 'ollama',
@@ -98,7 +98,7 @@ const ZERO_STATS = {
 
 const BASE = {
   model_provider: 'meta_muse',
-  model_id: 'muse-wonder-1.0',
+  model_id: 'muse-spark-1.3',
   permission_tier: 'standard_autonomous',
 } as const;
 
@@ -818,17 +818,17 @@ export const SEED_ROUTING_PROFILES: RoutingProfileRow[] = [
   },
   {
     id: 'META_MUSE_HACKATHON',
-    name: 'Meta Muse Hackathon Mode (Muse Spark + Llama-4 Maverick)',
+    name: 'Meta Muse Hackathon Mode (Muse Spark 1.3 + Muse Light)',
     description:
-      'Routes Level -1/0/1 planning & synthesis to Meta Muse Wonder and Level 2 coding/tool loops to Muse Spark with automatic token rotation and local Glimmer failover.',
+      'Routes Level -1/0/1 planning & synthesis to Meta Muse Spark 1.3 and Level 2 coding/tool loops to Muse Light with automatic token rotation and local Glimmer failover.',
     is_active: true,
     config_json: {
       default_level0_provider: 'meta_muse',
-      default_level0_model: 'muse-wonder-1.0',
+      default_level0_model: 'muse-spark-1.3',
       default_level1_provider: 'meta_muse',
-      default_level1_model: 'muse-wonder-1.0',
+      default_level1_model: 'muse-spark-1.3',
       default_level2_provider: 'meta_muse',
-      default_level2_model: 'muse-spark-1.3',
+      default_level2_model: 'muse-light',
       compaction_provider: 'ollama',
       compaction_model: 'muse-glimmer-30b',
     },
@@ -842,11 +842,11 @@ export const SEED_ROUTING_PROFILES: RoutingProfileRow[] = [
     is_active: false,
     config_json: {
       default_level0_provider: 'meta_muse',
-      default_level0_model: 'muse-wonder-1.0',
+      default_level0_model: 'muse-spark-1.3',
       default_level1_provider: 'meta_muse',
-      default_level1_model: 'muse-wonder-1.0',
-      default_level2_provider: 'ollama',
-      default_level2_model: 'llama-3.3-70b',
+      default_level1_model: 'muse-spark-1.3',
+      default_level2_provider: 'meta_muse',
+      default_level2_model: 'muse-light',
       compaction_provider: 'ollama',
       compaction_model: 'muse-glimmer-30b',
     },

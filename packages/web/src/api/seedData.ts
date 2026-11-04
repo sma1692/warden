@@ -1332,6 +1332,16 @@ export const INITIAL_APPROVAL_GATES: ApprovalGate[] = [
 
 export const INITIAL_CHAT_THREADS: ChatThread[] = [
   {
+    id: 'thr_trophy_brief',
+    title: 'Earlier: Trophy launch kickoff with @warden',
+    mode: 'WARDEN_EXECUTIVE',
+    target_agent_id: '@warden',
+    project_scope: 'demo-project',
+    status: 'ACTIVE',
+    created_at: hoursAgo(3),
+    updated_at: hoursAgo(1),
+  },
+  {
     id: 'thr_demo_game_loot',
     title: 'Demo Game WebXR: Co-Op Spatial Loot Chest Sync & Preview',
     mode: 'WARDEN_EXECUTIVE',
@@ -1374,6 +1384,44 @@ export const INITIAL_CHAT_THREADS: ChatThread[] = [
 ];
 
 export const INITIAL_CHAT_MESSAGES: Record<string, ChatMessage[]> = {
+  thr_trophy_brief: [
+    {
+      id: 'msg_tb_1',
+      thread_id: 'thr_trophy_brief',
+      sender_type: 'CEO',
+      sender_agent_id: null,
+      recipient_agent_id: '@warden',
+      content:
+        'Trophy launch is next week. First the entry flow: loading screen, proper logo, lobby with Play. Then the full loop: the trophy art set in the game, launch socials cut, and search coverage live. Game team owns the build, social and SEO run in parallel.',
+      run_id: null,
+      attachments_json: [],
+      created_at: hoursAgo(3),
+    },
+    {
+      id: 'msg_tb_2',
+      thread_id: 'thr_trophy_brief',
+      sender_type: 'AGENT',
+      sender_agent_id: '@warden',
+      recipient_agent_id: 'CEO',
+      content:
+        '**Executive Routing Complete:** `@cto` owns the lobby bootstrap, art + the arena crash hotfix, `@cmo` owns social + SEO. Queued **5 backlog tasks** — approvals land in your Needs Action window when each team is ready to run.',
+      run_id: null,
+      attachments_json: [],
+      created_at: hoursAgo(2.9),
+    },
+    {
+      id: 'msg_tb_3',
+      thread_id: 'thr_trophy_brief',
+      sender_type: 'AGENT',
+      sender_agent_id: '@pm',
+      recipient_agent_id: 'CEO',
+      content:
+        'Logged to backlog: **lobby bootstrap** (`TODO`, first), **trophy assets** (`TODO`), **arena crash hotfix** (`NEEDS_CEO` — needs your call on scope), **SEO cluster** (`TODO`), **social pack** (`TODO`). Approve each from Needs Action and the teams spawn from there.',
+      run_id: null,
+      attachments_json: [],
+      created_at: hoursAgo(2.8),
+    },
+  ],
   thr_demo_game_loot: [
     {
       id: 'msg_dj_1',
@@ -1651,6 +1699,25 @@ export const INITIAL_SPRINT: Sprint = {
 };
 
 export const INITIAL_BACKLOG_ITEMS: BacklogItem[] = [
+  {
+    id: 'bl_lobby_bootstrap',
+    title: 'Bootstrap loading screen, logo, and lobby with Play button',
+    spec_md:
+      'Pure agentic build: branded loading screen with the proper game logo, then a lobby with a Play button wiring into match start. Frontend owns UI, backend owns lobby presence.',
+    stage: 'TODO',
+    priority: 'P0',
+    project_slug: 'demo-project',
+    pm_owner_id: '@pm:demo-project',
+    assigned_agent_id: '@frontend_dev:demo-project',
+    sprint_id: null,
+    target_week: null,
+    requires_human_intervention: false,
+    requested_by_agent_id: '@tech_lead:demo-project',
+    last_moved_at: minsAgo(6),
+    last_movement_note: 'Seeded for the trophy launch story',
+    created_at: hoursAgo(1),
+    completed_at: null,
+  },
   {
     id: 'bl_trophy_assets',
     title: 'Generate trophy system art set (12 sprites + 4 animations)',

@@ -55,6 +55,7 @@ import type {
   ApprovalGate,
   BacklogItem,
   BacklogStage,
+  ChatMessage,
   ChatThread,
   DepartmentUnit,
   InterventionCategory,
@@ -284,17 +285,23 @@ export const App: React.FC<AppProps> = ({
     null
   );
   const [homeChatDraft, setHomeChatDraft] = useState<string | null>(null);
+  const [focusedBacklogItemId, setFocusedBacklogItemId] = useState<string | null>(null);
   const [inspectedAgent, setInspectedAgent] = useState<Agent | null>(null);
   const [inspectorSubTab, setInspectorSubTab] = useState<'runs' | 'trace' | 'config'>(
     'runs'
   );
   const [inspectorRunId, setInspectorRunId] = useState<string | null>(null);
 
-  // Toast notification banner (info for confirmations, error for API failures)
-  const [toast, setToast] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
+  // Toast notification banner (info for confirmations, error for API failures).
+  // A threadId makes the banner clickable: tapping it opens that chat thread.
+  const [toast, setToast] = useState<{
+    text: string;
+    tone: 'info' | 'error';
+    threadId?: string;
+  } | null>(null);
 
-  const showToast = useCallback((msg: string) => {
-    setToast({ text: msg, tone: 'info' });
+  const showToast = useCallback((msg: string, opts?: { threadId?: string }) => {
+    setToast({ text: msg, tone: 'info', threadId: opts?.threadId });
   }, []);
 
   const showError = useCallback((msg: string) => {
@@ -303,7 +310,8 @@ export const App: React.FC<AppProps> = ({
 
   useEffect(() => {
     if (!toast) return;
-    const t = window.setTimeout(() => setToast(null), toast.tone === 'error' ? 6000 : 4000);
+    const ttl = toast.tone === 'error' ? 6000 : toast.threadId ? 8000 : 4000;
+    const t = window.setTimeout(() => setToast(null), ttl);
     return () => window.clearTimeout(t);
   }, [toast]);
 
@@ -410,6 +418,70 @@ export const App: React.FC<AppProps> = ({
     }
     setActiveTab(tabId);
   };
+
+  const handleOpenThreadByObject = (thread: ChatThread) => {
+    const slug = thread.target_agent_id.startsWith('@')
+      ? thread.target_agent_id
+      : `@${thread.target_agent_id}`;
+    const tabId = `win-agent-${slug.replace('@', '')}`;
+    const existing = dynamicTabs.find((t) => t.id === tabId);
+    if (!existing) {
+      setDynamicTabs((prev) => [
+        ...prev,
+        {
+          id: tabId,
+          title: slug,
+          kind: 'chat',
+          vertical: activeVertical,
+          agentSlug: slug,
+        },
+      ]);
+    }
+    setPreferredTargetAgentSlug(slug);
+    setSelectedThreadId(thread.id);
+    setHighlightedGateId(null);
+    setActiveTab(tabId);
+  };
+
+  const handleOpenThread = (threadId: string) => {
+    const thread = threads.find((t) => t.id === threadId);
+    if (thread) {
+      handleOpenThreadByObject(thread);
+      showToast(`Opened "${thread.title}"`);
+    }
+  };
+
+  const handleOpenBacklogItem = (itemId: string) => {
+    setFocusedBacklogItemId(itemId);
+    setActiveTab('backlogs');
+  };
+
+  // Background reply notifier: when an agent reply lands in a thread the user
+  // is NOT viewing, show a clickable toast that jumps straight to it.
+  const selectedThreadIdRef = useRef(selectedThreadId);
+  useEffect(() => {
+    selectedThreadIdRef.current = selectedThreadId;
+  }, [selectedThreadId]);
+  const lastReplyToastMsgId = useRef<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = apiClient.subscribe((evt) => {
+      if (evt.type !== 'CHAT_MESSAGE' || !evt.data) return;
+      const msg = evt.data as ChatMessage;
+      if (msg.sender_type !== 'AGENT' || !msg.thread_id || !msg.id) return;
+      if (lastReplyToastMsgId.current === msg.id) return;
+      const viewingThisThread =
+        activeTabRef.current.startsWith('win-agent-') &&
+        selectedThreadIdRef.current === msg.thread_id;
+      if (viewingThisThread) return;
+      lastReplyToastMsgId.current = msg.id;
+      const who = msg.sender_agent_id ? `@${msg.sender_agent_id}` : '@warden';
+      showToast(`🤖 ${who} finished replying — Click to view`, {
+        threadId: msg.thread_id,
+      });
+    });
+    return unsubscribe;
+  }, [showToast]);
 
   const handleCloseDynamicTab = (tabId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -615,8 +687,8 @@ export const App: React.FC<AppProps> = ({
     badge?: string;
   }[] = [
     { id: 'home', label: 'Home', icon: Home },
-    { id: 'agents', label: 'Agents', icon: Users, badge: '13' },
-    { id: 'reports', label: 'Reports', icon: FileText, badge: '7' },
+    { id: 'agents', label: 'Team', icon: Users, badge: `${agents.length}` },
+    { id: 'reports', label: 'Reports', icon: FileText, badge: '4' },
     { id: 'backlogs', label: 'Backlogs', icon: Kanban, badge: `${backlogItems.length + 6}` },
     { id: 'seo', label: 'SEO', icon: Globe },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -631,7 +703,17 @@ export const App: React.FC<AppProps> = ({
     <div className="h-screen overflow-hidden bg-[#F7F3E8] dark:bg-[#0B121C] text-[#0F1622] dark:text-[#F5F0E6] flex transition-colors duration-200">
       {/* Toast Notification Banner */}
       {toast && (
-        <div className={`fixed bottom-16 md:bottom-5 right-4 z-50 max-w-md rounded-xl border bg-[#FCF9F2]/95 dark:bg-[#0F1824]/95 px-4 py-2.5 text-xs font-medium text-[#0F1622] dark:text-[#F5F0E6] shadow-2xl flex items-center gap-2.5 backdrop-blur ${toast.tone === 'error' ? 'border-red-400/60' : 'border-[#C6A664]/50'}`}>
+        <div
+          onClick={
+            toast.threadId
+              ? () => {
+                  handleOpenThread(toast.threadId!);
+                  setToast(null);
+                }
+              : undefined
+          }
+          className={`fixed bottom-16 md:bottom-5 right-4 z-50 max-w-md rounded-xl border bg-[#FCF9F2]/95 dark:bg-[#0F1824]/95 px-4 py-2.5 text-xs font-medium text-[#0F1622] dark:text-[#F5F0E6] shadow-2xl flex items-center gap-2.5 backdrop-blur ${toast.tone === 'error' ? 'border-red-400/60' : 'border-[#C6A664]/50'} ${toast.threadId ? 'cursor-pointer hover:border-[#C6A664]' : ''}`}
+        >
           {toast.tone === 'error' ? (
             <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400 shrink-0" />
           ) : (
@@ -640,7 +722,10 @@ export const App: React.FC<AppProps> = ({
           <span className="flex-1">{toast.text}</span>
           <button
             type="button"
-            onClick={() => setToast(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setToast(null);
+            }}
             className="text-[#5C5343] hover:text-[#0F1622] dark:text-[#8A94A6] dark:hover:text-[#F5F0E6]"
           >
             <X className="h-3.5 w-3.5" />
@@ -974,12 +1059,18 @@ export const App: React.FC<AppProps> = ({
                     activeVertical={activeVertical}
                     knobConfig={knobConfig}
                     backlogItems={backlogItems}
+                    threads={threads}
                     onApproveBacklogItem={async (itemId, summary) => {
-                      await apiClient.moveBacklogItem(itemId, 'DONE', summary);
+                      const spawned = await apiClient.spawnDemoTaskRun(itemId, summary);
                       await refreshAllData();
+                      if (spawned) {
+                        handleOpenThreadByObject(spawned.thread);
+                        showToast(`Spawning team for "${spawned.item.title}" — lead chat open.`);
+                      }
                     }}
                     onOpenAgentTab={(slug) => handleOpenAgentWindowTab(slug)}
                     onOpenBacklogsTab={() => setActiveTab('backlogs')}
+                    onOpenThread={handleOpenThread}
                     onDecisionRecorded={(summary) => showToast(summary)}
                   />
                   <TokenUsageBox
@@ -1008,8 +1099,10 @@ export const App: React.FC<AppProps> = ({
             {activeTab === 'reports' && (
               <ReportsView
                 activeVertical={activeVertical}
+                backlogItems={backlogItems}
                 onTriggerStandupNow={handleTriggerStandup}
                 onOpenBacklog={() => setActiveTab('backlogs')}
+                onOpenBacklogItem={handleOpenBacklogItem}
                 onOpenChatWithAgent={(slug) => handleOpenAgentWindowTab(slug)}
                 onOpenReportWindowTab={(report) => handleOpenReportWindowTab(report)}
               />
@@ -1020,6 +1113,11 @@ export const App: React.FC<AppProps> = ({
                 sprint={sprint}
                 backlogItems={backlogItems}
                 agents={agents}
+                threads={threads}
+                focusedItemId={focusedBacklogItemId}
+                onFocusConsumed={() => setFocusedBacklogItemId(null)}
+                onOpenThread={handleOpenThread}
+                onOpenReportsTab={() => setActiveTab('reports')}
                 onApproveSprint={handleApproveSprint}
                 onRunStandupPollNow={handleTriggerStandup}
                 onCreateBacklogItem={handleCreateBacklogItem}
@@ -1061,6 +1159,8 @@ export const App: React.FC<AppProps> = ({
                     onInspectRunTrace={handleInspectRunTraceFromChat}
                     initialDraft={homeChatDraft}
                     onDraftConsumed={() => setHomeChatDraft(null)}
+                    backlogItems={backlogItems}
+                    onOpenBacklogItem={handleOpenBacklogItem}
                   />
                 </div>
               </div>

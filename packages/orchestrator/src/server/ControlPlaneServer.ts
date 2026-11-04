@@ -8,6 +8,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { ensureDevCerts, getLanIp, isHttpsEnabled } from './devHttps.js';
 import {
   AgentRecord,
+  AgentRunRecord,
   ApprovalGateRecord,
   BacklogStage,
   BacklogPriority,
@@ -269,6 +270,7 @@ export class ControlPlaneServer {
    */
   public async start(): Promise<http.Server | https.Server> {
     await this.store.tryConnectDatabase();
+    await this.store.reconcileAgentStatuses();
 
     const requestHandler = (req: IncomingMessage, res: ServerResponse) => {
       void this.handleRequest(req, res);
@@ -565,10 +567,10 @@ export class ControlPlaneServer {
       fallback_provider: agent.fallback_provider || 'meta_muse',
       fallbackModelId:
         agent.fallback_model_id ||
-        (agent.hierarchy_level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3'),
+        (agent.hierarchy_level <= 0 ? 'muse-light' : 'muse-glimmer-30b'),
       fallback_model_id:
         agent.fallback_model_id ||
-        (agent.hierarchy_level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3'),
+        (agent.hierarchy_level <= 0 ? 'muse-light' : 'muse-glimmer-30b'),
       stepRouting: agent.step_routing_json || {},
       step_routing_json: agent.step_routing_json || {},
       effective_provider: effective.provider,
@@ -707,6 +709,29 @@ export class ControlPlaneServer {
       return `⏰ Reminder set for ${when}${repeat}: ${reminder.text}\nChannels: ${reminder.channels.join(', ')}`;
     } catch (err) {
       return `⚠️ Couldn't set that reminder: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  /**
+   * Marks thread runs that are still `RUNNING`/`VERIFYING_QA` as `FAILED` when
+   * their parent pipeline throws, so polling clients never wait forever on an
+   * orphaned run. Only touches runs started at/after `sinceIso`.
+   */
+  private failStuckThreadRuns(
+    threadId: string,
+    sinceIso: string,
+    reason: string,
+    exceptRunId?: string
+  ): void {
+    for (const run of this.store.runs.values()) {
+      if (run.chat_thread_id !== threadId || run.id === exceptRunId) continue;
+      if (run.status !== 'RUNNING' && run.status !== 'VERIFYING_QA') continue;
+      if (run.started_at < sinceIso) continue;
+      this.store.updateRun(run.id, {
+        status: 'FAILED',
+        output_summary: reason,
+        ended_at: new Date().toISOString(),
+      });
     }
   }
 
@@ -977,9 +1002,9 @@ export class ControlPlaneServer {
             },
             {
               id: 'META_MUSE_HACKATHON',
-              label: 'Meta AI Muse Suite (Muse Wonder 1.0 + Muse Spark 1.3 + Muse Glimmer 30B)',
+              label: 'Meta AI Muse Suite (Muse Spark 1.3 + Muse Light + Muse Glimmer 30B)',
               description:
-                'Routes @warden/@cto/@cmo to muse-wonder-1.0, Level 1/2 agents to muse-spark-1.3, and compaction to muse-glimmer-30b.',
+                'Routes @warden/@cto/@cmo and Level 1 leads to muse-spark-1.3, Level 2 agents to muse-light, and compaction to muse-glimmer-30b.',
             },
             {
               id: 'CUSTOM_HYBRID',
@@ -1399,9 +1424,35 @@ export class ControlPlaneServer {
           this.sendJson(res, 404, { error: `Run ${runId} not found` });
           return;
         }
+        const steps = this.store.getStepsForRun(runId, requestUserId ?? undefined);
+        const latestStep = steps.length > 0 ? steps[steps.length - 1] : null;
+        const threadMsgs = run.chat_thread_id
+          ? this.store.messagesByThread.get(run.chat_thread_id) || []
+          : [];
+        const replyMessage =
+          [...threadMsgs]
+            .reverse()
+            .find((m) => m.run_id === runId && m.sender_type === 'AGENT') ?? null;
+        const failedError = run.status === 'FAILED' ? run.output_summary : null;
         this.sendJson(res, 200, {
           ...run,
-          steps: this.store.getStepsForRun(runId, requestUserId ?? undefined),
+          steps,
+          run: {
+            id: run.id,
+            agent_id: run.agent_id,
+            agent_slug: run.agent_slug,
+            status: run.status,
+            output_summary: run.output_summary,
+            started_at: run.started_at,
+            ended_at: run.ended_at,
+            error: failedError,
+            child_run_ids: run.child_run_ids || [],
+          },
+          latestStep,
+          replyMessage,
+          waitingForCeo:
+            run.status === 'PAUSED_FOR_CEO' || run.status === 'PAUSED_TOKEN_CAP',
+          error: failedError,
         });
         return;
       }
@@ -1435,6 +1486,68 @@ export class ControlPlaneServer {
           project_scope: body.project_scope ?? body.projectScope ?? null,
         });
         this.sendJson(res, 201, created);
+        return;
+      }
+
+      const threadStatusMatch = pathname.match(
+        /^\/api\/(?:chat\/)?threads\/([^/]+)\/status$/
+      );
+      if (threadStatusMatch && method === 'GET') {
+        const threadId = decodeURIComponent(threadStatusMatch[1]);
+        const thread = this.store.threads.get(threadId);
+        if (!thread || (requestUserId && (thread.user_id ?? null) !== requestUserId)) {
+          this.sendJson(res, 404, { error: `Thread ${threadId} not found` });
+          return;
+        }
+        const slimRun = (r: AgentRunRecord) => ({
+          id: r.id,
+          agent_id: r.agent_id,
+          agent_slug: r.agent_slug,
+          status: r.status,
+          output_summary: r.output_summary,
+          started_at: r.started_at,
+          ended_at: r.ended_at,
+          error: r.status === 'FAILED' ? r.output_summary : null,
+          child_run_ids: r.child_run_ids || [],
+        });
+        const threadRuns = Array.from(this.store.runs.values())
+          .filter(
+            (r) =>
+              r.chat_thread_id === threadId &&
+              (!requestUserId || (r.user_id ?? null) === requestUserId)
+          )
+          .sort((a, b) => a.started_at.localeCompare(b.started_at));
+        const runningRuns = threadRuns.filter(
+          (r) => r.status === 'RUNNING' || r.status === 'VERIFYING_QA'
+        );
+        const latestRun = threadRuns.length > 0 ? threadRuns[threadRuns.length - 1] : null;
+        const latestRunSteps = latestRun
+          ? this.store.getStepsForRun(latestRun.id, requestUserId ?? undefined)
+          : [];
+        const latestStep =
+          latestRunSteps.length > 0 ? latestRunSteps[latestRunSteps.length - 1] : null;
+        const msgs = (this.store.messagesByThread.get(threadId) || []).filter(
+          (m) => !requestUserId || (m.user_id ?? null) === requestUserId
+        );
+        const lastReply =
+          [...msgs].reverse().find((m) => m.sender_type === 'AGENT') ?? null;
+        const pendingGates = Array.from(this.store.approvalGates.values())
+          .filter(
+            (g) =>
+              g.thread_id === threadId &&
+              g.status === 'PENDING' &&
+              (!requestUserId || (g.user_id ?? null) === requestUserId)
+          )
+          .map((g) => this.serializeGateForApi(g));
+        this.sendJson(res, 200, {
+          threadId,
+          thread,
+          runningRuns: runningRuns.map(slimRun),
+          latestRun: latestRun ? slimRun(latestRun) : null,
+          latestStep,
+          lastReply,
+          pendingGates,
+        });
         return;
       }
 
@@ -1540,37 +1653,98 @@ export class ControlPlaneServer {
             /\b(run|start|trigger|begin|do|call|hold|conduct|can you|please|lets|let's)\b/i.test(lowerContent)
           ) {
             console.log(`[📋 CHAT STANDUP] Triggering daily standup from chat for user=${requestUserId ?? 'global'}`);
-            const standupResult = await this.standupCoordinator.triggerDailyStandup({
-              userId: requestUserId,
-            });
-            this.broadcastEvent('standup:updated', standupResult.sprint);
-
-            const ceoMessage = this.store.addChatMessage({
+            if (!this.store.threads.has(threadId)) {
+              this.store.createThread({
+                id: threadId,
+                user_id: requestUserId,
+                title: String(body.content || '').slice(0, 64) || 'Standup Session',
+                mode: 'STANDUP',
+                target_agent_id: 'warden',
+              });
+            }
+            const standupCeo = this.store.addChatMessage({
               thread_id: threadId,
               sender_type: 'CEO',
               recipient_agent_id: 'warden',
               content: String(body.content || ''),
             });
-            const agentReply = this.store.addChatMessage({
-              thread_id: threadId,
-              sender_type: 'AGENT',
-              sender_agent_id: 'warden',
-              recipient_agent_id: 'CEO',
-              content: standupResult.sprint.mom_summary_md,
-              run_id: standupResult.leadRuns[0]?.id ?? null,
+            const wardenAgent = this.store.getAgent('warden')!;
+            const standupRun = this.store.createRun({
+              user_id: requestUserId,
+              agent_id: wardenAgent.id,
+              agent_slug: wardenAgent.slug,
+              parent_run_id: null,
+              chat_thread_id: threadId,
+              sprint_id: null,
+              backlog_item_id: null,
+              trigger_type: 'DAILY_STANDUP',
+              input_prompt: String(body.content || ''),
+              output_summary: null,
+              status: 'RUNNING',
+              container_id: null,
+              git_branch: null,
+              git_commit_sha: null,
+              preview_url: null,
+              qa_passed: null,
+              qa_screenshot_url: null,
+              project_scope: null,
+              child_run_ids: [],
+              inbox_messages: [],
             });
-            this.sendJson(res, 201, {
-              ceoMessage,
-              agentReply,
-              createdRun: standupResult.leadRuns[0] ?? null,
-              delegatedRuns: standupResult.leadRuns,
+            this.sendJson(res, 202, {
+              ceoMessage: standupCeo,
+              runId: standupRun.id,
+              agentId: wardenAgent.id,
+              agentSlug: wardenAgent.slug,
+              threadId,
+              status: 'RUNNING',
               routedMode: 'STANDUP',
-              sprint: standupResult.sprint,
+              async: true,
             });
+            void this.standupCoordinator
+              .triggerDailyStandup({ userId: requestUserId })
+              .then((standupResult) => {
+                this.broadcastEvent('standup:updated', standupResult.sprint);
+                this.store.updateRun(standupRun.id, {
+                  status: 'COMPLETED',
+                  output_summary: standupResult.sprint.mom_summary_md,
+                  sprint_id: standupResult.sprint.id,
+                  child_run_ids: standupResult.leadRuns.map((r) => r.id),
+                  ended_at: new Date().toISOString(),
+                });
+                this.store.addChatMessage({
+                  thread_id: threadId,
+                  sender_type: 'AGENT',
+                  sender_agent_id: 'warden',
+                  recipient_agent_id: 'CEO',
+                  content: standupResult.sprint.mom_summary_md,
+                  run_id: standupRun.id,
+                });
+              })
+              .catch((err: unknown) => {
+                const message = err instanceof Error ? err.message : String(err);
+                console.error(`[📋 CHAT STANDUP FAIL] thread=${threadId}:`, err);
+                this.store.updateRun(standupRun.id, {
+                  status: 'FAILED',
+                  output_summary: `Standup failed: ${message}`,
+                  ended_at: new Date().toISOString(),
+                });
+                this.store.addChatMessage({
+                  thread_id: threadId,
+                  sender_type: 'AGENT',
+                  sender_agent_id: 'warden',
+                  recipient_agent_id: 'CEO',
+                  content: `⚠️ **Standup failed:** ${message}`,
+                  run_id: standupRun.id,
+                });
+              });
             return;
           }
 
-          const routeResult = await this.hierarchyRouter.routeMessage({
+          // Async dispatch (default): record + init the root run now (<100ms),
+          // answer 202, and run the full multi-agent pipeline in the background.
+          // The reply + run completion arrive via WebSocket push and run polling.
+          const preflight = await this.hierarchyRouter.beginRouteMessage({
             threadId,
             userId: requestUserId ?? undefined,
             content: String(body.content || ''),
@@ -1580,19 +1754,62 @@ export class ControlPlaneServer {
             attachments: processedAttachments,
           });
 
-          const traceSteps = this.store.getStepsForRun(
-            routeResult.primaryRun.id,
-            requestUserId ?? undefined
-          );
-
-          this.sendJson(res, 201, {
-            ceoMessage: routeResult.userMessage,
-            agentReply: routeResult.agentReply,
-            createdRun: routeResult.primaryRun,
-            delegatedRuns: routeResult.delegatedRuns,
-            routedMode: routeResult.routedMode,
-            traceSteps,
+          this.sendJson(res, 202, {
+            ceoMessage: preflight.userMessage,
+            runId: preflight.rootRun.id,
+            agentId: preflight.targetAgent.id,
+            agentSlug: preflight.targetAgent.slug,
+            threadId: preflight.thread.id,
+            status: 'RUNNING',
+            routedMode: preflight.isDirect ? 'DIRECT_AGENT' : 'WARDEN_EXECUTIVE',
+            async: true,
           });
+
+          void this.hierarchyRouter
+            .routeMessage({
+              threadId,
+              userId: requestUserId ?? undefined,
+              content: String(body.content || ''),
+              targetAgentId:
+                body.targetAgentId ?? body.target_agent_id ?? undefined,
+              mode: body.mode as ChatThreadMode | undefined,
+              attachments: processedAttachments,
+              precreated: {
+                userMessage: preflight.userMessage,
+                rootRunId: preflight.rootRun.id,
+              },
+            })
+            .then((routeResult) => {
+              console.log(
+                `[💬 CEO CHAT DONE] thread=${threadId} run=${routeResult.primaryRun.id} mode=${routeResult.routedMode}`
+              );
+            })
+            .catch((err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error(
+                `[💬 CEO CHAT FAIL] thread=${threadId} run=${preflight.rootRun.id}:`,
+                err
+              );
+              this.store.updateRun(preflight.rootRun.id, {
+                status: 'FAILED',
+                output_summary: `Agent execution failed: ${message}`,
+                ended_at: new Date().toISOString(),
+              });
+              this.failStuckThreadRuns(
+                threadId,
+                preflight.rootRun.started_at,
+                `Parent run ${preflight.rootRun.id} failed: ${message}`,
+                preflight.rootRun.id
+              );
+              this.store.addChatMessage({
+                thread_id: threadId,
+                sender_type: 'AGENT',
+                sender_agent_id: preflight.targetAgent.id,
+                recipient_agent_id: 'CEO',
+                content: `⚠️ **Execution failed:** ${message}\n\nThe run was marked FAILED. Your message is saved — retry or ask for a smaller step.`,
+                run_id: preflight.rootRun.id,
+              });
+            });
           return;
         }
       }

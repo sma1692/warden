@@ -661,6 +661,46 @@ export class OrchestratorStore {
   }
 
   /**
+   * Boot reconcile: an agent claiming WORKING / WAITING_FOR_CEO must back it
+   * with a live run (RUNNING, VERIFYING_QA, or paused-with-gate). Anything
+   * else is stale (e.g. a restart orphaned it) and resets to IDLE, so the
+   * Team view never shows phantom workers.
+   */
+  public async reconcileAgentStatuses(): Promise<string[]> {
+    const liveRunIds = new Set<string>();
+    for (const run of this.runs.values()) {
+      if (
+        run.status === 'RUNNING' ||
+        run.status === 'VERIFYING_QA' ||
+        run.status === 'PAUSED_FOR_CEO' ||
+        run.status === 'PAUSED_TOKEN_CAP'
+      ) {
+        liveRunIds.add(run.id);
+      }
+    }
+    const reset: string[] = [];
+    for (const agent of this.agents.values()) {
+      if (agent.status !== 'WORKING' && agent.status !== 'WAITING_FOR_CEO') continue;
+      if (agent.current_run_id && liveRunIds.has(agent.current_run_id)) continue;
+      await this.updateAgent(agent.id, {
+        status: 'IDLE',
+        current_run_id: null,
+        clocked_in_at: null,
+        active_container_id: null,
+        active_git_branch: null,
+        last_heartbeat_at: new Date().toISOString(),
+      });
+      reset.push(agent.slug);
+    }
+    if (reset.length > 0) {
+      console.log(
+        `[OrchestratorStore] Boot reconcile: reset ${reset.length} stale agent(s) to IDLE: ${reset.join(', ')}`
+      );
+    }
+    return reset;
+  }
+
+  /**
    * `db` source mode: connect `@warden/db` dbStore (Postgres, or JSON snapshot fallback),
    * then hydrate threads, messages, and backlog from it instead of Markdown.
    */
@@ -833,15 +873,19 @@ export class OrchestratorStore {
             parent_agent_id: row.parent_agent_id ?? existing?.parent_agent_id ?? null,
             project_scope: row.project_scope ?? existing?.project_scope ?? null,
             model_provider: (row.model_provider as ModelProvider) || 'meta_muse',
-            model_id: row.model_id || 'muse-wonder-1.0',
+            model_id:
+              row.model_id && row.model_id !== 'muse-wonder-1.0'
+                ? row.model_id
+                : 'muse-spark-1.3',
             fallback_provider:
               (row.fallback_provider as ModelProvider) ||
               existing?.fallback_provider ||
               'meta_muse',
             fallback_model_id:
-              row.fallback_model_id ||
-              existing?.fallback_model_id ||
-              (Number(row.hierarchy_level ?? 1) <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3'),
+              row.fallback_model_id && row.fallback_model_id !== 'muse-wonder-1.0'
+                ? row.fallback_model_id
+                : existing?.fallback_model_id ||
+                  (Number(row.hierarchy_level ?? 1) <= 1 ? 'muse-light' : 'muse-glimmer-30b'),
             step_routing_json:
               typeof row.step_routing_json === 'object' && row.step_routing_json
                 ? row.step_routing_json
@@ -932,17 +976,17 @@ export class OrchestratorStore {
     );
 
     for (const item of seed.agents) {
-      const isExec = item.hierarchy_level <= 0;
+      const isExec = item.hierarchy_level <= 1;
       const defaultFallbackProvider: ModelProvider = 'meta_muse';
-      const defaultFallbackModelId = isExec ? 'muse-wonder-1.0' : 'muse-spark-1.3';
+      const defaultFallbackModelId = isExec ? 'muse-light' : 'muse-glimmer-30b';
       const defaultStepRouting: StepRoutingMap = {
         planning: {
           provider: item.model_provider,
-          modelId: item.model_id,
+          modelId: 'muse-spark-1.3',
         },
         tool_loop: {
           provider: item.model_provider,
-          modelId: isExec ? item.model_id : 'muse-spark-1.3',
+          modelId: isExec ? 'muse-spark-1.3' : 'muse-light',
         },
         compaction: {
           provider: 'meta_muse',
@@ -1209,7 +1253,7 @@ export class OrchestratorStore {
       hierarchy_level: 1,
       parent_agent_id: parent,
       project_scope: project,
-      model_id: 'muse-wonder-1.0',
+      model_id: 'muse-spark-1.3',
       init_prompt:
         `You are ${title.toUpperCase()} (${slug} — Level 1, ${department}), reporting to @${parent ?? 'warden'}. ` +
         `This role was auto-registered at runtime because it was referenced before being defined — treat your scope as the ${role} specialty within ${department}. ` +
@@ -1336,7 +1380,7 @@ export class OrchestratorStore {
       model_id: input.model_id || 'muse-spark-1.3',
       fallback_provider: input.fallback_provider || 'meta_muse',
       fallback_model_id:
-        input.fallback_model_id || (isExec ? 'muse-wonder-1.0' : 'muse-spark-1.3'),
+        input.fallback_model_id || (isExec ? 'muse-light' : 'muse-glimmer-30b'),
       step_routing_json: input.step_routing_json || {
         planning: {
           provider: input.model_provider || 'meta_muse',
@@ -1449,22 +1493,22 @@ export class OrchestratorStore {
 
     if (profile === 'META_MUSE_HACKATHON') {
       for (const agent of this.agents.values()) {
-        const isExecOrCsuite = agent.hierarchy_level <= 0;
-        const primaryModel = isExecOrCsuite ? 'muse-wonder-1.0' : 'muse-spark-1.3';
+        const isExecOrCsuite = agent.hierarchy_level <= 1;
+        const primaryModel = isExecOrCsuite ? 'muse-spark-1.3' : 'muse-light';
         const updated: AgentRecord = {
           ...agent,
           model_provider: 'meta_muse',
           model_id: primaryModel,
           fallback_provider: 'meta_muse',
-          fallback_model_id: isExecOrCsuite ? 'muse-wonder-1.0' : 'muse-spark-1.3',
+          fallback_model_id: isExecOrCsuite ? 'muse-light' : 'muse-glimmer-30b',
           step_routing_json: {
             planning: {
               provider: 'meta_muse',
-              modelId: isExecOrCsuite ? 'muse-wonder-1.0' : 'muse-spark-1.3',
+              modelId: 'muse-spark-1.3',
             },
             tool_loop: {
               provider: 'meta_muse',
-              modelId: 'muse-spark-1.3',
+              modelId: isExecOrCsuite ? 'muse-spark-1.3' : 'muse-light',
             },
             compaction: {
               provider: 'meta_muse',
@@ -1531,7 +1575,7 @@ export class OrchestratorStore {
     const level = agent?.hierarchy_level ?? 1;
 
     const executionMode = (process.env.WARDEN_EXECUTION_MODE || 'case_2b').toLowerCase();
-    const l2Provider = (process.env.WARDEN_L2_MODEL_PROVIDER || 'muse-spark').toLowerCase();
+    const l2Provider = (process.env.WARDEN_L2_MODEL_PROVIDER || 'muse-light').toLowerCase();
     const localLlmModel = process.env.LOCAL_LLM_MODEL || 'llama-3.3-70b';
     const localLlmBaseUrl = (
       process.env.LOCAL_LLM_BASE_URL ||
@@ -1555,9 +1599,9 @@ export class OrchestratorStore {
         const cred = this.selectActiveCredentialForProvider('meta_muse');
         return {
           provider: 'meta_muse',
-          modelId: process.env.WARDEN_PRO_MODEL || 'muse-wonder-1.0',
+          modelId: process.env.WARDEN_PRO_MODEL || 'muse-spark-1.3',
           fallbackProvider: 'meta_muse',
-          fallbackModelId: 'muse-wonder-1.0',
+          fallbackModelId: 'muse-light',
           credentialId: cred?.id || null,
           routingProfile: this.routingProfile,
           stepPhase,
@@ -1573,7 +1617,7 @@ export class OrchestratorStore {
           provider: targetProvider,
           modelId: localLlmModel,
           fallbackProvider: 'meta_muse',
-          fallbackModelId: 'muse-spark-1.3',
+          fallbackModelId: 'muse-light',
           credentialId: cred?.id || null,
           routingProfile: this.routingProfile,
           stepPhase,
@@ -1593,13 +1637,13 @@ export class OrchestratorStore {
         };
       }
 
-      // Default muse-spark
+      // Default muse-light
       const cred = this.selectActiveCredentialForProvider('meta_muse');
       return {
         provider: 'meta_muse',
         modelId:
           process.env.WARDEN_DEFAULT_MODEL ||
-          'muse-spark-1.3',
+          'muse-light',
         fallbackProvider: 'meta_muse',
         fallbackModelId: 'muse-spark-1.3',
         credentialId: cred?.id || null,
@@ -1612,15 +1656,15 @@ export class OrchestratorStore {
       const modelId =
         stepPhase === 'compaction'
           ? 'muse-glimmer-30b'
-          : level <= 0
-          ? 'muse-wonder-1.0'
-          : 'muse-spark-1.3';
+          : level <= 1
+          ? 'muse-spark-1.3'
+          : 'muse-light';
       const cred = this.selectActiveCredentialForProvider('meta_muse');
       return {
         provider: 'meta_muse',
         modelId,
         fallbackProvider: 'meta_muse',
-        fallbackModelId: level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3',
+        fallbackModelId: level <= 1 ? 'muse-light' : 'muse-glimmer-30b',
         credentialId: cred?.id || null,
         routingProfile: this.routingProfile,
         stepPhase,
@@ -1647,14 +1691,17 @@ export class OrchestratorStore {
     const stepOverride = agent?.step_routing_json?.[stepPhase];
     const provider: ModelProvider =
       stepOverride?.provider || agent?.model_provider || 'meta_muse';
-    const modelId: string =
+    const rawModelId: string =
       stepOverride?.modelId ||
       stepOverride?.model_id ||
       agent?.model_id ||
-      (level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3');
+      (level <= 1 ? 'muse-spark-1.3' : 'muse-light');
+    const modelId = rawModelId === 'muse-wonder-1.0' ? 'muse-spark-1.3' : rawModelId;
     const fallbackProvider: ModelProvider = agent?.fallback_provider || 'meta_muse';
-    const fallbackModelId: string =
-      agent?.fallback_model_id || (level <= 0 ? 'muse-wonder-1.0' : 'muse-spark-1.3');
+    const rawFallbackModelId: string =
+      agent?.fallback_model_id || (level <= 1 ? 'muse-light' : 'muse-glimmer-30b');
+    const fallbackModelId =
+      rawFallbackModelId === 'muse-wonder-1.0' ? 'muse-light' : rawFallbackModelId;
     const cred = this.selectActiveCredentialForProvider(provider);
 
     return {

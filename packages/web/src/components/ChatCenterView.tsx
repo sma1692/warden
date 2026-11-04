@@ -1,11 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Brain,
   Camera,
   ChevronDown,
   ChevronRight,
   FileText,
+  GitBranch,
   Image as ImageIcon,
+  Kanban,
   Loader2,
   MessageSquare,
   Paperclip,
@@ -13,6 +15,7 @@ import {
   Send,
   Trash2,
   UploadCloud,
+  X,
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -20,13 +23,21 @@ import { AsyncButton } from './AsyncButton';
 import { LlmKeyForm } from './LlmKeyForm';
 import type {
   Agent,
+  AgentRun,
   ApprovalGate,
+  BacklogItem,
   BrainStatusEvent,
   ChatMessage,
   ChatThread,
   InferenceStep,
   MediaAttachment,
 } from '../types/warden';
+import {
+  DEMO_SPAWN_TREE_BY_BACKLOG,
+  backlogIdFromSpawnThread,
+  flattenSpawnTree,
+  tasksForThread,
+} from '../data/demoLinks';
 import { formatRelativeTime } from '../utils/formatters';
 import {
   INFRA_PROJECT,
@@ -71,6 +82,8 @@ interface ChatCenterViewProps {
   /** One-shot composer prefill (e.g. from the home chat strip). Cleared via onDraftConsumed. */
   initialDraft?: string | null;
   onDraftConsumed?: () => void;
+  backlogItems?: BacklogItem[];
+  onOpenBacklogItem?: (itemId: string) => void;
 }
 
 export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
@@ -84,6 +97,8 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
   onResolveGate,
   initialDraft,
   onDraftConsumed,
+  backlogItems,
+  onOpenBacklogItem,
 }) => {
   const activeThread =
     threads.find((t) => t.id === selectedThreadId) || threads[0] || null;
@@ -101,6 +116,43 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
   const [liveBrainStatus, setLiveBrainStatus] = useState<BrainStatusEvent | null>(null);
   const [liveBrainHistory, setLiveBrainHistory] = useState<BrainStatusEvent[]>([]);
   const [liveSteps, setLiveSteps] = useState<InferenceStep[]>([]);
+  const [focusAgent, setFocusAgent] = useState<string | null>(null);
+  const [spawnExpanded, setSpawnExpanded] = useState(false);
+  // Async dispatch tracking: HTTP 202 returns a run handle; the reply lands
+  // via WebSocket push or the 3s polling fallback below.
+  const [pendingRun, setPendingRun] = useState<{
+    runId: string;
+    agentSlug: string;
+    startedAt: number;
+  } | null>(null);
+  const [polledStep, setPolledStep] = useState<InferenceStep | null>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const pendingRunRef = useRef<typeof pendingRun>(null);
+  const activeThreadIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    pendingRunRef.current = pendingRun;
+  }, [pendingRun]);
+  useEffect(() => {
+    activeThreadIdRef.current = activeThread?.id || null;
+  }, [activeThread?.id]);
+
+  const finishPendingRun = useCallback(async (threadId: string, runId: string | null) => {
+    pendingRunRef.current = null;
+    setPendingRun(null);
+    setIsSending(false);
+    setLiveBrainStatus(null);
+    const loaded = await apiClient.getChatMessages(threadId);
+    if (activeThreadIdRef.current === threadId) {
+      setMessages(loaded);
+      if (runId) {
+        const steps = await apiClient.getInferenceSteps(runId);
+        if (steps && steps.length > 0) {
+          setRunStepsMap((prev) => ({ ...prev, [runId]: steps }));
+        }
+      }
+    }
+  }, []);
 
   const toggleThought = async (msgId: string, runId: string | null) => {
     const willExpand = !expandedThoughts[msgId];
@@ -117,10 +169,13 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
     const unsubscribe = apiClient.subscribe((evt) => {
       if (evt.type === 'BRAIN_STATUS' && evt.data) {
         const status = evt.data as BrainStatusEvent;
+        if (activeThreadIdRef.current && status.thread_id !== activeThreadIdRef.current) return;
         setLiveBrainStatus(status);
         setLiveBrainHistory((prev) => [...prev.slice(-14), status]);
-      } else if (evt.type === 'STEP_CREATED' && (evt.data as { step?: InferenceStep })?.step) {
-        const step = (evt.data as { step: InferenceStep }).step;
+      } else if (evt.type === 'STEP_CREATED' && evt.data) {
+        const raw = evt.data as InferenceStep | { step?: InferenceStep };
+        const step = (raw as { step?: InferenceStep }).step ?? (raw as InferenceStep);
+        if (!step || !step.id) return;
         setLiveSteps((prev) => {
           if (prev.some((s) => s.id === step.id)) return prev;
           return [...prev, step];
@@ -131,11 +186,34 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
             if (existing.some((s) => s.id === step.id)) return prev;
             return { ...prev, [step.run_id]: [...existing, step] };
           });
+          if (pendingRunRef.current?.runId === step.run_id) {
+            setPolledStep(step);
+          }
+        }
+      } else if (evt.type === 'CHAT_MESSAGE' && evt.data) {
+        const msg = evt.data as ChatMessage;
+        if (!msg.thread_id || msg.thread_id !== activeThreadIdRef.current) return;
+        setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+        const pending = pendingRunRef.current;
+        if (pending && msg.sender_type === 'AGENT' && msg.run_id === pending.runId) {
+          void finishPendingRun(msg.thread_id, pending.runId);
+        }
+      } else if (evt.type === 'RUN_UPDATED' && evt.data) {
+        const run = evt.data as AgentRun;
+        const pending = pendingRunRef.current;
+        if (
+          pending &&
+          run.id === pending.runId &&
+          run.status !== 'RUNNING' &&
+          (run.status as string) !== 'VERIFYING_QA'
+        ) {
+          const tid = activeThreadIdRef.current;
+          if (tid) void finishPendingRun(tid, pending.runId);
         }
       }
     });
     return unsubscribe;
-  }, []);
+  }, [finishPendingRun]);
 
   const parseThoughtAndContent = (raw: string) => {
     const thinkMatch = raw.match(/<think>([\s\S]*?)<\/think>/i);
@@ -151,6 +229,108 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const pendingGates = gates.filter((g) => g.status === 'PENDING');
+
+  // Tasks linked to the active thread: originated here, or running here (spawn lead).
+  const spawnBacklogId = activeThread ? backlogIdFromSpawnThread(activeThread.id) : null;
+  const linkedTaskIds = useMemo(() => {
+    if (!activeThread) return [];
+    const ids = new Set<string>(tasksForThread(activeThread.id));
+    if (spawnBacklogId) ids.add(spawnBacklogId);
+    return [...ids];
+  }, [activeThread, spawnBacklogId]);
+  const linkedTasks = useMemo(
+    () => (backlogItems || []).filter((b) => linkedTaskIds.includes(b.id)),
+    [backlogItems, linkedTaskIds]
+  );
+  const spawnTreeBacklogId =
+    (spawnBacklogId && DEMO_SPAWN_TREE_BY_BACKLOG[spawnBacklogId]
+      ? spawnBacklogId
+      : linkedTaskIds.find((id) => DEMO_SPAWN_TREE_BY_BACKLOG[id])) || null;
+  const spawnFlat = useMemo(
+    () =>
+      spawnTreeBacklogId
+        ? flattenSpawnTree(DEMO_SPAWN_TREE_BY_BACKLOG[spawnTreeBacklogId])
+        : [],
+    [spawnTreeBacklogId]
+  );
+  const visibleMessages = useMemo(
+    () =>
+      focusAgent
+        ? messages.filter(
+            (m) => m.sender_agent_id === focusAgent || m.sender_type !== 'AGENT'
+          )
+        : messages,
+    [messages, focusAgent]
+  );
+
+  useEffect(() => {
+    setFocusAgent(null);
+    setSpawnExpanded(Boolean(spawnBacklogId));
+    // Drop per-thread tracking; the load effect below resumes it when the new
+    // thread still has an in-flight run.
+    pendingRunRef.current = null;
+    setPendingRun(null);
+    setPolledStep(null);
+    setIsSending(false);
+    setLiveBrainStatus(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThread?.id]);
+
+  // Background polling fallback: every 3s while a run is in flight, refresh
+  // the run status (live sub-step) and the message stream (WS-loss safety).
+  useEffect(() => {
+    if (!pendingRun || !activeThread) return;
+    const { runId } = pendingRun;
+    const threadId = activeThread.id;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled || pendingRunRef.current?.runId !== runId) return;
+      try {
+        const status = await apiClient.getRunStatus(runId);
+        if (cancelled || pendingRunRef.current?.runId !== runId) return;
+        if (status?.latestStep) setPolledStep(status.latestStep);
+        const loaded = await apiClient.getChatMessages(threadId);
+        if (!cancelled && activeThreadIdRef.current === threadId) {
+          setMessages((prev) => {
+            if (
+              prev.length === loaded.length &&
+              prev.every((m, i) => m.id === loaded[i]?.id)
+            ) {
+              return prev;
+            }
+            return loaded;
+          });
+        }
+        if (!status) return;
+        const st = status.run.status;
+        if (status.replyMessage || (st !== 'RUNNING' && st !== 'VERIFYING_QA')) {
+          await finishPendingRun(threadId, runId);
+        }
+      } catch {
+        // Keep polling; the next tick retries.
+      }
+    };
+    const id = window.setInterval(tick, 3000);
+    void tick();
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [pendingRun, activeThread, finishPendingRun]);
+
+  // Elapsed-seconds ticker for the typing indicator pill.
+  useEffect(() => {
+    if (!pendingRun) {
+      setElapsedSec(0);
+      return;
+    }
+    const startedAt = pendingRun.startedAt;
+    const update = () =>
+      setElapsedSec(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
+    update();
+    const id = window.setInterval(update, 1000);
+    return () => window.clearInterval(id);
+  }, [pendingRun]);
 
   useEffect(() => {
     if (preferredTargetAgentSlug) {
@@ -181,6 +361,27 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
         if (!cancelled && steps && steps.length > 0) {
           setRunStepsMap((prev) => ({ ...prev, [latestAgentMsg.run_id!]: steps }));
         }
+      }
+    });
+    // Refresh recovery: if this thread still has an in-flight run (page
+    // reload, tab switch), resume the progress indicator and polling.
+    apiClient.getThreadStatus(activeThread.id).then((tStatus) => {
+      if (cancelled || !tStatus) return;
+      const running = tStatus.runningRuns || [];
+      if (running.length > 0 && !pendingRunRef.current) {
+        const latest = running[running.length - 1];
+        const resumed = {
+          runId: latest.id,
+          agentSlug: latest.agent_slug,
+          startedAt: Date.parse(latest.started_at) || Date.now(),
+        };
+        pendingRunRef.current = resumed;
+        setPendingRun(resumed);
+        setIsSending(true);
+        if (tStatus.latestStep) setPolledStep(tStatus.latestStep);
+      } else if (tStatus.lastReply) {
+        const reply = tStatus.lastReply;
+        setMessages((prev) => (prev.some((m) => m.id === reply.id) ? prev : [...prev, reply]));
       }
     });
     return () => {
@@ -283,34 +484,63 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
       agent_id: targetAgentSlug,
       agent_slug: targetAgentSlug,
       phase: 'ROUTING',
-      thought: `Analyzing directive for ${targetAgentSlug} using muse-wonder-1.0...`,
+      thought: `Analyzing directive for ${targetAgentSlug} using muse-spark-1.3...`,
       completed_step: 'CEO message received & logged',
       next_action: `Clocking in ${targetAgentSlug} and warming context + procedural memory`,
-      model_used: 'meta_muse/muse-wonder-1.0',
+      model_used: 'meta_muse/muse-spark-1.3',
       timestamp: new Date().toISOString(),
     });
 
     try {
-      const { ceoMessage, agentReply } = await apiClient.sendChatMessage({
+      const res = await apiClient.sendChatMessage({
         thread_id: activeThread.id,
         target_agent_id: targetAgentSlug,
         content: textToSend,
         attachments: filesToSend,
       });
 
-      setMessages((prev) => [
-        ...prev.filter((m) => m.id !== tempCeoId),
-        ceoMessage,
-        agentReply,
-      ]);
-
-      if (agentReply.run_id) {
-        const steps = await apiClient.getInferenceSteps(agentReply.run_id);
-        if (steps && steps.length > 0) {
-          setRunStepsMap((prev) => ({ ...prev, [agentReply.run_id!]: steps }));
+      if (res.agentReply) {
+        // Synchronous reply (offline fallback path): render immediately.
+        const reply = res.agentReply;
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== tempCeoId),
+          res.ceoMessage,
+          reply,
+        ]);
+        if (reply.run_id) {
+          const steps = await apiClient.getInferenceSteps(reply.run_id);
+          if (steps && steps.length > 0) {
+            setRunStepsMap((prev) => ({ ...prev, [reply.run_id!]: steps }));
+          }
         }
+        setIsSending(false);
+        setLiveBrainStatus(null);
+      } else if (res.runId) {
+        // Async dispatch (HTTP 202): CEO message is stored; the agent reply
+        // lands via WebSocket push or the polling loop. Keep the indicator up.
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== tempCeoId),
+          res.ceoMessage,
+        ]);
+        const pending = {
+          runId: res.runId,
+          agentSlug: res.agentSlug || targetAgentSlug,
+          startedAt: Date.now(),
+        };
+        pendingRunRef.current = pending;
+        setPendingRun(pending);
+      } else {
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== tempCeoId),
+          res.ceoMessage,
+        ]);
+        setIsSending(false);
+        setLiveBrainStatus(null);
       }
-    } finally {
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== tempCeoId));
+      pendingRunRef.current = null;
+      setPendingRun(null);
       setIsSending(false);
       setLiveBrainStatus(null);
     }
@@ -455,9 +685,135 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
           </div>
         </div>
 
+        {/* Linked tasks + spawn tree */}
+        {(linkedTasks.length > 0 || spawnFlat.length > 0) && (
+          <div className="border-b border-[var(--surface-border)] bg-[var(--surface-card)] px-4 py-2 space-y-2 shrink-0 max-h-56 overflow-y-auto">
+            {linkedTasks.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--surface-text-secondary)]">
+                  <Kanban className="h-3 w-3" />
+                  <span>Linked tasks</span>
+                </span>
+                {linkedTasks.map((task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => onOpenBacklogItem?.(task.id)}
+                    title={task.title}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] hover:border-[var(--surface-accent)]/60 px-2 py-1 text-[11px] font-semibold text-[var(--surface-text)] transition cursor-pointer max-w-[220px]"
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                        task.stage === 'DONE'
+                          ? 'bg-[var(--semantic-success)]'
+                          : task.stage === 'IN_PROGRESS'
+                            ? 'bg-[var(--surface-accent)]'
+                            : task.stage === 'NEEDS_CEO'
+                              ? 'bg-[var(--semantic-alert)]'
+                              : 'bg-[var(--surface-text-secondary)]'
+                      }`}
+                    />
+                    <span className="truncate">{task.title}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-[var(--surface-text-secondary)]">
+                      {task.stage}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {spawnFlat.length > 0 && (
+              <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-panel)]">
+                <button
+                  type="button"
+                  onClick={() => setSpawnExpanded(!spawnExpanded)}
+                  className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-left cursor-pointer"
+                >
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[var(--surface-text)]">
+                    <GitBranch className="h-3.5 w-3.5 text-[var(--surface-accent-gold)]" />
+                    <span>Spawn tree</span>
+                    <span className="font-mono font-normal text-[10px] text-[var(--surface-text-secondary)]">
+                      {spawnFlat.map((s) => s.node.agentSlug).join(' → ')}
+                    </span>
+                  </span>
+                  {spawnExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 text-[var(--surface-text-secondary)]" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 text-[var(--surface-text-secondary)]" />
+                  )}
+                </button>
+                {spawnExpanded && (
+                  <div className="px-2.5 pb-2 space-y-1">
+                    {spawnFlat.map(({ node, depth }, idx) => {
+                      const msgCount = messages.filter(
+                        (m) => m.sender_agent_id === node.agentSlug
+                      ).length;
+                      const isFocused = focusAgent === node.agentSlug;
+                      return (
+                        <div
+                          key={`${node.agentSlug}_${idx}`}
+                          style={{ marginLeft: `${depth * 14}px` }}
+                          className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 ${
+                            isFocused
+                              ? 'border-[var(--surface-accent)]/60 bg-[var(--surface-accent)]/10'
+                              : 'border-[var(--surface-border)] bg-[var(--surface-card)]'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-mono font-bold text-[var(--surface-accent)]">
+                                {node.agentSlug}
+                              </span>
+                              {msgCount > 0 && (
+                                <span className="text-[10px] font-mono text-[var(--surface-text-secondary)]">
+                                  {msgCount} msg{msgCount === 1 ? '' : 's'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-[var(--surface-text-secondary)] truncate">
+                              {node.summary}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setFocusAgent(isFocused ? null : node.agentSlug)}
+                            className={`shrink-0 rounded-lg border px-2 py-0.5 text-[10px] font-semibold transition cursor-pointer ${
+                              isFocused
+                                ? 'border-[var(--surface-accent)] bg-[var(--surface-accent)] text-white'
+                                : 'border-[var(--surface-border)] text-[var(--surface-text-secondary)] hover:text-[var(--surface-text)]'
+                            }`}
+                          >
+                            {isFocused ? 'Clear' : 'Focus'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Focus filter pill */}
+        {focusAgent && (
+          <div className="border-b border-[var(--surface-border)] bg-[var(--surface-accent)]/10 px-4 py-1.5 flex items-center justify-between shrink-0">
+            <span className="text-[11px] font-mono text-[var(--surface-accent)]">
+              Filtered to {focusAgent} (+ you & system)
+            </span>
+            <button
+              type="button"
+              onClick={() => setFocusAgent(null)}
+              className="inline-flex items-center gap-1 rounded-lg border border-[var(--surface-accent)]/40 px-2 py-0.5 text-[10px] font-semibold text-[var(--surface-accent)] hover:bg-[var(--surface-accent)]/20 transition cursor-pointer"
+            >
+              <X className="h-3 w-3" />
+              <span>Clear</span>
+            </button>
+          </div>
+        )}
+
         {/* Message Stream */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-          {messages.map((msg) => {
+          {visibleMessages.map((msg) => {
             const isCeo = msg.sender_type === 'CEO';
             const isSystem = msg.sender_type === 'SYSTEM';
 
@@ -596,9 +952,23 @@ export const ChatCenterView: React.FC<ChatCenterViewProps> = ({
           {/* COMPACT TYPING INDICATOR WHILE SENDING */}
           {isSending && (
             <div className="flex justify-start">
-              <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-card)] px-4 py-3 shadow-xs flex items-center gap-2.5 text-xs text-[var(--surface-text)]">
-                <Loader2 className="h-4 w-4 animate-spin text-[var(--surface-accent-gold)]" />
-                <span className="font-semibold">{liveBrainStatus?.agent_slug || targetAgentSlug} is replying...</span>
+              <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-card)] px-4 py-3 shadow-xs text-xs text-[var(--surface-text)] space-y-1 max-w-2xl">
+                <div className="flex items-center gap-2.5">
+                  <Loader2 className="h-4 w-4 animate-spin text-[var(--surface-accent-gold)] shrink-0" />
+                  <span className="font-semibold">
+                    {liveBrainStatus?.agent_slug || pendingRun?.agentSlug || targetAgentSlug} is replying...
+                  </span>
+                </div>
+                {(liveBrainStatus || polledStep) && (
+                  <div className="pl-6 font-mono text-[11px] text-[var(--surface-text-secondary)] leading-relaxed">
+                    {liveBrainStatus
+                      ? `${liveBrainStatus.phase} · ${liveBrainStatus.next_action || liveBrainStatus.thought || liveBrainStatus.completed_step || ''}`.trim()
+                      : polledStep
+                        ? `Step ${polledStep.step_index}: ${polledStep.tool_name || polledStep.step_type} · ${polledStep.model_used}`
+                        : ''}
+                    {pendingRun ? ` (${elapsedSec}s elapsed)` : ''}
+                  </div>
+                )}
               </div>
             </div>
           )}
