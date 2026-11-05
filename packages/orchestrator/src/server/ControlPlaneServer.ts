@@ -50,6 +50,12 @@ import {
   type ReminderCreatedVia,
   type ReminderSchedulerHandle,
 } from '../reminders/index.js';
+import {
+  generateRequestId,
+  installProcessLogger,
+  runWithRequestContext,
+  setRequestContextUser,
+} from '../logging/Logger.js';
 
 export interface ControlPlaneServerOptions {
   port?: number;
@@ -260,6 +266,7 @@ export class ControlPlaneServer {
    * Starts the HTTP(S) + WebSocket server and background watchdogs.
    */
   public async start(): Promise<http.Server | https.Server> {
+    installProcessLogger({ wardenRoot: this.wardenRoot });
     await this.store.tryConnectDatabase();
     await this.store.reconcileAgentStatuses();
     this.resumeInProgressBacklogTasks();
@@ -480,8 +487,9 @@ export class ControlPlaneServer {
     );
     res.setHeader(
       'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, X-Requested-With'
+      'Content-Type, Authorization, X-Requested-With, X-Request-Id'
     );
+    res.setHeader('Access-Control-Expose-Headers', 'X-Request-Id');
   }
 
   private sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -1837,6 +1845,8 @@ export class ControlPlaneServer {
     req: IncomingMessage,
     res: ServerResponse
   ): Promise<void> {
+    const reqId = generateRequestId(req.headers['x-request-id']);
+    res.setHeader('X-Request-Id', reqId);
     this.setCorsHeaders(res);
 
     if (req.method === 'OPTIONS') {
@@ -1851,9 +1861,37 @@ export class ControlPlaneServer {
     );
     const pathname = parsedUrl.pathname.replace(/\/+$/, '') || '/';
     const method = req.method || 'GET';
+    const fwdFor = req.headers['x-forwarded-for'];
+    const clientIp =
+      (Array.isArray(fwdFor) ? fwdFor[0] : fwdFor)?.split(',')[0]?.trim() ||
+      req.socket?.remoteAddress ||
+      'unknown';
+
+    return runWithRequestContext(
+      { reqId, method, path: pathname, ip: clientIp },
+      () =>
+        this.executeRequestWithContext(
+          req,
+          res,
+          parsedUrl,
+          pathname,
+          method,
+          clientIp
+        )
+    );
+  }
+
+  private async executeRequestWithContext(
+    req: IncomingMessage,
+    res: ServerResponse,
+    parsedUrl: URL,
+    pathname: string,
+    method: string,
+    clientIp: string
+  ): Promise<void> {
     const reqStartMs = Date.now();
     if (method !== 'OPTIONS' && pathname !== '/api/health' && pathname !== '/api/telemetry') {
-      console.log(`[🌐 API REQ] ${method} ${pathname}`);
+      console.log(`[🌐 API REQ] ${method} ${pathname} (ip=${clientIp})`);
     }
     res.on('finish', () => {
       if (method !== 'OPTIONS' && pathname !== '/api/health' && pathname !== '/api/telemetry') {
@@ -1925,6 +1963,7 @@ export class ControlPlaneServer {
           return;
         }
         requestUserId = typeof authed.id === 'string' ? authed.id : null;
+        setRequestContextUser(requestUserId);
         if (requestUserId && !this.hydratedUsers.has(requestUserId)) {
           await this.store.hydrateUser(requestUserId).catch(() => undefined);
           this.hydratedUsers.add(requestUserId);

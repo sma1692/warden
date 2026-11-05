@@ -105,12 +105,15 @@ export type {
   SqlQueryExecutor,
 } from "./memory/HybridMemoryEngine.js";
 export * from "./media/MediaUploadService.js";
+export * from "./logging/Logger.js";
+import { installProcessLogger } from "./logging/Logger.js";
 
 export async function startOrchestrator(options?: {
   port?: number;
   host?: string;
   wardenRoot?: string;
 }): Promise<ControlPlaneServer> {
+  installProcessLogger({ wardenRoot: options?.wardenRoot });
   const server = new ControlPlaneServer({
     port: options?.port ?? Number(process.env.ORCHESTRATOR_PORT ?? process.env.PORT ?? 4000),
     host: options?.host ?? process.env.ORCHESTRATOR_HOST ?? "0.0.0.0",

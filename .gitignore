@@ -39,6 +39,7 @@ dist*/
 *.tsbuildinfo
 *.zip
 *.log
+logs/
 
 # Generated OSS export copies (published from their own repos by scripts/export-oss-md.mjs)
 .state/export-*/
