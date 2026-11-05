@@ -30,23 +30,23 @@ export const DEMO_ORIGIN_THREAD_BY_BACKLOG: Record<string, string> = {
 export const DEMO_SPAWN_TREE_BY_BACKLOG: Record<string, DemoSpawnNode> = {
   bl_lobby_bootstrap: {
     agentSlug: '@warden',
-    summary: 'Approved by CEO. Routing the lobby bootstrap to @cto for execution.',
+    summary: 'Approved by CEO. Routing the dungeon lobby & crest bootstrap to @cto for execution.',
     children: [
       {
         agentSlug: '@cto',
-        summary: 'Entry flow first: loader plus lobby before trophy art lands. Delegating to @tech_lead.',
+        summary: 'Dungeon entry flow first: custom SVG crest loader plus torchlit lobby before trophy relics land. Delegating to @tech_lead.',
         children: [
           {
             agentSlug: '@tech_lead',
-            summary: 'Locking the entry contract. Spawning @frontend_dev for UI and @backend_dev for presence.',
+            summary: 'Locking cartoon-dungeon theme contract. Spawning @designer for crest SVG and @frontend_dev for lobby UI.',
             children: [
               {
                 agentSlug: '@frontend_dev',
-                summary: 'Building the branded loading screen, logo lockup, and lobby with Play button.',
+                summary: 'Building the torchlit dungeon loading screen, custom SVG crest lockup, and Arena Lobby with Play button.',
               },
               {
-                agentSlug: '@backend_dev',
-                summary: 'Wiring lobby presence and the Play-button session handoff.',
+                agentSlug: '@designer',
+                summary: 'Crafting the vector Dungeon Shield & Runeblade crest emblem and Knight vs Slime hero preview.',
               },
             ],
           },
@@ -56,23 +56,23 @@ export const DEMO_SPAWN_TREE_BY_BACKLOG: Record<string, DemoSpawnNode> = {
   },
   bl_trophy_assets: {
     agentSlug: '@warden',
-    summary: 'Approved by CEO. Routing trophy art set to @cto for execution.',
+    summary: 'Approved by CEO. Routing dungeon trophy relic art set to @cto for execution.',
     children: [
       {
         agentSlug: '@cto',
-        summary: 'Splitting art generation from game integration. Delegating to @tech_lead.',
+        summary: 'Splitting dungeon relic sprite generation from game bundle integration. Delegating to @tech_lead.',
         children: [
           {
             agentSlug: '@tech_lead',
-            summary: 'Locking neon-arcade style. Spawning @designer for sprites and @frontend_dev for the atlas.',
+            summary: 'Locking cartoon-dungeon relic style. Spawning @designer for 12 dungeon sprites and @frontend_dev for the atlas.',
             children: [
               {
                 agentSlug: '@designer',
-                summary: 'Generating 12 trophy sprites via muse-image against ASSETS_MANIFEST.',
+                summary: 'Generating 12 dungeon trophy relic sprites (Buckler, Runeblade, Chalice, Soul Gem, Dragon Crown) via muse-image against ASSETS_MANIFEST.',
               },
               {
                 agentSlug: '@frontend_dev',
-                summary: 'Packing the sprite atlas, wiring 4 unlock animations, publishing the preview.',
+                summary: 'Packing the dungeon sprite atlas, wiring 4 unlock animations, and styling the carved stone board.',
               },
             ],
           },

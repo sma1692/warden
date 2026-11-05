@@ -263,17 +263,17 @@ function shortUserId(userId: string): string {
 export const DEMO_STARTER_BACKLOG_ITEMS = [
   {
     key: 'lobby_bootstrap',
-    title: 'Lobby bootstrap: loading screen + logo + lobby with Play button',
+    title: 'Lobby bootstrap: dungeon loading screen + crest logo + lobby with Play button',
     spec_md:
-      'Branded loading screen with the proper logo lockup, then a lobby screen with a Play button that enters the match.',
+      'Cartoon-dungeon entry flow: torchlit stone loading screen with a custom SVG Dungeon Crest logo lockup (crossed runeblades & shield emblem), then an Arena Lobby screen with a Play button that enters the match.',
     stage: 'NEEDS_CEO' as const,
     priority: 'P0' as const,
   },
   {
     key: 'trophy_assets',
-    title: 'Generate trophy system art set (12 sprites + 4 animations)',
+    title: 'Generate trophy system art set (12 dungeon sprites + 4 animations)',
     spec_md:
-      'Per ASSETS_MANIFEST.md: trophy ladder art in the locked style, packed as a sprite atlas in the demo game bundle.',
+      'Per ASSETS_MANIFEST.md: cartoon-dungeon trophy ladder art set (custom SVG & pixel-art Bronze Buckler, Silver Runeblade, Gold Crypt Chalice, Diamond Soul Gem & Mythic Dragon Crown sprites + dungeon board theme), packed as a sprite atlas in the demo game bundle.',
     stage: 'TODO' as const,
     priority: 'P0' as const,
   },
@@ -289,15 +289,15 @@ export const DEMO_STARTER_BACKLOG_ITEMS = [
     key: 'trophy_seo',
     title: 'Trophy launch SEO cluster (4 guides + FAQ schema)',
     spec_md:
-      'How-to trophy guides with FAQ schema so launch searches land on the demo game. How-to intent first.',
+      'How-to dungeon trophy guides with FAQ schema so launch searches land on the demo game. How-to intent first.',
     stage: 'TODO' as const,
     priority: 'P1' as const,
   },
   {
     key: 'trophy_social',
-    title: 'Trophy launch social visuals (5 clips + launch thread)',
+    title: 'Trophy launch social visuals (5 dungeon clips + launch thread)',
     spec_md:
-      'Player-flex clips cut from the new art set plus the announcement thread. Premiere on Reels + Shorts.',
+      'Cartoon-dungeon player-flex visual cards cut from the new trophy relic art set plus the announcement thread. Premiere on Reels + Shorts.',
     stage: 'TODO' as const,
     priority: 'P1' as const,
   },
@@ -459,6 +459,10 @@ async function deployInitialDemoBuild(
  * double-submits never provision (or deploy) twice.
  */
 const inflightProvisions = new Map<string, Promise<DemoWorkspace>>();
+
+export function isProvisionInflight(userId: string): boolean {
+  return inflightProvisions.has(userId);
+}
 
 export function provisionUser(
   userId: string,

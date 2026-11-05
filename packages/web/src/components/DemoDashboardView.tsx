@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { apiClient, type DemoWorkspaceState } from '../api/client';
+import { fetchMe } from '../api/auth';
 
 export interface DemoDeployMeta {
   version: string;
@@ -160,11 +161,21 @@ export const DemoDashboardView: React.FC<{
     try {
       const remote = await apiClient.getDemoWorkspace().catch(() => null);
       setState(remote);
+      let sub = '';
       if (remote) {
-        const sub = getDemoSubdomain(
+        sub = getDemoSubdomain(
           remote.deploy.project_name,
           remote.workspace.deploy_url
         );
+      }
+      if (!sub || sub === 'demo-arena') {
+        const me = await fetchMe().catch(() => null);
+        if (me?.id) {
+          const shortId = me.id.replace(/-/g, '').slice(0, 8).toLowerCase() || 'user';
+          sub = `warden-u${shortId}-demo-arena`;
+        }
+      }
+      if (sub && sub !== 'demo-arena') {
         const url = formatSubdomainUrl(sub);
         setDeployMeta((prev) => {
           const next: DemoDeployMeta = {
@@ -187,12 +198,58 @@ export const DemoDashboardView: React.FC<{
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    const unsubscribe = apiClient.subscribe((wsEvt) => {
+      if (wsEvt.type === 'BACKLOG_UPDATED') {
+        const payload = wsEvt.data as any;
+        if (payload?.kind === 'demo-deploy') {
+          void refresh().then(() => {
+            setDeployMeta((prev) => {
+              const nextNum = payload?.version
+                ? parseInt(String(payload.version).replace(/^v/i, ''), 10) || prev.versionNumber + 1
+                : (prev.versionNumber || 1) + 1;
+              const nextVer = `v${nextNum}`;
+              const updatedIso = payload?.updatedAt || new Date().toISOString();
+              const updatedDate = new Date(updatedIso);
+              const resolvedSub = payload?.deployUrl
+                ? getDemoSubdomain(prev.subdomain, payload.deployUrl)
+                : prev.subdomain;
+              const next: DemoDeployMeta = {
+                ...prev,
+                version: nextVer,
+                versionNumber: nextNum,
+                updatedAt: updatedIso,
+                formattedTimestamp: updatedDate.toLocaleString(),
+                subdomain: resolvedSub,
+                url: formatSubdomainUrl(resolvedSub),
+              };
+              if (typeof window !== 'undefined') {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+              }
+              return next;
+            });
+          });
+        }
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [refresh]);
+
   const subdomain = useMemo(() => {
-    return getDemoSubdomain(
+    const fromState = getDemoSubdomain(
       state?.deploy.project_name,
       state?.workspace.deploy_url
     );
-  }, [state]);
+    if (fromState && fromState !== 'demo-arena') {
+      return fromState;
+    }
+    if (deployMeta.subdomain && deployMeta.subdomain !== 'demo-arena') {
+      return deployMeta.subdomain;
+    }
+    return fromState;
+  }, [state, deployMeta.subdomain]);
 
   const liveUrl = useMemo(() => {
     return formatSubdomainUrl(subdomain);
@@ -211,11 +268,17 @@ export const DemoDashboardView: React.FC<{
   const handleDeploy = useCallback(async () => {
     setDeploying(true);
     try {
-      const res = await apiClient.deployDemo().catch((err) => {
+      const res = (await apiClient.deployDemo().catch((err) => {
         onError?.(err instanceof Error ? err.message : String(err));
         return null;
-      });
+      })) as any;
 
+      const resolvedSub =
+        getDemoSubdomain(
+          res?.result?.projectName || state?.deploy.project_name,
+          res?.result?.primaryUrl || res?.workspace?.deploy_url || state?.workspace.deploy_url
+        ) || subdomain;
+      const resolvedUrl = formatSubdomainUrl(resolvedSub);
       const nextNum = (deployMeta.versionNumber || 1) + 1;
       const nextVer = `v${nextNum}`;
       const now = new Date();
@@ -224,8 +287,8 @@ export const DemoDashboardView: React.FC<{
         versionNumber: nextNum,
         updatedAt: now.toISOString(),
         formattedTimestamp: now.toLocaleString(),
-        subdomain,
-        url: liveUrl,
+        subdomain: resolvedSub,
+        url: resolvedUrl,
       };
 
       setDeployMeta(updatedMeta);

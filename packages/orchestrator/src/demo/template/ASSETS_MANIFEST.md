@@ -12,7 +12,7 @@ This manifest catalogues all visual graphics, UI sprites, 2D/3D assets, animatio
 | `ui_icon_player_o` | SVG / PNG | 128x128 Vector | Primary neon orange ring mark with glow state |
 | `ui_btn_primary` | 9-slice PNG | 256x96 (3x scale) | Pill button, active/hover/pressed states (Emerald Green) |
 | `ui_btn_gold` | 9-slice PNG | 256x96 (3x scale) | Ranked/Store purchase button with gold sheen |
-| `ui_badge_trophy` | SVG / PNG | 64x64 | Golden trophy emblem for HUD counter |
+| `ui_badge_trophy` | SVG / Sprite | 64x64 Vector | Cartoon-dungeon Golden Crypt Chalice & Dragon Relic emblems (Bronze Buckler, Silver Runeblade, Gold Chalice, Diamond Soul Gem, Mythic Dragon Crown) |
 | `ui_badge_gem` | SVG / PNG | 64x64 | Purple cut diamond icon for premium currency |
 | `ui_badge_gold_coin` | SVG / PNG | 64x64 | Gold coin stack with sparkle highlight |
 

@@ -178,7 +178,7 @@ npm run build
 
 ## 10. Project History
 
-Warden started as the founder's private, multi-project command center. The reusable framework was extracted, sanitized, and published to this repository on 2026-10-27 (the first commit here is that import), and development has continued in this repository since. Later commits remove features that depended on the private setup (multi-repo mirrors, GitHub and Telegram integrations, non-Meta model providers).
+Warden evolved out of [agenticMD](https://github.com/sma1692/agenticMD), a lightweight folder-based Markdown harness built to parallelize multi-agent coding and operational workflows across multiple concurrent studio titles. As external teams piloted the harness and requested a centralized, database-backed control plane, the reusable orchestration framework was extracted, sanitized, and published to this repository on 2026-10-27 (the first commit here is that import), and development has continued in this repository since. Later commits remove features that depended on the private setup (multi-repo mirrors, GitHub and Telegram integrations, non-Meta model providers) while adding the cloud-ready Postgres + `pgvector` engine, Meta Muse 3-tier router, and real-time React command center.
 
 ---
 

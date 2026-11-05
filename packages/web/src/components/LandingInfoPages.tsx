@@ -230,7 +230,7 @@ const ArchitectureSection: React.FC<{ onStart: () => void }> = ({ onStart }) => 
             1. The 4-Tier Agent Hierarchy &amp; Token Caps
           </h2>
           <span className="text-xs font-mono text-slate-400">
-            90% Lower Context Overhead
+            90%* Lower Context Overhead
           </span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

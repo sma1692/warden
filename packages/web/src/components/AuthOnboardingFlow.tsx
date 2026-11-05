@@ -855,7 +855,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
       >
         {/* STEP 0: LOADING SCREEN */}
         {step === 'loading' && (
-          <div className="flex flex-col items-center justify-center gap-8">
+          <div className="flex flex-col items-center justify-center gap-6">
             <div className="relative flex items-center justify-center">
               <div className="absolute -inset-6 rounded-full bg-[#C6A664]/15 blur-3xl pointer-events-none" />
               <div className="relative h-56 w-56 sm:h-72 sm:w-72 rounded-3xl bg-gradient-to-b from-[#D4B475]/20 via-[#162030] to-[#0B121C] border border-[#C6A664]/45 p-3 shadow-2xl shadow-[#C6A664]/20 flex items-center justify-center overflow-hidden">
@@ -865,6 +865,12 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                   className="h-full w-full object-cover rounded-2xl"
                 />
               </div>
+            </div>
+            <div className="inline-flex items-center gap-2.5 rounded-2xl border border-[#C6A664]/45 bg-[#14161A]/95 px-4 py-2 shadow-[0_0_24px_rgba(198,166,100,0.16)]">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#D4B475] shadow-[0_0_8px_#D4B475]" />
+              <span className="text-lg sm:text-xl font-black uppercase tracking-[0.16em] text-transparent bg-clip-text bg-gradient-to-r from-[#F5F0E6] via-[#D4B475] to-[#C6A664]">
+                Warden Automatons
+              </span>
             </div>
             <div className="w-56 sm:w-72 h-1.5 rounded-full bg-[#14161A] overflow-hidden border border-[#C6A664]/25 shadow-inner">
               <div
@@ -940,7 +946,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                         Company Brain
                       </span>
                       <h3 className="text-base sm:text-lg font-black text-white leading-snug">
-                        Shared memory, 90% lower token burn
+                        Shared memory, 90%* lower token burn
                       </h3>
                       <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                         One brain holds your repos, backlogs, and decisions. Tiered context firewalls slash token costs so you never pay to re-explain.
@@ -1036,11 +1042,11 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                           Company Brain
                         </span>
                         <span className="text-xs font-mono text-[#D4B475]/80">
-                          −90% Token Burn
+                          −90%* Token Burn
                         </span>
                       </div>
                       <h3 className="text-xl xl:text-2xl font-black text-white leading-snug">
-                        Shared memory, 90% lower token burn
+                        Shared memory, 90%* lower token burn
                       </h3>
                       <p className="text-sm xl:text-[15px] text-slate-300 leading-relaxed">
                         One brain holds your repos, backlogs, and decisions. Tiered context firewalls slash token costs so you never pay to re-explain.
@@ -1637,7 +1643,7 @@ export const AuthOnboardingFlow: React.FC<AuthOnboardingFlowProps> = ({
                           </span>
                           <div className="space-y-0.5">
                             <h3 className="text-xs sm:text-sm font-bold text-white">
-                              One Shared Brain (90% Lower Token Burn)
+                              One Shared Brain (90%* Lower Token Burn)
                             </h3>
                             <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed">
                               Every repo, spec, and decision lives in shared memory — zero context re-pasting.

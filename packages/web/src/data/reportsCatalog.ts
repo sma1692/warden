@@ -42,30 +42,30 @@ export const UNIFIED_REPORTS_CATALOG: UnifiedReportItem[] = [
   },
   {
     id: 'rep-trophy-art-qa',
-    title: 'Trophy art set QA: sprite atlas + unlock animations',
-    subtitle: '12-sprite trophy ladder in the locked style, packed atlas, 4 unlock animations with frame proofs.',
+    title: 'Dungeon trophy art set QA: relic sprite atlas + unlock animations',
+    subtitle: '12-sprite cartoon-dungeon trophy ladder (Buckler, Runeblade, Chalice, Soul Gem, Dragon Crown) + 4 unlock animations.',
     vertical: 'TECH',
     authorSlug: '@tech_lead',
     projectSlug: 'demo-project',
     date: '2026-10-27',
     cadenceLabel: 'Launch Gate',
-    keyMetric: '12 sprites + 4 anims',
+    keyMetric: '12 dungeon sprites + 4 anims',
     tokenBurnLabel: '2.2K tok',
     filePath: 'reports/trophy-art-qa.md',
     status: 'ACTION_NEEDED',
-    markdownContent: `# Trophy Art Set QA (Launch Gate)
+    markdownContent: `# Dungeon Trophy Art Set QA (Launch Gate)
 
 ## What shipped
-- **12 trophy sprites** generated against \`ASSETS_MANIFEST.md\` in the locked neon-arcade style
-- **Sprite atlas** packed into the demo game bundle (single draw call per ladder row)
-- **4 unlock animations** (bronze to silver to gold to mythic) with per-frame timing proofs
+- **12 dungeon trophy relic sprites** generated against \`ASSETS_MANIFEST.md\` in the locked cartoon-dungeon style (Bronze Buckler, Silver Runeblade, Gold Crypt Chalice, Diamond Soul Gem, Mythic Dragon Crown)
+- **Sprite atlas & custom SVG emblems** packed into the demo game bundle with zero basic emoji fallbacks
+- **4 unlock animations** (bronze buckler → silver runeblade → gold chalice → mythic dragon crown) with frame timing proofs
 
 ## Verification
-- Atlas loads in the game client render loop with zero missing frames
-- Unlock sequence plays end to end in the Playwright capture
+- Atlas and custom SVG dungeon emblems load in the game client render loop with zero missing frames
+- Unlock sequence and carved stone dungeon theme verified in Playwright capture
 
 ## Next gate
-Approve the trophy asset task to spawn the art team run and attach the live preview here.`,
+Approve the dungeon trophy asset task to spawn the art team run and attach the live preview here.`,
     linkedBacklogIds: ['bl_trophy_assets'],
   },
   {

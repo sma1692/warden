@@ -774,16 +774,16 @@ export class ControlPlaneServer {
       { title: string; spec_md: string; priority: BacklogPriority; department: string }
     > = {
       prio_tech_lobby_bootstrap: {
-        title: 'Lobby bootstrap: loading screen + logo + lobby with Play button',
+        title: 'Lobby bootstrap: dungeon loading screen + crest logo + lobby with Play button',
         spec_md:
-          'Branded loading screen with the proper logo lockup, then a lobby screen with a Play button that enters the match.',
+          'Cartoon-dungeon entry flow: torchlit stone loading screen with a custom SVG Dungeon Crest logo lockup (crossed runeblades & shield emblem), then an Arena Lobby screen with a Play button that enters the match.',
         priority: 'P0',
         department: 'Tech',
       },
       prio_tech_trophy_assets: {
-        title: 'Generate trophy system art set (12 sprites + 4 animations)',
+        title: 'Generate trophy system art set (12 dungeon sprites + 4 animations)',
         spec_md:
-          'Per ASSETS_MANIFEST.md: trophy ladder art in the locked style, packed as a sprite atlas in the demo game bundle.',
+          'Per ASSETS_MANIFEST.md: cartoon-dungeon trophy ladder art set (custom SVG & pixel-art Bronze Buckler, Silver Runeblade, Gold Crypt Chalice, Diamond Soul Gem & Mythic Dragon Crown sprites + dungeon board theme), packed as a sprite atlas in the demo game bundle.',
         priority: 'P0',
         department: 'Tech',
       },
@@ -795,16 +795,16 @@ export class ControlPlaneServer {
         department: 'Tech',
       },
       prio_social_trophy_launch: {
-        title: 'Trophy launch social visuals (5 clips + launch thread)',
+        title: 'Trophy launch social visuals (5 dungeon clips + launch thread)',
         spec_md:
-          'Player-flex clips cut from the new art set plus the announcement thread. Premiere on Reels + Shorts.',
+          'Cartoon-dungeon player-flex visual cards cut from the new trophy relic art set plus the announcement thread. Premiere on Reels + Shorts.',
         priority: 'P1',
         department: 'Marketing',
       },
       prio_seo_trophy_cluster: {
         title: 'Trophy launch SEO cluster (4 guides + FAQ schema)',
         spec_md:
-          'How-to trophy guides with FAQ schema so launch searches land on the demo game. How-to intent first.',
+          'How-to dungeon trophy guides with FAQ schema so launch searches land on the demo game. How-to intent first.',
         priority: 'P1',
         department: 'Marketing',
       },
@@ -887,7 +887,8 @@ export class ControlPlaneServer {
       titleLower.includes('trophy_assets') ||
       titleLower.includes('trophy system art') ||
       titleLower.includes('trophy asset') ||
-      titleLower.includes('12 sprites');
+      titleLower.includes('12 sprites') ||
+      titleLower.includes('12 dungeon sprites');
 
     const deptSlug = isSeo || isSocial ? '@cmo' : '@cto';
     const specialistSlug = isSeo
@@ -1461,17 +1462,17 @@ export class ControlPlaneServer {
             : `${specialistAgent.model_provider}/${specialistAgent.model_id}`,
           thinking_text: patchResult.thinkingText,
           message_text: isTrophyArt
-            ? `${specialistAgent.slug} generated 12 trophy ladder sprites & 4 animation states (${patchResult.summaryText}).`
+            ? `${specialistAgent.slug} generated 12 cartoon-dungeon trophy relic sprites & 4 animation states (${patchResult.summaryText}).`
             : `${specialistAgent.slug} synthesized code changes: ${patchResult.summaryText}`,
           tool_name: isTrophyArt ? 'generate_image_assets' : 'synthesize_workspace_changes',
           tool_args_json: isTrophyArt
-            ? { model: 'muse-image', style: 'neon_arcade', sprites: 12, animations: 4, directive: summary }
+            ? { model: 'muse-image', style: 'cartoon_dungeon', sprites: 12, animations: 4, directive: summary }
             : { target_files: patchResult.patchedFiles, directive: summary, llm_applied: patchResult.llmApplied },
           tool_output_json: {
             exit_code: 0,
             llm_customized: patchResult.llmApplied,
             stdout: isTrophyArt
-              ? `✓ Generated 12 neon arcade sprites + 4 trophy tier animations\n✓ ${patchResult.summaryText}`
+              ? `✓ Generated 12 cartoon-dungeon relic sprites + 4 trophy tier animations\n✓ ${patchResult.summaryText}`
               : `✓ Synthesized workspace changes (${patchResult.patchedFiles.join(', ')})\n✓ ${patchResult.summaryText}`,
           },
           duration_ms: synthDurationMs,
@@ -1586,6 +1587,7 @@ export class ControlPlaneServer {
               status: deployRes.status,
               version: deployRes.metadata.version,
               updatedAt: deployRes.metadata.updatedAt,
+              deployUrl: deployRes.url,
             });
           } catch (deployErr) {
             console.warn('[BacklogRunner] Auto demo deploy skipped:', deployErr);
@@ -2962,6 +2964,7 @@ export class ControlPlaneServer {
                       status: deployRes.status,
                       version: deployRes.metadata.version,
                       updatedAt: deployRes.metadata.updatedAt,
+                      deployUrl: deployRes.url,
                     });
                     const verLabel = String(deployRes.metadata.version || '').startsWith('v')
                       ? String(deployRes.metadata.version)
@@ -3331,18 +3334,43 @@ export class ControlPlaneServer {
           this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
           return;
         }
-        const { getDemoWorkspace } = await import('../demo/DemoProvisioning.js');
+        const { getDemoWorkspace, isProvisionInflight, provisionUser } = await import('../demo/DemoProvisioning.js');
         const { cloudflareConfigured, demoProjectName } = await import('../demo/CloudflareDeployer.js');
-        const workspace = await getDemoWorkspace(requestUserId);
+        const projectName = demoProjectName(requestUserId);
+        const canonicalUrl = `https://${projectName}.warden.autos/`;
+        let workspace = await getDemoWorkspace(requestUserId);
         if (!workspace) {
-          this.sendJson(res, 404, { ok: false, error: 'No demo workspace yet. Complete onboarding in demo mode first.' });
-          return;
+          if (isProvisionInflight(requestUserId)) {
+            this.sendJson(res, 404, { ok: false, error: 'Provisioning in progress.' });
+            return;
+          }
+          // Self-heal missing workspace row in the background while returning canonical project info immediately
+          void provisionUser(requestUserId, { demo: true, mode: 'demo' }).catch(() => null);
+          workspace = {
+            user_id: requestUserId,
+            mode: 'demo',
+            repo_full_name: null,
+            base_ref: null,
+            base_sha: null,
+            branch: null,
+            pr_number: null,
+            pr_url: null,
+            status: 'ACTIVE',
+            local_dir: null,
+            deploy_url: canonicalUrl,
+            deploy_status: 'ACTIVE',
+          };
+        } else if (!workspace.deploy_url || workspace.deploy_url.includes('demo-arena.warden.autos')) {
+          workspace = {
+            ...workspace,
+            deploy_url: canonicalUrl,
+          };
         }
         this.sendJson(res, 200, {
           ok: true,
           workspace,
           deploy: {
-            project_name: demoProjectName(requestUserId),
+            project_name: projectName,
             cloudflare_configured: cloudflareConfigured(),
           },
         });
@@ -3354,23 +3382,24 @@ export class ControlPlaneServer {
           this.sendJson(res, 401, { ok: false, error: 'Not signed in' });
           return;
         }
-        const { getDemoWorkspace, recordDemoDeploy } = await import('../demo/DemoProvisioning.js');
-        const { ensureDemoFolder } = await import('../demo/DemoFolders.js');
-        const { deployDemoProject } = await import('../demo/CloudflareDeployer.js');
-        const workspace = await getDemoWorkspace(requestUserId);
-        if (!workspace || workspace.mode !== 'demo') {
-          this.sendJson(res, 404, { ok: false, error: 'No demo workspace yet. Complete onboarding in demo mode first.' });
-          return;
-        }
-        const { dir } = ensureDemoFolder(requestUserId);
-        await recordDemoDeploy(requestUserId, { deploy_url: null, deploy_status: 'DEPLOYING' }).catch(() => null);
-        const result = await deployDemoProject(requestUserId, workspace.local_dir || dir);
-        const updated = await recordDemoDeploy(requestUserId, {
-          deploy_url: result.primaryUrl,
-          deploy_status: result.status,
-        }).catch(() => null);
-        this.broadcastEvent('backlog:updated', { user_id: requestUserId, kind: 'demo-deploy', status: result.status });
-        this.sendJson(res, result.ok ? 201 : 200, { ok: result.ok, result, workspace: updated || workspace });
+        const { getDemoWorkspace } = await import('../demo/DemoProvisioning.js');
+        const { deployDemoPath } = await import('./routes/demoSubdomain.js');
+        const deployRes = await deployDemoPath(requestUserId);
+        const updated = await getDemoWorkspace(requestUserId).catch(() => null);
+        this.broadcastEvent('backlog:updated', {
+          user_id: requestUserId,
+          kind: 'demo-deploy',
+          status: deployRes.status,
+          version: deployRes.metadata.version,
+          updatedAt: deployRes.metadata.updatedAt,
+          deployUrl: deployRes.url,
+        });
+        this.sendJson(res, deployRes.ok ? 201 : 200, {
+          ok: deployRes.ok,
+          result: deployRes.rawDeployResult,
+          workspace: updated,
+          metadata: deployRes.metadata,
+        });
         return;
       }
 

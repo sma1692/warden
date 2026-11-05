@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ensureDemoFolder } from '../../demo/DemoFolders.js';
-import { deployDemoProject, sanitizeSubdomain, cloudflareConfigured } from '../../demo/CloudflareDeployer.js';
+import { deployDemoProject, demoProjectName, sanitizeSubdomain, cloudflareConfigured } from '../../demo/CloudflareDeployer.js';
 import { getDemoMetadata, recordDeployment, type DemoMetadata } from '../../handlers/demoStatus.js';
 import { getDemoWorkspace, recordDemoDeploy } from '../../demo/DemoProvisioning.js';
 
@@ -156,7 +156,8 @@ export async function deployDemoPath(
   options?: SpawnDemoOptions
 ): Promise<DeployDemoPathResult> {
   const gameId = options?.gameId || 'demo-arena';
-  const { subdomain, fqdn, url } = resolveDemoSubdomain(userId, gameId, options?.customSubdomain);
+  const preferredSubdomain = options?.customSubdomain || demoProjectName(userId, gameId);
+  const { subdomain } = resolveDemoSubdomain(userId, gameId, preferredSubdomain);
   const { dir } = ensureDemoFolder(userId);
 
   // Check existing workspace if available

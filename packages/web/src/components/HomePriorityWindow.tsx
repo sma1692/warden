@@ -62,39 +62,39 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
     verticalLabel: 'Tech',
     projectSlug: 'demo-project',
     agentSlug: '@frontend_dev',
-    agentRole: 'Frontend Dev + game team',
+    agentRole: 'Frontend Dev + @designer',
     priority: 'P0',
-    impactBadge: 'Entry flow unblocked',
-    decisiveTitle: 'Lobby bootstrap: loading screen + logo + Play',
+    impactBadge: 'Dungeon entry flow',
+    decisiveTitle: 'Lobby bootstrap: dungeon loading screen + crest logo + Play',
     decisiveSummary:
-      '@tech_lead scoped the entry flow: branded loading screen with the proper logo, then a lobby with a Play button. Pure agentic build, no art generation.',
+      '@tech_lead & @designer scoped the cartoon-dungeon entry flow: torchlit stone loading screen with custom SVG Dungeon Crest logo lockup (crossed runeblades & shield), then an Arena Lobby with Play button.',
     decisiveCtaLabel: 'Approve',
-    questionTitle: 'Lobby scope for launch',
+    questionTitle: 'Dungeon lobby & crest scope',
     questionPrompt:
-      'How much lobby should ship before the trophy launch?',
-    principleTag: 'Entry scope',
+      'Which dungeon entry theme & lobby scope should ship before the trophy launch?',
+    principleTag: 'Dungeon theme & entry',
     options: [
       {
         id: 'opt_lobby_play_only',
-        label: 'A. Loading + lobby + Play',
-        summary: 'Branded loader, logo lockup, lobby with one Play button. Ships today.',
+        label: 'A. Cartoon Dungeon Crest + Torchlit Lobby + Play',
+        summary: 'Custom SVG dungeon shield & runeblade crest, torchlit loader, and dungeon stone lobby with Play CTA. Ships today.',
         recommended: true,
       },
       {
         id: 'opt_lobby_presence',
-        label: 'B. Plus presence',
-        summary: 'Adds live player counts and lobby presence. One extra day.',
+        label: 'B. Gritty Dark Crypt + Live Presence',
+        summary: 'Dark gothic crypt aesthetic plus live player counts and lobby presence. One extra day.',
       },
       {
         id: 'opt_lobby_matchmaking',
-        label: 'C. Plus matchmaking',
-        summary: 'Full queue + party invites. Slips the trophy launch.',
+        label: 'C. Full Dungeon Guild Queue + Matchmaking',
+        summary: 'Full dungeon party invites and ranked matchmaking queue. Slips the trophy launch.',
       },
     ],
-    coArchitectFollowUp: 'Where should the logo lockup live?',
+    coArchitectFollowUp: 'Where should the Dungeon Crest logo lockup live?',
     coArchitectPills: [
-      'Shared game-client header',
-      'Loader only, lobby stays clean',
+      'Shared game-client header + dungeon loader + lobby',
+      'Loader only, lobby stays minimal',
       'Loader + lobby + PWA icon',
     ],
   },
@@ -104,38 +104,38 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
     verticalLabel: 'Tech',
     projectSlug: 'demo-project',
     agentSlug: '@tech_lead',
-    agentRole: 'Tech Lead + game team',
+    agentRole: 'Tech Lead + @designer',
     priority: 'P0',
-    impactBadge: 'Trophy launch unblocked',
-    decisiveTitle: 'Trophy asset batch: 12 sprites + 4 animations',
+    impactBadge: 'Dungeon trophy art',
+    decisiveTitle: 'Trophy asset batch: 12 dungeon relic sprites + 4 animations',
     decisiveSummary:
-      '@tech_lead generated the trophy ladder art set from ASSETS_MANIFEST. Ready to merge into the demo game.',
+      '@designer & @tech_lead generated the cartoon-dungeon trophy ladder art set (custom SVG & pixel-art Bronze Buckler, Silver Runeblade, Gold Crypt Chalice, Diamond Soul Gem & Mythic Dragon Crown) from ASSETS_MANIFEST.',
     decisiveCtaLabel: 'Approve',
-    questionTitle: 'Art style lock for the trophy ladder',
+    questionTitle: 'Art style lock for the dungeon trophy ladder',
     questionPrompt:
-      'Which style should the trophy art set lock to before agents animate it?',
-    principleTag: 'Art direction',
+      'Which dungeon art style should the trophy relic set lock to before agents wire the sprite atlas?',
+    principleTag: 'Dungeon art direction',
     options: [
       {
         id: 'opt_neon_arcade',
-        label: 'A. Neon arcade',
-        summary: 'Bold glow sprites that read well in gameplay clips and reels.',
+        label: 'A. Cartoon Dungeon Relics & Torchlight Glow',
+        summary: 'Custom SVG & pixel-art dungeon shields, runeblades, golden chalices, and dragon crowns with glowing rune frames.',
         recommended: true,
       },
       {
         id: 'opt_flat_vector',
-        label: 'B. Flat vector',
-        summary: 'Clean minimal icons, fastest to animate, matches the video style.',
+        label: 'B. Clean Heraldic Vector Crests',
+        summary: 'Minimal medieval guild crests, fastest to animate, matches the UI HUD.',
       },
       {
         id: 'opt_pixel_retro',
-        label: 'C. Pixel retro',
-        summary: '16-bit nostalgia set. Distinctive but slowest to animate.',
+        label: 'C. 16-Bit Retro Dungeon Crawler',
+        summary: 'Chunky 16-bit pixel dungeon relics with CRT scanline shader.',
       },
     ],
-    coArchitectFollowUp: 'Where should the animated trophy frames live?',
+    coArchitectFollowUp: 'Where should the animated dungeon trophy sprites live?',
     coArchitectPills: [
-      'Sprite atlas in the game bundle',
+      'Sprite atlas in the game bundle + dungeon board theme',
       'Lazy-loaded animation pack',
       'CDN-hosted seasonal skins',
     ],
@@ -191,19 +191,19 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
     agentRole: 'Social Growth Lead',
     priority: 'P1',
     impactBadge: 'Trophy launch week',
-    decisiveTitle: 'Trophy launch pack: 5 visuals + launch thread',
+    decisiveTitle: 'Trophy launch pack: 5 dungeon visuals + launch thread',
     decisiveSummary:
-      '@social_lead cut the trophy launch visuals and the announcement thread from the new art set. Ready to post.',
+      '@social_lead cut 5 cartoon-dungeon trophy unlock visual cards and the announcement thread from the new dungeon relic art set. Ready to post.',
     decisiveCtaLabel: 'Approve',
     questionTitle: 'Launch angle',
     questionPrompt:
-      'Which angle should the trophy launch lead with?',
+      'Which angle should the dungeon trophy launch lead with?',
     principleTag: 'Launch narrative',
     options: [
       {
         id: 'opt_player_flex',
-        label: 'A. Player flex clips',
-        summary: 'Trophy unlock moments from real matches. Highest share rate.',
+        label: 'A. Dungeon boss & relic flex clips',
+        summary: 'Dungeon trophy unlock moments & Knight vs Slime arena duels. Highest share rate.',
         recommended: true,
       },
       {
@@ -474,14 +474,19 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
   });
 
   const [selectedCoPillById, setSelectedCoPillById] = useState<Record<string, string>>({
-    prio_tech_lobby_bootstrap: 'Shared game-client header',
-    prio_tech_trophy_assets: 'Sprite atlas in the game bundle',
+    prio_tech_lobby_bootstrap: 'Shared game-client header + dungeon loader + lobby',
+    prio_tech_trophy_assets: 'Sprite atlas in the game bundle + dungeon board theme',
     prio_tech_crash_patch: 'Auto-reply with the fix + deploy link',
     prio_social_trophy_launch: 'Reels + Shorts first',
     prio_seo_trophy_cluster: 'All four on launch day',
   });
 
-  const [customNoteById, setCustomNoteById] = useState<Record<string, string>>({});
+  const [customNoteById, setCustomNoteById] = useState<Record<string, string>>({
+    prio_tech_lobby_bootstrap:
+      'Style the loading screen, logo lockup, and lobby in a cartoon dungeon theme with custom SVG crest & torchlight visuals (no basic emojis).',
+    prio_tech_trophy_assets:
+      'Use cartoon dungeon theme artwork: custom SVG & pixel-art dungeon shields, runeblades, golden chalices, soul gems, and dragon relics (no basic emojis).',
+  });
 
   const [resolvedById, setResolvedById] = useState<
     Record<string, { decisionText: string; resolvedAt: string; levelUsed: ConsultationLevel; running: boolean }>
