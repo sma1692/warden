@@ -56,6 +56,9 @@ export * from "./engine/StandupCoordinator.js";
 export * from "./watchdogs/HealthAndQuotaGuard.js";
 export * from "./watchdogs/IdleBacklogMonitor.js";
 export * from "./server/ControlPlaneServer.js";
+export * from "./analytics/ga4.js";
+export * from "./cron/sesSender.js";
+export * from "./cron/nightlyAnalytics.js";
 export {
   ModelRouter,
   modelRouter,
@@ -140,9 +143,15 @@ export async function startOrchestrator(options?: {
     }
   }, 60_000);
 
+  // 12:00 AM IST (0 0 * * *) Nightly Owner Analytics Brief Scheduler
+  const nightlyAnalyticsCron = scheduleNightlyAnalyticsCron({
+    store: server.store,
+  });
+
   const shutdown = async (signal: string) => {
     console.log(`\n[Orchestrator] Received ${signal}. Shutting down gracefully...`);
     clearInterval(standupTimer);
+    nightlyAnalyticsCron.stop();
     await server.stop();
     process.exit(0);
   };
