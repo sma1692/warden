@@ -110,6 +110,7 @@ export type {
 export * from "./media/MediaUploadService.js";
 export * from "./logging/Logger.js";
 import { installProcessLogger } from "./logging/Logger.js";
+import { scheduleNightlyAnalyticsCron } from "./cron/nightlyAnalytics.js";
 
 export async function startOrchestrator(options?: {
   port?: number;

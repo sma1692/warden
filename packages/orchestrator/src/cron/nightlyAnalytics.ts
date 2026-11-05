@@ -91,8 +91,8 @@ export async function collectNightlyMetrics(
       if (store.runs && store.runs.size > 0) {
         const runs = Array.from(store.runs.values());
         totalRuns = runs.length;
-        runsSuccess = runs.filter((r) => r.status === 'COMPLETED' || r.status === 'WAITING_FOR_CEO').length;
-        runsFailed = runs.filter((r) => r.status === 'FAILED' || r.status === 'CANCELLED').length;
+        runsSuccess = runs.filter((r) => r.status === 'COMPLETED' || r.status === 'PAUSED_FOR_CEO').length;
+        runsFailed = runs.filter((r) => r.status === 'FAILED' || r.status === 'TERMINATED_TIMEOUT' || r.status === 'UNHEALTHY_LOOP').length;
         tokensIn = runs.reduce((sum, r) => sum + (r.tokens_in || 0), 0) || tokensIn;
         tokensOut = runs.reduce((sum, r) => sum + (r.tokens_out || 0), 0) || tokensOut;
         tokensCached = runs.reduce((sum, r) => sum + (r.tokens_cached || 0), 0) || tokensCached;

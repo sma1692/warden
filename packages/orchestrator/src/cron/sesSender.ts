@@ -102,7 +102,8 @@ async function loadAwsSes(): Promise<{
   SendEmailCommand?: any;
 }> {
   try {
-    const v3Mod = await import(/* @vite-ignore */ '@aws-sdk/client-ses');
+    const v3Pkg = '@aws-sdk/client-ses';
+    const v3Mod: any = await import(/* @vite-ignore */ v3Pkg);
     if (v3Mod?.SESClient && v3Mod?.SendEmailCommand) {
       const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
       const client = new v3Mod.SESClient({ region });
@@ -113,7 +114,8 @@ async function loadAwsSes(): Promise<{
   }
 
   try {
-    const v2Mod = await import(/* @vite-ignore */ 'aws-sdk');
+    const v2Pkg = 'aws-sdk';
+    const v2Mod: any = await import(/* @vite-ignore */ v2Pkg);
     const AWS = v2Mod?.default || v2Mod;
     if (AWS?.SES) {
       const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
