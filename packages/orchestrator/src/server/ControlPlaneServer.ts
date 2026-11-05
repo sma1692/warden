@@ -121,7 +121,6 @@ export class ControlPlaneServer {
   private readonly wardenRoot: string;
 
   constructor(options?: ControlPlaneServerOptions) {
-    this.wardenRoot = options?.wardenRoot || process.cwd();
     this.port = Number(options?.port ?? process.env.PORT ?? 4000);
     this.host =
       options?.host ??
@@ -132,8 +131,10 @@ export class ControlPlaneServer {
     this.store =
       options?.store ||
       new OrchestratorStore({
+        wardenRoot: options?.wardenRoot,
         onBroadcast: (event, payload) => this.broadcastEvent(event, payload),
       });
+    this.wardenRoot = options?.wardenRoot || this.store.wardenRoot;
     this.store.setBroadcast((event, payload) =>
       this.broadcastEvent(event, payload)
     );
@@ -677,7 +678,12 @@ export class ControlPlaneServer {
     if (k.includes('lobby_bootstrap') || k.includes('lobby with play') || k.includes('lobby bootstrap')) {
       return 'lobby_bootstrap';
     }
-    if (k.includes('trophy_assets') || k.includes('trophy system art') || k.includes('trophy asset')) {
+    if (
+      k.includes('trophy_assets') ||
+      k.includes('trophy system art') ||
+      k.includes('trophy asset') ||
+      k.includes('relic vault art')
+    ) {
       return 'trophy_assets';
     }
     if (k.includes('crash_patch') || k.includes('crashes after the final move')) {
@@ -789,9 +795,9 @@ export class ControlPlaneServer {
         department: 'Tech',
       },
       prio_tech_trophy_assets: {
-        title: 'Generate trophy system art set (12 dungeon sprites + 4 animations)',
+        title: 'Generate Dungeon Relic Vault art set (in-game trophy system: 12 dungeon sprites + 4 animations)',
         spec_md:
-          'Per ASSETS_MANIFEST.md: cartoon-dungeon trophy ladder art set (custom SVG & pixel-art Bronze Buckler, Silver Runeblade, Gold Crypt Chalice, Diamond Soul Gem & Mythic Dragon Crown sprites + dungeon board theme), packed as a sprite atlas in the demo game bundle.',
+          'Per ASSETS_MANIFEST.md: cartoon-dungeon art set for our in-game trophy progression system — called the "Dungeon Relic Vault" (counting Relic Spoils) in our game — with custom SVG & pixel-art Iron Buckler, Silver Runeblade, Crypt Chalice, Soul Gem & Mythic Dragon Crown sprites, packed as a sprite atlas in the demo game bundle.',
         priority: 'P0',
         department: 'Tech',
       },
@@ -993,6 +999,9 @@ export class ControlPlaneServer {
         // ====================================================================
         // PHASE 1: @warden Executive Intake & Delegation to @cto / @cmo
         // ====================================================================
+        console.log(
+          `[🚀 AGENT RUN] ${wardenAgent.slug} (run=${wardenRunId}) clocked in on backlogItem=${item.id} ("${item.title}") -> routing to ${deptAgent.slug} -> ${specialistAgent.slug}`
+        );
         await this.store.updateAgent(wardenAgent.id, {
           status: 'WORKING',
           current_run_id: wardenRunId,
@@ -1158,6 +1167,9 @@ export class ControlPlaneServer {
         // ====================================================================
         // PHASE 2: @cto / @cmo Architecture Lock & Subagent Spawn
         // ====================================================================
+        console.log(
+          `[🚀 AGENT RUN] ${deptAgent.slug} (run=${deptRun.id}) clocked in on backlogItem=${item.id} -> scoping spec & spawning ${specialistAgent.slug}`
+        );
         await this.store.updateAgent(deptAgent.id, {
           status: 'WORKING',
           current_run_id: deptRun.id,
@@ -1339,6 +1351,9 @@ export class ControlPlaneServer {
         // ====================================================================
         // PHASE 3: Specialist Agent (@frontend_dev / @designer / @seo_aeo_head / @social_lead)
         // ====================================================================
+        console.log(
+          `[🚀 AGENT RUN] ${specialistAgent.slug} (run=${execRun.id}) clocked in on backlogItem=${item.id} ("${item.title}")`
+        );
         await this.store.updateAgent(specialistAgent.id, {
           status: 'WORKING',
           current_run_id: execRun.id,
@@ -1364,6 +1379,15 @@ export class ControlPlaneServer {
           tokens_out: number;
           cost_usd: number;
         }) => {
+          const stepPrefix =
+            spec.step_type === 'QA_CHECK'
+              ? '[🧪 QA CHECK]'
+              : spec.tool_name
+                ? `[🔧 TOOL CALL] ${specialistAgent.slug} -> ${spec.tool_name}`
+                : `[🧠 THOUGHT]   ${specialistAgent.slug}`;
+          console.log(
+            `${stepPrefix} (step=${spec.stepIndex}/${totalExecSteps}, ${spec.duration_ms}ms): ${spec.message_text}`
+          );
           this.store.addInferenceStep({
             user_id: item.user_id ?? null,
             run_id: execRun.id,
@@ -1685,6 +1709,9 @@ export class ControlPlaneServer {
           };
           const doneItem = this.store.updateBacklogItem(item.id, donePatch);
           if (doneItem) {
+            console.log(
+              `[✅ TASK DONE] ${specialistAgent.slug} completed backlogItem=${item.id} ("${item.title}") files=[${patchResult.patchedFiles.join(', ')}]${deployedVersionLabel ? ` version=${deployedVersionLabel} url=${deployedUrlLabel}` : ''}`
+            );
             this.broadcastEvent('backlog:updated', doneItem);
             this.syncMatchingStarterBacklogItems(doneItem, donePatch);
             void this.notifyUserByEmail(
@@ -2544,7 +2571,7 @@ export class ControlPlaneServer {
           return;
         }
         const allRuns = Array.from(this.store.runs.values())
-          .filter((r) => !requestUserId || !r.user_id || r.user_id === requestUserId)
+          .filter((r) => (requestUserId ? r.user_id === requestUserId : !r.user_id))
           .sort((a, b) => b.started_at.localeCompare(a.started_at));
         this.sendJson(res, 200, allRuns);
         return;
@@ -3411,6 +3438,8 @@ export class ControlPlaneServer {
           deploy: {
             project_name: projectName,
             cloudflare_configured: cloudflareConfigured(),
+            pages_dev_url: `https://${projectName}.pages.dev/`,
+            custom_url: canonicalUrl,
           },
         });
         return;

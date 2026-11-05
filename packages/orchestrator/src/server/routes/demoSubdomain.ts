@@ -142,13 +142,16 @@ export interface DeployDemoPathResult {
   fqdn: string;
   url: string;
   pagesDevUrl: string | null;
+  customUrl: string | null;
+  customAttached: boolean;
   status: string;
   metadata: DemoMetadata;
   rawDeployResult: any;
 }
 
 /**
- * Deploys the demo path to Cloudflare and returns the `.warden.autos` URL.
+ * Deploys the demo path to Cloudflare and returns the working primary URL
+ * (custom `.warden.autos` when its attach verified, else pages.dev).
  * Automatically increments the version number (v1, v2, ...) and records the update timestamp.
  */
 export async function deployDemoPath(
@@ -170,13 +173,10 @@ export async function deployDemoPath(
   // Deploy project with custom domain specified
   const result = await deployDemoProject(userId, targetDir, gameId, subdomain);
   const effectiveProject = result.projectName || subdomain;
-  const canonicalUrl = `https://${subdomain}.${DEMO_BASE_DOMAIN}/`;
-  let finalUrl = result.primaryUrl || canonicalUrl;
-
-  // If finalUrl points to a .pages.dev preview or dead hash link, normalize to .warden.autos
-  if (finalUrl.includes('.pages.dev')) {
-    finalUrl = canonicalUrl;
-  }
+  const canonicalPagesDev = `https://${effectiveProject}.pages.dev/`;
+  // Primary is the verified working URL from the deployer; fall back to the
+  // deterministic Cloudflare project URL, never an unverified custom domain.
+  let finalUrl = result.primaryUrl || result.pagesDevUrl || canonicalPagesDev;
   if (!finalUrl.endsWith('/')) {
     finalUrl = `${finalUrl}/`;
   }
@@ -200,6 +200,8 @@ export async function deployDemoPath(
     fqdn: `${subdomain}.${DEMO_BASE_DOMAIN}`,
     url: finalUrl,
     pagesDevUrl: result.pagesDevUrl,
+    customUrl: result.customUrl,
+    customAttached: result.customAttached,
     status: result.status,
     metadata,
     rawDeployResult: result,

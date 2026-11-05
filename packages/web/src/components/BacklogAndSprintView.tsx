@@ -843,7 +843,7 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
               </div>
 
               {item.id === 'bl_sprite_401' && <SpriteTaskPreview />}
-              {item.id === 'bl_trophy_assets' && (
+              {item.id.includes('trophy_assets') && (
                 <TrophyAssetPreview
                   generated={
                     item.stage === 'IN_PROGRESS' ||
@@ -955,7 +955,7 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
                             <SpriteTaskPreview />
                           </div>
                         )}
-                        {item.id === 'bl_trophy_assets' && (
+                        {item.id.includes('trophy_assets') && (
                           <div className="mt-2">
                             <TrophyAssetPreview
                               generated={
@@ -1162,7 +1162,7 @@ export const BacklogAndSprintView: React.FC<BacklogAndSprintViewProps> = ({
                 </div>
               )}
 
-              {selectedItem.id === 'bl_trophy_assets' && (
+              {selectedItem.id.includes('trophy_assets') && (
                 <TrophyAssetPreview
                   generated={
                     selectedItem.stage === 'IN_PROGRESS' ||

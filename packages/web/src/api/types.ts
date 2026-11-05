@@ -30,7 +30,12 @@ export interface DemoWorkspaceInfo {
 export interface DemoWorkspaceState {
   ok: boolean;
   workspace: DemoWorkspaceInfo;
-  deploy: { project_name: string; cloudflare_configured: boolean };
+  deploy: {
+    project_name: string;
+    cloudflare_configured: boolean;
+    pages_dev_url?: string | null;
+    custom_url?: string | null;
+  };
 }
 
 export interface DemoDeployState {
@@ -41,6 +46,8 @@ export interface DemoDeployState {
     projectName: string;
     primaryUrl: string | null;
     pagesDevUrl: string | null;
+    customUrl?: string | null;
+    customAttached?: boolean;
     fileCount: number;
     totalDurationMs: number;
     error: string | null;

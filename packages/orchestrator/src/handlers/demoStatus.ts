@@ -49,16 +49,17 @@ export function getDemoMetadata(userId: string): DemoMetadata {
 }
 
 /**
- * Normalizes a Pages deploy URL to ensure it never becomes a dead <hash>.pages.dev link.
- * If given a deployment URL like https://<hash>.<projectName>.pages.dev,
- * it returns the canonical https://<projectName>.warden.autos/ or preserves the full hostname intact.
+ * Normalizes a Pages deploy URL so it never becomes a dead <hash>.pages.dev link.
+ * Working Cloudflare URLs are preserved as-is; only hash-prefixed preview URLs
+ * are healed to the canonical https://<projectName>.pages.dev/ project URL.
+ * The custom .warden.autos domain is served separately once its attach verifies.
  */
 export function normalizeDeployUrl(
   rawUrl: string | null | undefined,
   projectName?: string | null
 ): string | null {
   if (!rawUrl) {
-    return projectName ? `https://${projectName}.warden.autos/` : null;
+    return projectName ? `https://${projectName}.pages.dev/` : null;
   }
 
   const trimmed = rawUrl.trim();
@@ -87,17 +88,17 @@ export function normalizeDeployUrl(
       const parts = host.replace(/\.pages\.dev$/, '').split('.').filter(Boolean);
       if (parts.length > 1) {
         // Deployment preview URL: <hash>.<projectName>.pages.dev
-        // Return canonical URL for project on warden.autos
+        // Heal to the canonical Cloudflare project URL, never a hash link.
         const proj = projectName || parts[parts.length - 1];
-        return `https://${proj}.warden.autos/`;
+        return `https://${proj}.pages.dev/`;
       }
       if (parts.length === 1) {
         const single = parts[0];
         // Dead link check: if single part is a hex hash and projectName is known, heal it
         if (projectName && single !== projectName && /^[a-f0-9]{7,}$/i.test(single)) {
-          return `https://${projectName}.warden.autos/`;
+          return `https://${projectName}.pages.dev/`;
         }
-        return `https://${single}.warden.autos/`;
+        return `https://${single}.pages.dev/`;
       }
     }
     return trimmed;

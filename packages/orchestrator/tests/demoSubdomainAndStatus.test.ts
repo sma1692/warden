@@ -14,6 +14,7 @@ import {
   recordDeployment,
   incrementDemoVersion,
   resetDemoMetadata,
+  normalizeDeployUrl,
 } from '../src/handlers/demoStatus.js';
 
 describe('Demo Subdomain & Demo Status', () => {
@@ -138,13 +139,15 @@ describe('Demo Subdomain & Demo Status', () => {
     const fqdnPagesDev = getDemoSubdomainFqdn(`https://7a8b9c0d.${projectName}.pages.dev`, 'pages.dev');
     assert.equal(fqdnPagesDev, `${projectName}.pages.dev`);
 
-    // 3. recordDeployment normalizes preview URL to canonical https://${projectName}.warden.autos/
+    // 3. recordDeployment heals preview URLs to the canonical Cloudflare
+    // project URL. It must NOT rewrite a working pages.dev URL into an
+    // unverified .warden.autos custom domain — that produced dead links.
     const deployed = recordDeployment(userId, {
       deployUrl: `https://7a8b9c0d.${projectName}.pages.dev`,
       projectName,
       status: 'ACTIVE',
     });
-    assert.equal(deployed.deployUrl, `https://${projectName}.warden.autos/`);
+    assert.equal(deployed.deployUrl, `https://${projectName}.pages.dev/`);
     assert.equal(deployed.projectName, projectName);
     assert.equal(deployed.subdomain, projectName);
 
@@ -154,6 +157,32 @@ describe('Demo Subdomain & Demo Status', () => {
       projectName,
       status: 'ACTIVE',
     });
-    assert.equal(deployed2.deployUrl, `https://${projectName}.warden.autos/`);
+    assert.equal(deployed2.deployUrl, `https://${projectName}.pages.dev/`);
+  });
+
+  it('preserves working Cloudflare URLs as the deploy primary', () => {
+    const projectName = 'warden-uuser-demo-arena';
+    // Canonical project URL passes through untouched.
+    assert.equal(
+      normalizeDeployUrl(`https://${projectName}.pages.dev/`, projectName),
+      `https://${projectName}.pages.dev/`
+    );
+    // Missing URL falls back to the deterministic Cloudflare project URL,
+    // never an unverified custom domain.
+    assert.equal(
+      normalizeDeployUrl(null, projectName),
+      `https://${projectName}.pages.dev/`
+    );
+    // Verified custom domains still pass through untouched.
+    assert.equal(
+      normalizeDeployUrl(`https://${projectName}.warden.autos/`, projectName),
+      `https://${projectName}.warden.autos/`
+    );
+    const deployed = recordDeployment('preserve-user', {
+      deployUrl: `https://${projectName}.pages.dev/`,
+      projectName,
+      status: 'ACTIVE',
+    });
+    assert.equal(deployed.deployUrl, `https://${projectName}.pages.dev/`);
   });
 });

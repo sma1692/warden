@@ -104,7 +104,6 @@ class WardenApiClient {
           if (this.agents.length === 0) this.agents = [...seeds.INITIAL_AGENTS];
           if (this.projectContexts.length === 0)
             this.projectContexts = [...seeds.INITIAL_PROJECT_CONTEXTS];
-          if (this.runs.length === 0) this.runs = [...seeds.INITIAL_AGENT_RUNS];
           if (Object.keys(this.stepsByRun).length === 0)
             this.stepsByRun = { ...seeds.INITIAL_INFERENCE_STEPS };
           if (this.memories.length === 0) this.memories = [...seeds.INITIAL_AGENT_MEMORIES];
@@ -329,31 +328,20 @@ class WardenApiClient {
     const query = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : '';
     const remote = await this.safeFetch<AgentRun[]>(`/runs${query}`);
     if (Array.isArray(remote)) {
+      const isActive = (s: AgentRun['status']) =>
+        s === 'RUNNING' || s === 'VERIFYING_QA';
+      const sorted = [...remote].sort((a, b) => {
+        const aActive = isActive(a.status) ? 1 : 0;
+        const bActive = isActive(b.status) ? 1 : 0;
+        if (aActive !== bActive) return bActive - aActive;
+        return (
+          new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+        );
+      });
       if (!agentId) {
-        const seeds = await import('./seedData').catch(() => null);
-        const seedRuns = seeds?.INITIAL_AGENT_RUNS || [];
-        const remoteIds = new Set(remote.map((r) => r.id));
-        const historical = seedRuns
-          .filter((sr) => !remoteIds.has(sr.id))
-          .map((sr) => ({
-            ...sr,
-            status: 'COMPLETED' as const,
-            ended_at: sr.ended_at || sr.started_at,
-          }));
-        const isActive = (s: AgentRun['status']) =>
-          s === 'RUNNING' || s === 'VERIFYING_QA';
-        const merged = [...remote, ...historical].sort((a, b) => {
-          const aActive = isActive(a.status) ? 1 : 0;
-          const bActive = isActive(b.status) ? 1 : 0;
-          if (aActive !== bActive) return bActive - aActive;
-          return (
-            new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
-          );
-        });
-        this.runs = merged;
-        return merged;
+        this.runs = sorted;
       }
-      return remote;
+      return sorted;
     }
     return agentId
       ? this.runs.filter((r) => r.agent_id === agentId)

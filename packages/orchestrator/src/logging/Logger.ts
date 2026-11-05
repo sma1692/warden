@@ -53,7 +53,15 @@ function resolveDefaultLogDir(wardenRoot?: string): string {
     return path.resolve(process.env.WARDEN_LOG_DIR);
   }
   if (wardenRoot) {
-    return path.resolve(wardenRoot, 'logs');
+    const resolved = path.resolve(wardenRoot);
+    // Guard against workspace cwd (`.../packages/orchestrator`) being passed as wardenRoot
+    if (
+      path.basename(resolved) === 'orchestrator' &&
+      path.basename(path.dirname(resolved)) === 'packages'
+    ) {
+      return path.resolve(resolved, '../..', 'logs');
+    }
+    return path.resolve(resolved, 'logs');
   }
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   // packages/orchestrator/src/logging -> repo root is 4 levels up

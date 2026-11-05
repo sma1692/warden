@@ -185,69 +185,69 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
         </div>
       </div>
 
-      {/* Compact Body */}
-      <div className="flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto flex flex-col justify-start gap-3">
+      {/* Body */}
+      <div className="flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto flex flex-col justify-between gap-3.5">
         {/* Top Section — 4 Clean 2x2 KPI Boxes */}
-        <div className="grid grid-cols-2 gap-2.5 shrink-0">
+        <div className="grid grid-cols-2 gap-3 sm:gap-2.5 shrink-0">
           {/* KPI 1: Total Tokens Consumed */}
-          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-2.5 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center justify-between text-[11px] text-[var(--surface-text-secondary)]">
+          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-3.5 sm:p-2.5 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center justify-between text-xs sm:text-[11px] text-[var(--surface-text-secondary)]">
               <span className="font-medium truncate">Tokens Consumed</span>
-              <Flame className="h-3.5 w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
+              <Flame className="h-4 w-4 sm:h-3.5 sm:w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
             </div>
-            <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="text-base sm:text-lg font-black font-mono text-[var(--surface-accent-gold)]">
+            <div className="mt-2 sm:mt-1 flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-lg font-black font-mono text-[var(--surface-accent-gold)]">
                 {totalTokens.toLocaleString()}
               </span>
-              <span className="text-[10px] font-mono text-[var(--surface-text-secondary)]">
+              <span className="text-[11px] sm:text-[10px] font-mono text-[var(--surface-text-secondary)]">
                 tok
               </span>
             </div>
           </div>
 
           {/* KPI 2: Total Cost Incurred ($) */}
-          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-2.5 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center justify-between text-[11px] text-[var(--surface-text-secondary)]">
+          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-3.5 sm:p-2.5 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center justify-between text-xs sm:text-[11px] text-[var(--surface-text-secondary)]">
               <span className="font-medium truncate">Cost Incurred ($)</span>
-              <DollarSign className="h-3.5 w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
+              <DollarSign className="h-4 w-4 sm:h-3.5 sm:w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
             </div>
-            <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="text-base sm:text-lg font-black font-mono text-[var(--surface-accent-gold)]">
+            <div className="mt-2 sm:mt-1 flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-lg font-black font-mono text-[var(--surface-accent-gold)]">
                 {formatUsdAdaptive(totalCostUsd)}
               </span>
-              <span className="text-[10px] font-mono text-[var(--surface-text-secondary)]">
+              <span className="text-[11px] sm:text-[10px] font-mono text-[var(--surface-text-secondary)]">
                 USD
               </span>
             </div>
           </div>
 
           {/* KPI 3: Agent Runs */}
-          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-2.5 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center justify-between text-[11px] text-[var(--surface-text-secondary)]">
+          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-3.5 sm:p-2.5 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center justify-between text-xs sm:text-[11px] text-[var(--surface-text-secondary)]">
               <span className="font-medium truncate">Agent Runs</span>
-              <Activity className="h-3.5 w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
+              <Activity className="h-4 w-4 sm:h-3.5 sm:w-3.5 text-[var(--surface-accent-gold)] shrink-0" />
             </div>
-            <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="text-base sm:text-lg font-black font-mono text-[var(--surface-text)]">
+            <div className="mt-2 sm:mt-1 flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-lg font-black font-mono text-[var(--surface-text)]">
                 {totalRuns.toLocaleString()}
               </span>
-              <span className="text-[10px] font-mono text-[var(--surface-text-secondary)]">
+              <span className="text-[11px] sm:text-[10px] font-mono text-[var(--surface-text-secondary)]">
                 runs
               </span>
             </div>
           </div>
 
           {/* KPI 4: Cache Hit Rate */}
-          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-2.5 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center justify-between text-[11px] text-[var(--surface-text-secondary)]">
+          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-3.5 sm:p-2.5 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center justify-between text-xs sm:text-[11px] text-[var(--surface-text-secondary)]">
               <span className="font-medium truncate">Cache Hit Rate</span>
-              <Zap className="h-3.5 w-3.5 text-[var(--semantic-success)] shrink-0" />
+              <Zap className="h-4 w-4 sm:h-3.5 sm:w-3.5 text-[var(--semantic-success)] shrink-0" />
             </div>
-            <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="text-base sm:text-lg font-black font-mono text-[var(--semantic-success)]">
+            <div className="mt-2 sm:mt-1 flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-lg font-black font-mono text-[var(--semantic-success)]">
                 {cachedHitPct}%
               </span>
-              <span className="text-[10px] font-mono text-[var(--surface-text-secondary)]">
+              <span className="text-[11px] sm:text-[10px] font-mono text-[var(--surface-text-secondary)]">
                 saved
               </span>
             </div>
@@ -255,7 +255,7 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
         </div>
 
         {/* Bottom Section — Per-Vertical Token Spend */}
-        <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-4 space-y-2.5 shadow-xs shrink-0">
+        <div className="flex-1 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-elevated)] p-4 flex flex-col justify-between gap-3 shadow-xs">
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="font-bold text-[var(--surface-text)] flex items-center gap-1.5">
               <ShieldCheck className="h-3.5 w-3.5 text-[var(--surface-accent-gold)]" />
@@ -270,9 +270,9 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
             </span>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="flex-1 flex flex-col justify-around gap-3">
             {displayedVerticals.map((v) => (
-              <div key={v.id} className="space-y-1">
+              <div key={v.id} className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span
                     className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] font-mono font-semibold ${v.badgeStyle}`}
@@ -292,7 +292,7 @@ export const TokenUsageBox: React.FC<TokenUsageBoxProps> = ({
                   </div>
                 </div>
 
-                <div className="h-2 w-full rounded-full bg-[var(--surface-muted)] overflow-hidden border border-[var(--surface-border)]">
+                <div className="h-2.5 sm:h-2 w-full rounded-full bg-[var(--surface-muted)] overflow-hidden border border-[var(--surface-border)]">
                   <div
                     className={`h-full rounded-full ${v.barColor} transition-all duration-500`}
                     style={{ width: `${Math.min(100, Math.max(0, v.sharePct))}%` }}

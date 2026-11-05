@@ -111,6 +111,8 @@ export interface DynamicWindowTab {
   report?: UnifiedReportItem;
 }
 
+type AppNotificationKind = 'task_completed' | 'needs_action' | 'agent_question';
+
 interface AppNotificationItem {
   id: string;
   title: string;
@@ -119,6 +121,44 @@ interface AppNotificationItem {
   timeAgo: string;
   unread: boolean;
   targetTab: PrimaryTabId;
+  kind?: AppNotificationKind;
+  backlogId?: string;
+  threadId?: string;
+  createdAt?: number;
+}
+
+function verticalForBacklogLike(
+  hay: string
+): Exclude<VerticalScope, 'ALL'> {
+  const t = hay.toLowerCase();
+  if (t.includes('seo') || t.includes('aeo')) return 'SEO_AEO';
+  if (t.includes('social') || t.includes('cmo') || t.includes('launch pack')) return 'SOCIAL';
+  return 'TECH';
+}
+
+function formatTimeAgo(ts: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return 'Just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? '1 day ago' : `${d} days ago`;
+}
+
+function upsertNotification(
+  prev: AppNotificationItem[],
+  next: AppNotificationItem
+): AppNotificationItem[] {
+  const key = next.backlogId
+    ? `${next.kind || 'note'}:${next.backlogId}`
+    : next.id;
+  const rest = prev.filter((n) => {
+    const nKey = n.backlogId ? `${n.kind || 'note'}:${n.backlogId}` : n.id;
+    return nKey !== key;
+  });
+  return [{ ...next, timeAgo: formatTimeAgo(next.createdAt || Date.now()) }, ...rest].slice(0, 30);
 }
 
 export type { ThemeMode } from './hooks/useTheme';
@@ -564,18 +604,23 @@ export const App: React.FC<AppProps> = ({
       if (evt.type === 'BACKLOG_UPDATED' && evt.data) {
         const updated = evt.data as BacklogItem;
         if (updated.stage === 'DONE' && updated.title) {
-          setNotifications((prev) => [
-            {
-              id: `notif_done_${updated.id}_${Date.now()}`,
+          const doneVertical = verticalForBacklogLike(
+            `${updated.project_slug || ''} ${updated.assigned_agent_id || ''} ${updated.title} ${updated.spec_md || ''}`
+          );
+          setNotifications((prev) =>
+            upsertNotification(prev, {
+              id: `notif_done_${updated.id}`,
               title: 'Task Completed',
               body: `${updated.title} finished execution.`,
-              vertical: 'TECH',
+              vertical: doneVertical,
               timeAgo: 'Just now',
               unread: true,
               targetTab: 'reports',
-            },
-            ...prev,
-          ]);
+              kind: 'task_completed',
+              backlogId: updated.id,
+              createdAt: Date.now(),
+            })
+          );
           showToast(`✅ Task Completed: ${updated.title}`, {
             label: 'View Activity',
             onClick: () => setActiveTab('reports'),
@@ -585,18 +630,23 @@ export const App: React.FC<AppProps> = ({
           updated.requires_human_intervention &&
           updated.title
         ) {
-          setNotifications((prev) => [
-            {
-              id: `notif_q_${updated.id}_${Date.now()}`,
+          const needsVertical = verticalForBacklogLike(
+            `${updated.project_slug || ''} ${updated.assigned_agent_id || ''} ${updated.title} ${updated.spec_md || ''}`
+          );
+          setNotifications((prev) =>
+            upsertNotification(prev, {
+              id: `notif_q_${updated.id}`,
               title: 'Action Required from CEO',
-              body: updated.title,
-              vertical: 'TECH',
+              body: updated.intervention_prompt || updated.title,
+              vertical: needsVertical,
               timeAgo: 'Just now',
               unread: true,
               targetTab: 'home',
-            },
-            ...prev,
-          ]);
+              kind: 'needs_action',
+              backlogId: updated.id,
+              createdAt: Date.now(),
+            })
+          );
           showToast(`⚠️ Needs Your Input: ${updated.title}`, {
             label: 'View in Needs Action',
             onClick: () => setActiveTab('home'),
@@ -612,8 +662,8 @@ export const App: React.FC<AppProps> = ({
       const whoClean = (msg.sender_agent_id || 'warden').replace(/^@/, '');
       const who = `@${whoClean}`;
       if (String(msg.content || '').includes('?')) {
-        setNotifications((prev) => [
-          {
+        setNotifications((prev) =>
+          upsertNotification(prev, {
             id: `notif_chat_q_${msg.id}`,
             title: `${who} asked you a question`,
             body: String(msg.content).slice(0, 110),
@@ -621,9 +671,11 @@ export const App: React.FC<AppProps> = ({
             timeAgo: 'Just now',
             unread: true,
             targetTab: 'home',
-          },
-          ...prev,
-        ]);
+            kind: 'agent_question',
+            threadId: msg.thread_id,
+            createdAt: Date.now(),
+          })
+        );
         showToast(
           `💬 ${who} needs your answer: ${String(msg.content).slice(0, 75)}...`,
           {
@@ -644,6 +696,58 @@ export const App: React.FC<AppProps> = ({
     });
     return unsubscribe;
   }, [showToast, showError]);
+
+  // Seed the bell once from the loaded backlog so completed tasks and open
+  // Needs Action items show up even before the next live WS event arrives.
+  const notifSeededRef = useRef(false);
+  useEffect(() => {
+    if (notifSeededRef.current || backlogItems.length === 0) return;
+    notifSeededRef.current = true;
+    setNotifications((prev) => {
+      let next = prev;
+      const needsAction = backlogItems.filter(
+        (b) => b.stage === 'NEEDS_CEO' || b.requires_human_intervention
+      );
+      for (const b of needsAction) {
+        if (!b.title) continue;
+        next = upsertNotification(next, {
+          id: `notif_q_${b.id}`,
+          title: 'Action Required from CEO',
+          body: b.intervention_prompt || b.title,
+          vertical: verticalForBacklogLike(
+            `${b.project_slug || ''} ${b.assigned_agent_id || ''} ${b.title} ${b.spec_md || ''}`
+          ),
+          timeAgo: 'Just now',
+          unread: true,
+          targetTab: 'home',
+          kind: 'needs_action',
+          backlogId: b.id,
+          createdAt: b.last_moved_at ? new Date(b.last_moved_at).getTime() : Date.now(),
+        });
+      }
+      const done = backlogItems
+        .filter((b) => b.stage === 'DONE')
+        .slice(0, 5);
+      for (const b of done) {
+        if (!b.title) continue;
+        next = upsertNotification(next, {
+          id: `notif_done_${b.id}`,
+          title: 'Task Completed',
+          body: `${b.title} finished execution.`,
+          vertical: verticalForBacklogLike(
+            `${b.project_slug || ''} ${b.assigned_agent_id || ''} ${b.title} ${b.spec_md || ''}`
+          ),
+          timeAgo: 'Just now',
+          unread: true,
+          targetTab: 'reports',
+          kind: 'task_completed',
+          backlogId: b.id,
+          createdAt: b.completed_at ? new Date(b.completed_at).getTime() : Date.now(),
+        });
+      }
+      return next;
+    });
+  }, [backlogItems]);
 
   const handleCloseDynamicTab = (tabId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -840,6 +944,31 @@ export const App: React.FC<AppProps> = ({
 
   const handleMarkAllNotificationsRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+  };
+
+  const handleNotificationClick = (n: AppNotificationItem) => {
+    setNotifications((prev) =>
+      prev.map((item) => (item.id === n.id ? { ...item, unread: false } : item))
+    );
+    setNotifOpen(false);
+    if (n.threadId) {
+      const thread = threads.find((t) => t.id === n.threadId);
+      if (thread) {
+        handleOpenThreadByObject(thread);
+        return;
+      }
+    }
+    if (n.backlogId) {
+      if (n.kind === 'task_completed') {
+        setFocusedBacklogItemId(n.backlogId);
+        setActiveTab('reports');
+        return;
+      }
+      setFocusedBacklogItemId(n.backlogId);
+      setActiveTab(n.targetTab);
+      return;
+    }
+    setActiveTab(n.targetTab);
   };
 
   const activeRuns = useMemo(
@@ -1320,13 +1449,7 @@ export const App: React.FC<AppProps> = ({
                         notifications.map((n) => (
                           <div
                             key={n.id}
-                            onClick={() => {
-                              setNotifications((prev) =>
-                                prev.map((item) => (item.id === n.id ? { ...item, unread: false } : item))
-                              );
-                              setActiveTab(n.targetTab);
-                              setNotifOpen(false);
-                            }}
+                            onClick={() => handleNotificationClick(n)}
                             className={`rounded-xl border p-2.5 cursor-pointer ${
                               n.unread
                                 ? 'border-[#C6A664]/50 bg-[#C6A664]/10'
@@ -1353,10 +1476,14 @@ export const App: React.FC<AppProps> = ({
         {/* WORKSPACE */}
         <main
           className={`flex-1 min-h-0 overflow-y-auto ${
-            activeTab === 'home' ? 'md:overflow-hidden' : ''
+            activeTab === 'home' ? 'xl:overflow-hidden' : ''
           } p-4 md:p-6 pb-20 md:pb-6`}
         >
-          <div className="max-w-7xl mx-auto h-full min-h-0 flex flex-col">
+          <div
+            className={`max-w-7xl mx-auto flex flex-col ${
+              activeTab === 'home' ? 'h-auto xl:h-full xl:min-h-0' : 'h-full min-h-0'
+            }`}
+          >
             {budget && budget.cap > 0 && budget.status !== 'OK' && activeTab !== 'settings' && (
               <div
                 className={`mb-4 shrink-0 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 text-xs ${
@@ -1381,7 +1508,7 @@ export const App: React.FC<AppProps> = ({
               </div>
             )}
             {activeTab === 'home' && (
-              <div className="flex flex-col gap-4 flex-1 h-full min-h-0">
+              <div className="flex flex-col gap-3 sm:gap-4 flex-1 h-auto xl:h-full xl:min-h-0">
                 <div className="shrink-0">
                   <DemoDeployCard onError={showError} />
                 </div>
@@ -1398,66 +1525,71 @@ export const App: React.FC<AppProps> = ({
                   }}
                 />
                 <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  <HomePriorityWindow
-                    activeVertical={activeVertical}
-                    knobConfig={knobConfig}
-                    backlogItems={backlogItems}
-                    runs={runs}
-                    threads={threads}
-                    onApproveBacklogItem={async (itemId, summary) => {
-                      const spawned = await apiClient.spawnDemoTaskRun(itemId, summary);
-                      await refreshAllData();
-                      if (spawned) {
-                        setThreads((prev) => [
-                          spawned.thread,
-                          ...prev.filter((t) => t.id !== spawned.thread.id),
-                        ]);
-                        const slug = normalizeSlug(spawned.thread.target_agent_id);
-                        const tab = chatTabForSlug(slug);
-                        setDynamicTabs((prev) =>
-                          prev.some((t) => t.id === tab.id) ? prev : [...prev, tab]
-                        );
-                        setPreferredTargetAgentSlug(slug);
-                        setSelectedThreadId(spawned.thread.id);
-                        setHighlightedGateId(null);
-                        if (spawned.run) {
-                          setFocusedRunId(spawned.run.id);
-                          setLiveBrainStatus({
-                            runId: spawned.run.id,
-                            backlogItemId: spawned.item.id,
-                            taskTitle: spawned.item.title,
-                            agentSlug: '@warden',
-                            stepIndex: 1,
-                            totalSteps: 4,
-                            summary:
-                              spawned.run.output_summary ||
-                              spawned.run.input_prompt ||
-                              spawned.item.title,
-                            updatedAt: Date.now(),
-                          });
-                        } else {
-                          setFocusedBacklogItemId(spawned.item.id);
+                  <div className="min-h-[calc(100dvh-16.5rem)] sm:min-h-[26rem] xl:min-h-0 xl:h-full flex flex-col">
+                    <HomePriorityWindow
+                      activeVertical={activeVertical}
+                      knobConfig={knobConfig}
+                      backlogItems={backlogItems}
+                      runs={runs}
+                      threads={threads}
+                      onApproveBacklogItem={async (itemId, summary) => {
+                        const spawned = await apiClient.spawnDemoTaskRun(itemId, summary);
+                        await refreshAllData();
+                        if (spawned) {
+                          setThreads((prev) => [
+                            spawned.thread,
+                            ...prev.filter((t) => t.id !== spawned.thread.id),
+                          ]);
+                          const slug = normalizeSlug(spawned.thread.target_agent_id);
+                          const tab = chatTabForSlug(slug);
+                          setDynamicTabs((prev) =>
+                            prev.some((t) => t.id === tab.id) ? prev : [...prev, tab]
+                          );
+                          setActiveTab(tab.id);
+                          setPreferredTargetAgentSlug(slug);
+                          setSelectedThreadId(spawned.thread.id);
+                          setHighlightedGateId(null);
+                          if (spawned.run) {
+                            setFocusedRunId(spawned.run.id);
+                            setLiveBrainStatus({
+                              runId: spawned.run.id,
+                              backlogItemId: spawned.item.id,
+                              taskTitle: spawned.item.title,
+                              agentSlug: '@warden',
+                              stepIndex: 1,
+                              totalSteps: 4,
+                              summary:
+                                spawned.run.output_summary ||
+                                spawned.run.input_prompt ||
+                                spawned.item.title,
+                              updatedAt: Date.now(),
+                            });
+                          } else {
+                            setFocusedBacklogItemId(spawned.item.id);
+                          }
+                          showToast(
+                            `Spawning team for "${spawned.item.title}" — watch live in Top Bar or Activity!`,
+                            { threadId: spawned.thread.id }
+                          );
                         }
-                        showToast(
-                          `Spawning team for "${spawned.item.title}" — watch live in Top Bar or Activity!`,
-                          { threadId: spawned.thread.id }
-                        );
-                      }
-                    }}
-                    onOpenAgentTab={(slug) => handleOpenAgentWindowTab(slug)}
-                    onOpenBacklogsTab={() => setActiveTab('backlogs')}
-                    onOpenActivityTab={(itemId) => {
-                      if (itemId) setFocusedBacklogItemId(itemId);
-                      setActiveTab('reports');
-                    }}
-                    onOpenThread={handleOpenThread}
-                    onDecisionRecorded={(summary) => showToast(summary)}
-                  />
-                  <TokenUsageBox
-                    tokensUsed={telemetry.total_tokens_today || 11140}
-                    activeVertical={activeVertical}
-                    onOpenTokenReport={() => setActiveTab('reports')}
-                  />
+                      }}
+                      onOpenAgentTab={(slug) => handleOpenAgentWindowTab(slug)}
+                      onOpenBacklogsTab={() => setActiveTab('backlogs')}
+                      onOpenActivityTab={(itemId) => {
+                        if (itemId) setFocusedBacklogItemId(itemId);
+                        setActiveTab('reports');
+                      }}
+                      onOpenThread={handleOpenThread}
+                      onDecisionRecorded={(summary) => showToast(summary)}
+                    />
+                  </div>
+                  <div className="min-h-[calc(100dvh-8.5rem)] sm:min-h-[28rem] xl:min-h-0 xl:h-full flex flex-col">
+                    <TokenUsageBox
+                      tokensUsed={telemetry.total_tokens_today || 11140}
+                      activeVertical={activeVertical}
+                      onOpenTokenReport={() => setActiveTab('reports')}
+                    />
+                  </div>
                 </div>
               </div>
             )}

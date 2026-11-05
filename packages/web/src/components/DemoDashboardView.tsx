@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
   ExternalLink,
   Globe,
@@ -19,6 +21,7 @@ export interface DemoDeployMeta {
   formattedTimestamp: string;
   subdomain: string;
   url: string;
+  customAttached?: boolean;
 }
 
 const STORAGE_KEY = 'warden_demo_deploy_info';
@@ -125,6 +128,7 @@ export const DemoDashboardView: React.FC<{
   const [loading, setLoading] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [mobileExpanded, setMobileExpanded] = useState(false);
   const [deployMeta, setDeployMeta] = useState<DemoDeployMeta>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -251,9 +255,59 @@ export const DemoDashboardView: React.FC<{
     return fromState;
   }, [state, deployMeta.subdomain]);
 
-  const liveUrl = useMemo(() => {
+  const projectName = state?.deploy.project_name || subdomain;
+  const pagesDevUrl = useMemo(() => {
+    if (state?.deploy.pages_dev_url) return state.deploy.pages_dev_url;
+    const clean = (projectName || 'demo-arena').trim().toLowerCase();
+    return `https://${clean}.pages.dev/`;
+  }, [state?.deploy.pages_dev_url, projectName]);
+  const customUrl = useMemo(() => {
+    if (state?.deploy.custom_url) return state.deploy.custom_url;
     return formatSubdomainUrl(subdomain);
-  }, [subdomain]);
+  }, [state?.deploy.custom_url, subdomain]);
+
+  // Primary is the Cloudflare-provided URL unless a deploy verified the
+  // custom domain attach. Older stored custom URLs were never verified, so
+  // they stay secondary until a fresh deploy confirms them.
+  const liveUrl = useMemo(() => {
+    const stored = (state?.workspace.deploy_url || '').trim();
+    if (stored.startsWith('https://') && stored.includes('.pages.dev')) {
+      return stored;
+    }
+    if (deployMeta.customAttached && stored.startsWith('https://')) {
+      return stored;
+    }
+    if (stored.startsWith('http://') || stored.startsWith('/')) {
+      return stored;
+    }
+    return pagesDevUrl;
+  }, [state?.workspace.deploy_url, deployMeta.customAttached, pagesDevUrl]);
+
+  const customIsPrimary = liveUrl === customUrl;
+  // Display-only liveness probe for the custom domain badge.
+  const [customLive, setCustomLive] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!customUrl.startsWith('https://')) {
+      setCustomLive(null);
+      return;
+    }
+    let cancelled = false;
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 8000);
+    fetch(customUrl, { mode: 'no-cors', signal: ctrl.signal })
+      .then(() => {
+        if (!cancelled) setCustomLive(true);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomLive(false);
+      })
+      .finally(() => window.clearTimeout(timer));
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+      window.clearTimeout(timer);
+    };
+  }, [customUrl]);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -273,12 +327,20 @@ export const DemoDashboardView: React.FC<{
         return null;
       })) as any;
 
+      const attached = res?.result?.customAttached === true;
+      const primary =
+        res?.result?.primaryUrl || res?.workspace?.deploy_url || state?.workspace.deploy_url;
       const resolvedSub =
         getDemoSubdomain(
           res?.result?.projectName || state?.deploy.project_name,
-          res?.result?.primaryUrl || res?.workspace?.deploy_url || state?.workspace.deploy_url
+          primary
         ) || subdomain;
-      const resolvedUrl = formatSubdomainUrl(resolvedSub);
+      // Use the server's verified primary URL as-is; only fall back to a
+      // derived URL when the server returned nothing usable.
+      const resolvedUrl =
+        typeof primary === 'string' && primary.startsWith('https://')
+          ? primary
+          : formatSubdomainUrl(resolvedSub);
       const nextNum = (deployMeta.versionNumber || 1) + 1;
       const nextVer = `v${nextNum}`;
       const now = new Date();
@@ -289,6 +351,7 @@ export const DemoDashboardView: React.FC<{
         formattedTimestamp: now.toLocaleString(),
         subdomain: resolvedSub,
         url: resolvedUrl,
+        customAttached: attached,
       };
 
       setDeployMeta(updatedMeta);
@@ -319,15 +382,19 @@ export const DemoDashboardView: React.FC<{
 
   return (
     <div
-      className={`w-full rounded-2xl border border-[#C6A664]/45 bg-gradient-to-r from-[#162030] via-[#14161A] to-[#14161A] p-4 shadow-xl shadow-black/30 ${className}`}
+      className={`w-full rounded-2xl border border-[#C6A664]/45 bg-gradient-to-r from-[#162030] via-[#14161A] to-[#14161A] p-3 sm:p-4 shadow-xl shadow-black/30 ${className}`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3 min-w-0">
+        <div
+          className={`${
+            mobileExpanded ? 'flex' : 'hidden'
+          } sm:flex items-start gap-3 min-w-0`}
+        >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#C6A664]/15 border border-[#C6A664]/40 text-[#D4B475]">
             <Globe className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 text-[11px] font-mono uppercase tracking-wider text-[#D4B475]">
                 <Sparkles className="h-3 w-3" />
                 <span>Live Demo Deployment</span>
@@ -340,7 +407,7 @@ export const DemoDashboardView: React.FC<{
               </span>
             </div>
 
-            {/* Prominently display the https://<subdomain>.warden.autos URL */}
+            {/* Primary is the working Cloudflare URL; custom domain stays secondary until verified */}
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <span className="text-xs text-slate-400 font-mono">Demo URL:</span>
               <a
@@ -348,12 +415,49 @@ export const DemoDashboardView: React.FC<{
                 target="_blank"
                 rel="noreferrer"
                 data-testid="demo-subdomain-url"
-                className="group inline-flex items-center gap-1.5 font-mono text-sm sm:text-base font-bold text-[#D4B475] hover:text-white transition underline decoration-[#C6A664]/50 hover:decoration-[#D4B475]"
+                className="group inline-flex items-center gap-1.5 font-mono text-xs sm:text-base font-bold text-[#D4B475] hover:text-white transition underline decoration-[#C6A664]/50 hover:decoration-[#D4B475] break-all"
               >
                 <span>{liveUrl}</span>
-                <ExternalLink className="h-3.5 w-3.5 opacity-70 group-hover:opacity-100 transition" />
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-70 group-hover:opacity-100 transition" />
               </a>
             </div>
+            {!customIsPrimary && customUrl.startsWith('https://') && (
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-slate-400 font-mono">Custom:</span>
+                <a
+                  href={customUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-xs text-slate-300 hover:text-white transition underline decoration-slate-600 break-all"
+                >
+                  <span>{customUrl}</span>
+                  <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
+                </a>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-mono font-bold ${
+                    customLive
+                      ? 'bg-[#22C55E]/15 border-[#22C55E]/40 text-[#22C55E]'
+                      : 'bg-amber-400/10 border-amber-400/40 text-amber-300'
+                  }`}
+                >
+                  {customLive ? 'Custom Live' : customLive === false ? 'DNS Pending' : 'Checking…'}
+                </span>
+              </div>
+            )}
+            {customIsPrimary && (
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-slate-400 font-mono">Cloudflare fallback:</span>
+                <a
+                  href={pagesDevUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-xs text-slate-300 hover:text-white transition underline decoration-slate-600 break-all"
+                >
+                  <span>{pagesDevUrl}</span>
+                  <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
+                </a>
+              </div>
+            )}
 
             <p className="mt-0.5 text-xs text-slate-400">
               Live automated preview deployment. Last updated: {deployMeta.formattedTimestamp}
@@ -361,14 +465,14 @@ export const DemoDashboardView: React.FC<{
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 pt-1 sm:pt-0">
+        <div className="flex shrink-0 items-center justify-between sm:justify-end gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={handleCopy}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap rounded-xl border border-slate-700 bg-slate-800/80 px-2.5 sm:px-3 py-2 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-white transition cursor-pointer"
             title="Copy URL"
           >
-            {copied ? <Check className="h-3.5 w-3.5 text-[#22C55E]" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? <Check className="h-3.5 w-3.5 shrink-0 text-[#22C55E]" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
             <span>{copied ? 'Copied' : 'Copy URL'}</span>
           </button>
 
@@ -376,9 +480,9 @@ export const DemoDashboardView: React.FC<{
             type="button"
             onClick={handleDeploy}
             disabled={deploying}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] px-3.5 py-2 text-xs font-bold text-[#0B121C] hover:brightness-110 disabled:opacity-50 transition cursor-pointer shadow-sm"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap rounded-xl bg-gradient-to-r from-[#D4B475] via-[#C6A664] to-[#A88948] px-2.5 sm:px-3.5 py-2 text-[11px] sm:text-xs font-bold text-[#0B121C] hover:brightness-110 disabled:opacity-50 transition cursor-pointer shadow-sm"
           >
-            <Rocket className={`h-3.5 w-3.5 ${deploying ? 'animate-spin' : ''}`} />
+            <Rocket className={`h-3.5 w-3.5 shrink-0 ${deploying ? 'animate-spin' : ''}`} />
             <span>{deploying ? 'Deploying…' : 'Deploy Version'}</span>
           </button>
 
@@ -386,11 +490,22 @@ export const DemoDashboardView: React.FC<{
             href={liveUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[#C6A664]/50 bg-[#C6A664]/10 px-3.5 py-2 text-xs font-bold text-[#D4B475] hover:bg-[#C6A664]/20 transition cursor-pointer"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap rounded-xl border border-[#C6A664]/50 bg-[#C6A664]/10 px-2.5 sm:px-3.5 py-2 text-[11px] sm:text-xs font-bold text-[#D4B475] hover:bg-[#C6A664]/20 transition cursor-pointer"
           >
             <span>Open Demo</span>
-            <ExternalLink className="h-3.5 w-3.5" />
+            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
           </a>
+
+          <button
+            type="button"
+            onClick={() => setMobileExpanded((prev) => !prev)}
+            aria-expanded={mobileExpanded}
+            aria-label={mobileExpanded ? 'Collapse deployment details' : 'Expand deployment details'}
+            title={mobileExpanded ? 'Hide deployment details' : 'Show deployment details'}
+            className="sm:hidden inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#C6A664]/40 bg-[#C6A664]/10 text-[#D4B475] hover:bg-[#C6A664]/20 transition cursor-pointer"
+          >
+            {mobileExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
         </div>
       </div>
     </div>

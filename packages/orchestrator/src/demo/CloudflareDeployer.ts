@@ -32,8 +32,12 @@ export interface DemoDeployResult {
   ok: boolean;
   status: DemoDeployStatus;
   projectName: string;
+  /** Working URL: custom domain when verified, otherwise the pages.dev URL. */
   primaryUrl: string | null;
   pagesDevUrl: string | null;
+  /** Custom <project>.<baseDomain> URL, served only when customAttached is true. */
+  customUrl: string | null;
+  customAttached: boolean;
   deploymentId: string | null;
   fileCount: number;
   totalDurationMs: number;
@@ -172,44 +176,69 @@ export async function attachCustomDomain(
   projectName: string,
   fqdn: string
 ): Promise<boolean> {
+  const base = 'https://api.cloudflare.com/client/v4';
+  const verifyAttached = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${base}/accounts/${accountId}/pages/projects/${projectName}/domains`, {
+        headers: cfHeaders(apiToken),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json().catch(() => null)) as any;
+      const names: string[] = Array.isArray(data?.result)
+        ? data.result.map((d: any) => String(d?.name || '').toLowerCase())
+        : [];
+      return names.includes(fqdn.toLowerCase());
+    } catch {
+      return false;
+    }
+  };
+
   const kaltiPath =
     process.env.AWS_KALTI_CLI_PATH ||
     '/Users/shabahatayubi/Documents/kehkasha/treefour/misc/commando/.state/mirror/aws-kalti/kalti.js';
-  const zoneId = (process.env.CLOUDFLARE_ZONE_ID || '').trim();
-  const zoneArgs = zoneId ? ` --zone-id ${zoneId} --require-dns` : '';
-  const cmd = `node ${kaltiPath} cloudflare attach-domain --project ${projectName} --domain ${fqdn}${zoneArgs}`;
-
-  try {
-    console.log(`[🚀 DEMO DEPLOY] Attaching domain ${fqdn} to project ${projectName} via aws-kalti...`);
-    execSync(cmd, {
-      env: {
-        ...process.env,
-        CLOUDFLARE_ACCOUNT_ID: accountId,
-        CLOUDFLARE_API_TOKEN: apiToken,
-      },
-      stdio: 'pipe',
-      timeout: 60000,
-    });
-    return true;
-  } catch (err: any) {
-    const errorOutput = err?.stderr ? String(err.stderr) : String(err?.message || err);
-    console.warn(
-      `[⚠️ DEMO DEPLOY] aws-kalti attach-domain failed for ${fqdn}: ${errorOutput.slice(0, 1000)}`
-    );
-    // Fallback to direct Cloudflare Pages custom domain API
-    const base = 'https://api.cloudflare.com/client/v4';
+  // The kalti CLI only exists on one dev machine; skip silently when absent
+  // and go straight to the direct Pages API instead of logging a scary error.
+  if (fs.existsSync(kaltiPath)) {
+    const zoneId = (process.env.CLOUDFLARE_ZONE_ID || '').trim();
+    const zoneArgs = zoneId ? ` --zone-id ${zoneId} --require-dns` : '';
+    const cmd = `node ${kaltiPath} cloudflare attach-domain --project ${projectName} --domain ${fqdn}${zoneArgs}`;
     try {
-      const res = await fetch(`${base}/accounts/${accountId}/pages/projects/${projectName}/domains`, {
-        method: 'POST',
-        headers: cfHeaders(apiToken),
-        body: JSON.stringify({ name: fqdn }),
+      console.log(`[🚀 DEMO DEPLOY] Attaching domain ${fqdn} to project ${projectName} via aws-kalti...`);
+      execSync(cmd, {
+        env: {
+          ...process.env,
+          CLOUDFLARE_ACCOUNT_ID: accountId,
+          CLOUDFLARE_API_TOKEN: apiToken,
+        },
+        stdio: 'pipe',
+        timeout: 60000,
       });
-      if (res.ok || res.status === 409) {
-        return true;
-      }
-    } catch {}
-    return false;
+      if (await verifyAttached()) return true;
+    } catch (err: any) {
+      const errorOutput = err?.stderr ? String(err.stderr) : String(err?.message || err);
+      console.warn(
+        `[⚠️ DEMO DEPLOY] aws-kalti attach-domain failed for ${fqdn}: ${errorOutput.slice(0, 500)}`
+      );
+    }
   }
+  // Direct Cloudflare Pages custom domain API
+  try {
+    const res = await fetch(`${base}/accounts/${accountId}/pages/projects/${projectName}/domains`, {
+      method: 'POST',
+      headers: cfHeaders(apiToken),
+      body: JSON.stringify({ name: fqdn }),
+    });
+    if (res.ok || res.status === 409) {
+      return verifyAttached();
+    }
+    const data = (await res.json().catch(() => null)) as any;
+    console.warn(
+      `[⚠️ DEMO DEPLOY] Custom domain attach rejected for ${fqdn}: ${data?.errors?.[0]?.message || res.statusText}`
+    );
+  } catch (err: any) {
+    console.warn(`[⚠️ DEMO DEPLOY] Custom domain attach request failed for ${fqdn}: ${err?.message || err}`);
+  }
+  return false;
 }
 
 export function cloudflareConfigured(): boolean {
@@ -244,6 +273,8 @@ export async function deployDemoProject(
       projectName,
       primaryUrl: null,
       pagesDevUrl: null,
+      customUrl: null,
+      customAttached: false,
       deploymentId: null,
       fileCount: 0,
       totalDurationMs: Date.now() - started,
@@ -269,9 +300,15 @@ export async function deployDemoProject(
       fqdn = `${projectName}.${baseDomain}`;
     }
 
-    console.log(`[🚀 DEMO DEPLOY] Attaching custom domain ${fqdn} to project ${projectName} (aws-kalti)...`);
-    await attachCustomDomain(accountId, apiToken, projectName, fqdn);
-    const primaryUrl = `https://${fqdn}/`;
+    console.log(`[🚀 DEMO DEPLOY] Attaching custom domain ${fqdn} to project ${projectName}...`);
+    const customAttached = await attachCustomDomain(accountId, apiToken, projectName, fqdn);
+    const customUrl = `https://${fqdn}/`;
+    // Primary is the custom domain only when the attach verified; otherwise
+    // fall back to the Cloudflare-provided pages.dev URL so the link always works.
+    const primaryUrl = customAttached ? customUrl : pagesDevUrl;
+    if (!customAttached) {
+      console.warn(`[⚠️ DEMO DEPLOY] Custom domain ${fqdn} not verified — serving ${pagesDevUrl} as primary.`);
+    }
     console.log(`[🚀 DEMO DEPLOY] Live at ${primaryUrl} (${Date.now() - started}ms)`);
     return {
       ok: true,
@@ -279,6 +316,8 @@ export async function deployDemoProject(
       projectName,
       primaryUrl,
       pagesDevUrl,
+      customUrl,
+      customAttached,
       deploymentId,
       fileCount,
       totalDurationMs: Date.now() - started,
@@ -293,6 +332,8 @@ export async function deployDemoProject(
       projectName,
       primaryUrl: null,
       pagesDevUrl: null,
+      customUrl: null,
+      customAttached: false,
       deploymentId: null,
       fileCount: 0,
       totalDurationMs: Date.now() - started,

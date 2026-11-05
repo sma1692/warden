@@ -3085,7 +3085,7 @@ export class OrchestratorStore {
     for (const run of this.runs.values()) {
       if (
         (run.agent_id === agentId || run.agent_slug === `@${agentId}`) &&
-        (!userId || !run.user_id || run.user_id === userId)
+        (userId ? run.user_id === userId : !run.user_id)
       ) {
         result.push(run);
       }

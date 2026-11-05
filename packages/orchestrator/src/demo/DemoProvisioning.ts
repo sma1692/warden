@@ -271,9 +271,9 @@ export const DEMO_STARTER_BACKLOG_ITEMS = [
   },
   {
     key: 'trophy_assets',
-    title: 'Generate trophy system art set (12 dungeon sprites + 4 animations)',
+    title: 'Generate Dungeon Relic Vault art set (in-game trophy system: 12 dungeon sprites + 4 animations)',
     spec_md:
-      'Per ASSETS_MANIFEST.md: cartoon-dungeon trophy ladder art set (custom SVG & pixel-art Bronze Buckler, Silver Runeblade, Gold Crypt Chalice, Diamond Soul Gem & Mythic Dragon Crown sprites + dungeon board theme), packed as a sprite atlas in the demo game bundle.',
+      'Per ASSETS_MANIFEST.md: cartoon-dungeon art set for our in-game trophy progression system — called the "Dungeon Relic Vault" (counting Relic Spoils) in our game — with custom SVG & pixel-art Iron Buckler, Silver Runeblade, Crypt Chalice, Soul Gem & Mythic Dragon Crown sprites, packed as a sprite atlas in the demo game bundle.',
     stage: 'TODO' as const,
     priority: 'P0' as const,
   },

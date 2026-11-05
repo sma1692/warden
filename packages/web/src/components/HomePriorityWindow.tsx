@@ -106,14 +106,14 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
     agentSlug: '@tech_lead',
     agentRole: 'Tech Lead + @designer',
     priority: 'P0',
-    impactBadge: 'Dungeon trophy art',
-    decisiveTitle: 'Trophy asset batch: 12 dungeon relic sprites + 4 animations',
+    impactBadge: 'Dungeon Relic Vault (Trophy System)',
+    decisiveTitle: 'Dungeon Relic Vault art batch (in-game trophy system): 12 sprites + 4 animations',
     decisiveSummary:
-      '@designer & @tech_lead generated the cartoon-dungeon trophy ladder art set (custom SVG & pixel-art Bronze Buckler, Silver Runeblade, Gold Crypt Chalice, Diamond Soul Gem & Mythic Dragon Crown) from ASSETS_MANIFEST.',
+      '@designer & @tech_lead generated the cartoon-dungeon art set for our in-game trophy system — called "Dungeon Relics" (the Relic Vault) in our game — with 12 dungeon relic sprites (Iron Buckler, Silver Runeblade, Crypt Chalice, Soul Gem & Dragon Crown) and 4 unlock animations.',
     decisiveCtaLabel: 'Approve',
-    questionTitle: 'Art style lock for the dungeon trophy ladder',
+    questionTitle: 'Art style lock for the Dungeon Relic Vault (our trophy system)',
     questionPrompt:
-      'Which dungeon art style should the trophy relic set lock to before agents wire the sprite atlas?',
+      'In our dungeon game, the trophy progression ladder is called the Dungeon Relic Vault. Which dungeon art style should the relic sprite set lock to before agents wire the sprite atlas?',
     principleTag: 'Dungeon art direction',
     options: [
       {
@@ -133,7 +133,7 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
         summary: 'Chunky 16-bit pixel dungeon relics with CRT scanline shader.',
       },
     ],
-    coArchitectFollowUp: 'Where should the animated dungeon trophy sprites live?',
+    coArchitectFollowUp: 'Where should the animated Dungeon Relic (trophy) sprites live?',
     coArchitectPills: [
       'Sprite atlas in the game bundle + dungeon board theme',
       'Lazy-loaded animation pack',
@@ -155,7 +155,7 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
     decisiveCtaLabel: 'Approve',
     questionTitle: 'Hotfix scope',
     questionPrompt:
-      'How much should this hotfix touch before the trophy launch?',
+      'How much should this hotfix touch before the Dungeon Relic Vault (trophy) launch?',
     principleTag: 'Fix scope',
     options: [
       {
@@ -190,20 +190,20 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
     agentSlug: '@social_lead',
     agentRole: 'Social Growth Lead',
     priority: 'P1',
-    impactBadge: 'Trophy launch week',
-    decisiveTitle: 'Trophy launch pack: 5 dungeon visuals + launch thread',
+    impactBadge: 'Relic Vault launch week',
+    decisiveTitle: 'Dungeon Relic Vault launch pack (trophy update): 5 visuals + launch thread',
     decisiveSummary:
-      '@social_lead cut 5 cartoon-dungeon trophy unlock visual cards and the announcement thread from the new dungeon relic art set. Ready to post.',
+      '@social_lead cut 5 cartoon-dungeon unlock cards and the announcement thread for our new trophy system — called Dungeon Relics in-game — using the new relic & knight sprite set. Ready to post.',
     decisiveCtaLabel: 'Approve',
     questionTitle: 'Launch angle',
     questionPrompt:
-      'Which angle should the dungeon trophy launch lead with?',
+      'Which angle should the Dungeon Relic Vault (our in-game trophy system) launch lead with?',
     principleTag: 'Launch narrative',
     options: [
       {
         id: 'opt_player_flex',
         label: 'A. Dungeon boss & relic flex clips',
-        summary: 'Dungeon trophy unlock moments & Knight vs Slime arena duels. Highest share rate.',
+        summary: 'Dungeon Relic unlock moments & Knight vs Slime arena duels. Highest share rate.',
         recommended: true,
       },
       {
@@ -232,26 +232,26 @@ const PRIORITY_ITEMS: PriorityDecisionItem[] = [
     agentSlug: '@seo_aeo_head',
     agentRole: 'SEO/AEO Lead',
     priority: 'P1',
-    impactBadge: 'Launch search coverage',
-    decisiveTitle: 'Trophy launch SEO cluster: 4 pages + FAQ schema',
+    impactBadge: 'Relic & trophy search coverage',
+    decisiveTitle: 'Dungeon Relic & Trophy SEO cluster: 4 pages + FAQ schema',
     decisiveSummary:
-      '@seo_aeo_head drafted the trophy guide cluster with FAQ schema so launch searches land on us.',
+      '@seo_aeo_head drafted the 4-page guide cluster + FAQ schema mapping "trophy system" searches to our in-game "Dungeon Relic Vault" progression tiers.',
     decisiveCtaLabel: 'Approve',
     questionTitle: 'Keyword focus',
     questionPrompt:
-      'Which search intent should the trophy cluster lead with?',
+      'Which search intent should the Dungeon Relic / trophy guide cluster lead with?',
     principleTag: 'Search intent',
     options: [
       {
         id: 'opt_how_to',
-        label: 'A. How-to trophy guides',
-        summary: '"How to unlock every trophy" guides. Highest intent traffic.',
+        label: 'A. How-to Relic & trophy guides',
+        summary: '"How to unlock every Dungeon Relic (trophy)" guides. Highest intent traffic.',
         recommended: true,
       },
       {
         id: 'opt_tier_lists',
         label: 'B. Tier lists + rankings',
-        summary: 'Trophy tier lists. Strong shares, thinner intent.',
+        summary: 'Dungeon Relic tier lists. Strong shares, thinner intent.',
       },
       {
         id: 'opt_update_notes',
@@ -290,7 +290,8 @@ function findMatchingBacklogItem(
       return (
         id.includes('trophy_assets') ||
         t.includes('trophy system art') ||
-        t.includes('trophy asset')
+        t.includes('trophy asset') ||
+        t.includes('dungeon relic vault art')
       );
     }
     if (item.id === 'prio_tech_crash_patch') {
@@ -300,7 +301,8 @@ function findMatchingBacklogItem(
       return (
         id.includes('trophy_social') ||
         t.includes('social visuals') ||
-        t.includes('trophy launch pack')
+        t.includes('trophy launch pack') ||
+        t.includes('relic vault launch pack')
       );
     }
     if (item.id === 'prio_seo_trophy_cluster') {
@@ -330,7 +332,8 @@ function doesRunMatchPriorityItem(
     return (
       hay.includes('trophy_assets') ||
       hay.includes('trophy asset batch') ||
-      hay.includes('generate trophy system art')
+      hay.includes('generate trophy system art') ||
+      hay.includes('dungeon relic vault art')
     );
   }
   if (item.id === 'prio_tech_crash_patch') {
@@ -344,6 +347,7 @@ function doesRunMatchPriorityItem(
     return (
       hay.includes('trophy_social') ||
       hay.includes('trophy launch pack') ||
+      hay.includes('relic vault launch pack') ||
       hay.includes('social visuals')
     );
   }
@@ -485,7 +489,7 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
     prio_tech_lobby_bootstrap:
       'Style the loading screen, logo lockup, and lobby in a cartoon dungeon theme with custom SVG crest & torchlight visuals (no basic emojis).',
     prio_tech_trophy_assets:
-      'Use cartoon dungeon theme artwork: custom SVG & pixel-art dungeon shields, runeblades, golden chalices, soul gems, and dragon relics (no basic emojis).',
+      'Call our in-game trophy system the "Dungeon Relic Vault" (counting Relic Spoils instead of generic trophies) and generate cartoon-dungeon sprites: Iron Buckler, Silver Runeblade, Crypt Chalice, Soul Gem, and Mythic Dragon Crown.',
   });
 
   const [resolvedById, setResolvedById] = useState<
@@ -695,8 +699,8 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
           </div>
         </div>
 
-        {/* Compact Priority Cards List (shows 3-4+ tasks cleanly in viewport) */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-4 space-y-2.5">
+        {/* Priority Cards List (fills the first mobile viewport cleanly) */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-4 flex flex-col gap-2.5">
           {visibleItems.map((item) => {
             const resolved = getResolvedState(item);
 
@@ -718,7 +722,7 @@ const HomePriorityWindowView: React.FC<HomePriorityWindowProps> = ({
                     : 'border-[var(--surface-border)] bg-[var(--surface-card)] hover:border-[var(--surface-accent-gold)]/60 shadow-xs'
                 }`}
               >
-                <span className="min-w-0 flex-1 text-xs sm:text-sm font-semibold text-[var(--surface-text)] group-hover:text-[var(--surface-accent-gold)] transition-colors truncate">
+                <span className="min-w-0 flex-1 text-xs sm:text-sm font-semibold text-[var(--surface-text)] group-hover:text-[var(--surface-accent-gold)] transition-colors line-clamp-2 sm:truncate">
                   {item.decisiveTitle}
                 </span>
 

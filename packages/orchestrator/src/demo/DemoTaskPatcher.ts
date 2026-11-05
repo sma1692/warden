@@ -19,6 +19,7 @@ function classifyTaskKind(itemId: string, title: string): DemoTaskPatchResult['t
     s.includes('trophy_assets') ||
     s.includes('trophy system art') ||
     s.includes('trophy asset') ||
+    s.includes('relic vault') ||
     s.includes('12 sprites') ||
     s.includes('12 dungeon sprites')
   ) {
@@ -281,33 +282,33 @@ window.addEventListener('DOMContentLoaded', () => {
       <div class="warden-trophy-header">
         <span class="warden-league-badge" id="warden-league-badge">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38BDF8" stroke-width="2.2"><path d="M12 2L19 6V12C19 17 15.8 20.5 12 22C8.2 20.5 5 17 5 12V6L12 2Z" fill="#0F172A"/><polygon points="12,7 15,12 12,17 9,12" fill="#38BDF8"/></svg>
-          <span>DUNGEON GOLD LEAGUE</span>
+          <span>CRYPT RELIC VAULT • TIER III</span>
         </span>
-        <span class="warden-trophy-count" id="warden-trophy-count">
+        <span class="warden-trophy-count" id="warden-trophy-count" title="In-Game Trophy Progression">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 4H18V10C18 13.5 15.5 16 12 16C8.5 16 6 13.5 6 10V4Z" fill="#F59E0B" stroke="#FEF08A" stroke-width="1.8"/><path d="M12 16V20M8 20H16" stroke="#FBBF24" stroke-width="2" stroke-linecap="round"/></svg>
-          <span id="warden-trophy-number">1,200 Trophies</span>
+          <span id="warden-trophy-number">1,200 Relic Spoils</span>
         </span>
       </div>
-      <div class="warden-sprite-strip" aria-label="Dungeon Trophy Relic Sprites">
-        <span class="warden-sprite-pill unlocked" title="Bronze Dungeon Buckler">
+      <div class="warden-sprite-strip" aria-label="Dungeon Relic Vault Sprites (In-Game Trophy System)">
+        <span class="warden-sprite-pill unlocked" title="Iron Crypt Buckler (Tier I Relic)">
           <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><path d="M18 4L30 9V18C30 25.5 24.8 30.2 18 32C11.2 30.2 6 25.5 6 18V9L18 4Z" fill="#9A5822" stroke="#FDBA74" stroke-width="2"/><circle cx="18" cy="18" r="4" fill="#FDE68A"/></svg>
-          <span>Buckler</span>
+          <span>Iron Buckler</span>
         </span>
-        <span class="warden-sprite-pill unlocked" title="Silver Knight Runeblade">
+        <span class="warden-sprite-pill unlocked" title="Silver Knight Runeblade (Tier II Relic)">
           <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><path d="M8 28L28 8M28 8H21M28 8V15" stroke="#E2E8F0" stroke-width="2.5" stroke-linecap="round"/><path d="M28 28L8 8M8 8H15M8 8V15" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/><circle cx="18" cy="18" r="4.5" fill="#38BDF8" stroke="#F8FAFC" stroke-width="1.5"/></svg>
           <span>Runeblade</span>
         </span>
-        <span class="warden-sprite-pill active" title="Gold Crypt Chalice">
+        <span class="warden-sprite-pill active" title="Ruby Crypt Chalice (Tier III Relic)">
           <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><path d="M10 7H26V15C26 20 22.5 23 18 23C13.5 23 10 20 10 15V7Z" fill="#F59E0B" stroke="#FEF08A" stroke-width="2"/><path d="M18 23V29M12 29H24" stroke="#FBBF24" stroke-width="2.5" stroke-linecap="round"/><polygon points="18,11 21,15 18,19 15,15" fill="#EF4444"/></svg>
-          <span>Chalice</span>
+          <span>Crypt Chalice</span>
         </span>
-        <span class="warden-sprite-pill" title="Diamond Soul Runestone">
+        <span class="warden-sprite-pill" title="Arcane Soul Runestone (Tier IV Relic)">
           <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><polygon points="18,4 29,14 18,32 7,14" fill="#0284C7" stroke="#7DD3FC" stroke-width="2"/><polygon points="18,9 24,15 18,26 12,15" fill="#38BDF8"/></svg>
           <span>Soul Gem</span>
         </span>
-        <span class="warden-sprite-pill" title="Mythic Dragon Relic">
+        <span class="warden-sprite-pill" title="Mythic Dragon Crown (Tier V Relic)">
           <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><path d="M6 14L11 6L15 15L18 8L21 15L25 6L30 14L27 27H9L6 14Z" fill="#7C2D12" stroke="#F97316" stroke-width="2"/><polygon points="18,14 21,19 18,24 15,19" fill="#FDE047"/></svg>
-          <span>Dragon</span>
+          <span>Dragon Crown</span>
         </span>
       </div>
     </section>`;
@@ -389,16 +390,16 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!js.includes('// WARDEN_PATCH:TROPHY_ASSETS')) {
       js += `\n// WARDEN_PATCH:TROPHY_ASSETS
 window.addEventListener('DOMContentLoaded', () => {
-  let trophies = 1200;
+  let spoils = 1200;
   const countEl = document.getElementById('warden-trophy-number') || document.getElementById('warden-trophy-count');
   const scoreXEl = document.getElementById('score-x');
   if (!countEl || !scoreXEl) return;
   const observer = new MutationObserver(() => {
     const wins = parseInt(scoreXEl.textContent || '0', 10) || 0;
     const next = 1200 + wins * 30;
-    if (next !== trophies) {
-      trophies = next;
-      countEl.textContent = trophies.toLocaleString() + ' Trophies (+30)';
+    if (next !== spoils) {
+      spoils = next;
+      countEl.textContent = spoils.toLocaleString() + ' Relic Spoils (+30)';
     }
   });
   observer.observe(scoreXEl, { childList: true, characterData: true, subtree: true });
@@ -411,14 +412,14 @@ window.addEventListener('DOMContentLoaded', () => {
 @@ -16,2 +16,10 @@
 +    <!-- WARDEN_PATCH:TROPHY_ASSETS -->
 +    <section class="warden-trophy-ladder" id="warden-trophy-ladder">
-+      <span class="warden-league-badge">DUNGEON GOLD LEAGUE</span>
-+      <span class="warden-trophy-count" id="warden-trophy-count">1,200 Trophies</span>
-+      <!-- 5 custom SVG dungeon relic sprites: Buckler, Runeblade, Chalice, Soul Gem, Dragon -->
++      <span class="warden-league-badge">CRYPT RELIC VAULT • TIER III</span>
++      <span class="warden-trophy-count" id="warden-trophy-count">1,200 Relic Spoils</span>
++      <!-- 5 custom SVG dungeon relic sprites: Iron Buckler, Runeblade, Crypt Chalice, Soul Gem, Dragon Crown -->
 +    </section>`;
     verificationChecklist = [
-      'Cartoon-Dungeon Relic Trophy Ladder mounted with 5 custom vector SVG sprites (Buckler, Runeblade, Chalice, Soul Gem, Dragon)',
-      'Live Elo Trophy counter (`1,200 Trophies`) increments `+30` automatically on Player X victory',
-      'Dungeon trophy sprite & animation preview unlocked inside the dashboard Needs Action card',
+      'Mounted Crypt Relic Vault (our in-game trophy progression system) with 5 custom vector SVG dungeon relic sprites',
+      'Live Relic Spoils counter (`1,200 Relic Spoils`) increments `+30` automatically on Player X victory',
+      'Dungeon Relic sprite & live crypt animation preview unlocked inside the dashboard Needs Action card',
     ];
   } else if (taskKind === 'crash_patch') {
     if (!html.includes('<!-- WARDEN_PATCH:CRASH_HOTFIX -->')) {
@@ -690,7 +691,8 @@ export async function applyLlmOrFallbackDemoTaskPatch(
   const customNote = noteMatch ? noteMatch[1].trim() : '';
   const isDefaultSeedDungeonNote =
     customNote.startsWith('Style the loading screen, logo lockup, and lobby in a cartoon dungeon theme') ||
-    customNote.startsWith('Use cartoon dungeon theme artwork: custom SVG & pixel-art dungeon shields');
+    customNote.startsWith('Use cartoon dungeon theme artwork: custom SVG & pixel-art dungeon shields') ||
+    customNote.startsWith('Call our in-game trophy system the "Dungeon Relic Vault"');
   const needsCustomCodeGen =
     (Boolean(customNote) && !isDefaultSeedDungeonNote) || baseResult.taskKind === 'generic';
 
