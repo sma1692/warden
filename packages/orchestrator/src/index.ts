@@ -56,6 +56,8 @@ export * from "./engine/StandupCoordinator.js";
 export * from "./watchdogs/HealthAndQuotaGuard.js";
 export * from "./watchdogs/IdleBacklogMonitor.js";
 export * from "./server/ControlPlaneServer.js";
+export * from "./auth/EmailSender.js";
+export * from "./auth/EmailOtpService.js";
 export * from "./analytics/ga4.js";
 export * from "./cron/sesSender.js";
 export * from "./cron/nightlyAnalytics.js";

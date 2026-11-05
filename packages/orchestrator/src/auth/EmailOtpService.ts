@@ -11,9 +11,11 @@
  *                        code. Ignored when NODE_ENV=production.
  */
 import crypto from 'node:crypto';
-import { isEmailConfigured, sendEmailCode } from './EmailSender.js';
+import { isEmailConfigured, sendEmailCode, WARDEN_SURFACE_B } from './EmailSender.js';
 import { issueToken, type OtpRequestResult, type OtpVerifyResult } from './OtpService.js';
 import { publicUser, upsertUserOnEmail } from './UserStore.js';
+
+export { WARDEN_SURFACE_B };
 
 const CODE_TTL_MS = 5 * 60_000;
 const RESEND_COOLDOWN_MS = 30_000;

@@ -9,6 +9,21 @@
  */
 import net from 'node:net';
 import tls from 'node:tls';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { WARDEN_LOGO_FALLBACK_BASE64 } from './logoFallback.js';
+
+export const WARDEN_SURFACE_B = {
+  surfaceBg: '#0B121C',
+  surfacePanel: '#0F1824',
+  surfaceCard: '#0F1824',
+  surfaceText: '#F5F0E6',
+  surfaceAccent: '#C6A664',
+  surfaceBorder: '#1F2C3F',
+  surfaceMutedText: '#9E978C',
+  surfaceSoftText: '#D8D2C5',
+} as const;
 
 export interface EmailRenderOptions {
   badge?: string;
@@ -17,6 +32,50 @@ export interface EmailRenderOptions {
   ctaLabel?: string;
   ctaUrl?: string;
   footerNote?: string;
+  htmlOverride?: string;
+}
+
+let cachedLogoBuffer: Buffer | null = null;
+
+/**
+ * Returns a high-DPI PNG Buffer of the Warden logo.
+ * Searches disk assets first; falls back to bundled base64 PNG data.
+ */
+export function getWardenLogoPngBuffer(): Buffer {
+  if (cachedLogoBuffer) return cachedLogoBuffer;
+
+  const tryPaths: string[] = [];
+  if (typeof import.meta !== 'undefined' && import.meta.url) {
+    try {
+      const curDir = path.dirname(fileURLToPath(import.meta.url));
+      tryPaths.push(
+        path.join(curDir, 'assets/warden-logo.png'),
+        path.join(curDir, 'assets/warden-icon-192.png'),
+        path.join(curDir, '../../../../web/public/warden-logo.png'),
+        path.join(curDir, '../../../../web/public/warden-icon-192.png')
+      );
+    } catch {}
+  }
+
+  const cwd = process.cwd();
+  tryPaths.push(
+    path.join(cwd, 'packages/orchestrator/src/auth/assets/warden-logo.png'),
+    path.join(cwd, '.state/mirror/warden/packages/orchestrator/src/auth/assets/warden-logo.png'),
+    path.join(cwd, 'packages/web/public/warden-logo.png'),
+    path.join(cwd, '.state/mirror/warden/packages/web/public/warden-logo.png')
+  );
+
+  for (const candidate of tryPaths) {
+    try {
+      if (fs.existsSync(candidate)) {
+        cachedLogoBuffer = fs.readFileSync(candidate);
+        return cachedLogoBuffer;
+      }
+    } catch {}
+  }
+
+  cachedLogoBuffer = Buffer.from(WARDEN_LOGO_FALLBACK_BASE64, 'base64');
+  return cachedLogoBuffer;
 }
 
 export function isEmailConfigured(): boolean {
@@ -65,22 +124,22 @@ function escapeHtml(text: string): string {
 
 function formatInlineHtml(text: string): string {
   let out = escapeHtml(text);
-  // Highlight @agent handles
+  // Highlight @agent handles in Warden Gold
   out = out.replace(
     /(^|[\s(])(@[a-zA-Z0-9_]+)/g,
-    '$1<span style="color:#22d3ee;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">$2</span>'
+    '$1<span style="color:#C6A664;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">$2</span>'
   );
   // Inline `code`
   out = out.replace(
     /`([^`]+)`/g,
-    '<code style="background:#0f172a;border:1px solid #1e293b;color:#67e8f9;padding:2px 6px;border-radius:4px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">$1</code>'
+    '<code style="background:#0B121C;border:1px solid #1F2C3F;color:#C6A664;padding:2px 6px;border-radius:4px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">$1</code>'
   );
-  // Bold **text**
-  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#f8fafc;font-weight:600;">$1</strong>');
-  // Auto-link https:// URLs
+  // Bold **text** in Warm Surface Text
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#F5F0E6;font-weight:600;">$1</strong>');
+  // Auto-link https:// URLs in Warden Gold
   out = out.replace(
     /(https?:\/\/[^\s<)]+)/g,
-    '<a href="$1" style="color:#22d3ee;text-decoration:underline;">$1</a>'
+    '<a href="$1" style="color:#C6A664;text-decoration:underline;">$1</a>'
   );
   return out;
 }
@@ -91,7 +150,6 @@ export function renderBrandedEmailHtml(
   options?: EmailRenderOptions
 ): string {
   const appUrl = (process.env.PUBLIC_APP_URL || 'https://warden.autos').replace(/\/+$/, '');
-  const logoUrl = `${appUrl}/warden-icon-192.png`;
   const heading = options?.heading || subject.replace(/^\[Warden\]\s*/i, '');
   const badge = options?.badge || (options?.otpCode ? 'SECURITY · SIGN-IN' : 'WARDEN AUTOMATONS');
   const ctaLabel = options?.ctaLabel || (options?.otpCode ? undefined : 'Open Warden Command Center');
@@ -105,21 +163,21 @@ export function renderBrandedEmailHtml(
         .split(/\r?\n/)
         .map((line) => formatInlineHtml(line.trim()))
         .join('<br/>');
-      return `<p style="margin:0 0 16px 0;color:#cbd5e1;font-size:15px;line-height:1.65;">${lines}</p>`;
+      return `<p style="margin:0 0 16px 0;color:#D8D2C5;font-size:15px;line-height:1.65;">${lines}</p>`;
     })
     .join('');
 
   const otpBlock = options?.otpCode
-    ? `<div style="margin:24px 0;padding:22px 16px;background:#060911;border:1px solid #164e63;border-radius:12px;text-align:center;">
-         <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#67e8f9;margin-bottom:8px;font-weight:600;">One-Time Verification Code</div>
-         <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:0.28em;color:#f8fafc;padding-left:0.28em;">${escapeHtml(options.otpCode)}</div>
-         <div style="font-size:12px;color:#64748b;margin-top:10px;">Expires in 5 minutes · Do not share this code</div>
+    ? `<div style="margin:24px 0;padding:22px 16px;background:#0B121C;border:1px solid #C6A664;border-radius:12px;text-align:center;">
+         <div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#C6A664;margin-bottom:8px;font-weight:600;">One-Time Verification Code</div>
+         <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:0.28em;color:#F5F0E6;padding-left:0.28em;">${escapeHtml(options.otpCode)}</div>
+         <div style="font-size:12px;color:#9E978C;margin-top:10px;">Expires in 5 minutes · Do not share this code</div>
        </div>`
     : '';
 
   const ctaBlock = ctaLabel
     ? `<div style="margin:26px 0 8px 0;">
-         <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:linear-gradient(135deg,#06b6d4 0%,#10b981 100%);color:#060911;font-weight:700;font-size:14px;text-decoration:none;padding:12px 22px;border-radius:10px;letter-spacing:0.02em;">
+         <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:linear-gradient(135deg,#C6A664 0%,#D4B97B 100%);color:#0B121C;font-weight:700;font-size:14px;text-decoration:none;padding:12px 22px;border-radius:10px;letter-spacing:0.02em;">
            ${escapeHtml(ctaLabel)} &rarr;
          </a>
        </div>`
@@ -138,28 +196,28 @@ export function renderBrandedEmailHtml(
   <meta name="supported-color-schemes" content="dark" />
   <title>${escapeHtml(subject)}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#060911;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f1f5f9;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#060911;padding:32px 16px;">
+<body style="margin:0;padding:0;background-color:#0B121C;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#F5F0E6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#0B121C;padding:32px 16px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background-color:#0b1120;border:1px solid #1e293b;border-radius:16px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.6);">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background-color:#0F1824;border:1px solid #1F2C3F;border-radius:16px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.6);">
           <!-- Top accent gradient bar -->
           <tr>
-            <td style="height:4px;background:linear-gradient(90deg,#06b6d4 0%,#6366f1 50%,#10b981 100%);font-size:0;line-height:0;">&nbsp;</td>
+            <td style="height:4px;background:linear-gradient(90deg,#C6A664 0%,#E5CF92 50%,#C6A664 100%);font-size:0;line-height:0;">&nbsp;</td>
           </tr>
           <!-- Brand Header -->
           <tr>
-            <td style="padding:28px 32px 20px 32px;border-bottom:1px solid #1e293b;">
+            <td style="padding:28px 32px 20px 32px;border-bottom:1px solid #1F2C3F;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
                   <td width="44" valign="middle">
                     <a href="${escapeHtml(appUrl)}" style="text-decoration:none;display:inline-block;">
-                      <img src="${escapeHtml(logoUrl)}" alt="Warden" width="38" height="38" style="display:block;border-radius:10px;border:1px solid #164e63;background:#060911;" />
+                      <img src="cid:warden-logo" alt="Warden" width="38" height="38" style="display:block;border-radius:10px;border:1px solid #C6A664;background:#0B121C;" />
                     </a>
                   </td>
                   <td valign="middle" style="padding-left:12px;">
-                    <div style="font-size:16px;font-weight:700;letter-spacing:0.04em;color:#f8fafc;">WARDEN AUTOMATONS</div>
-                    <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#22d3ee;margin-top:2px;">AI Workforce Command Center</div>
+                    <div style="font-size:16px;font-weight:700;letter-spacing:0.04em;color:#F5F0E6;">WARDEN AUTOMATONS</div>
+                    <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#C6A664;margin-top:2px;">AI Workforce Command Center</div>
                   </td>
                 </tr>
               </table>
@@ -168,10 +226,10 @@ export function renderBrandedEmailHtml(
           <!-- Main Content -->
           <tr>
             <td style="padding:28px 32px 32px 32px;">
-              <div style="display:inline-block;padding:4px 10px;background:#083344;border:1px solid #155e75;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#67e8f9;margin-bottom:14px;">
+              <div style="display:inline-block;padding:4px 10px;background:rgba(198,166,100,0.12);border:1px solid #C6A664;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#C6A664;margin-bottom:14px;">
                 ${escapeHtml(badge)}
               </div>
-              <h1 style="margin:0 0 18px 0;font-size:21px;line-height:1.35;font-weight:700;color:#f8fafc;">
+              <h1 style="margin:0 0 18px 0;font-size:21px;line-height:1.35;font-weight:700;color:#F5F0E6;">
                 ${escapeHtml(heading)}
               </h1>
               ${paragraphs}
@@ -181,12 +239,12 @@ export function renderBrandedEmailHtml(
           </tr>
           <!-- Footer -->
           <tr>
-            <td style="padding:20px 32px;background-color:#060911;border-top:1px solid #1e293b;">
-              <p style="margin:0 0 6px 0;font-size:12px;color:#64748b;line-height:1.5;">
+            <td style="padding:20px 32px;background-color:#0B121C;border-top:1px solid #1F2C3F;">
+              <p style="margin:0 0 6px 0;font-size:12px;color:#9E978C;line-height:1.5;">
                 ${escapeHtml(footerNote)}
               </p>
-              <p style="margin:0;font-size:12px;color:#475569;">
-                <a href="${escapeHtml(appUrl)}" style="color:#22d3ee;text-decoration:none;font-weight:500;">warden.autos</a>
+              <p style="margin:0;font-size:12px;color:#787166;">
+                <a href="${escapeHtml(appUrl)}" style="color:#C6A664;text-decoration:none;font-weight:500;">warden.autos</a>
                 &nbsp;&middot;&nbsp; Sent by @warden Executive OS
               </p>
             </td>
@@ -206,14 +264,25 @@ function dotStuff(raw: string): string {
     .replace(/^\./gm, '..');
 }
 
-function buildMimePayload(params: {
-  headerFrom: string;
-  to: string;
-  subject: string;
-  bodyText: string;
-  bodyHtml: string;
-}): string {
-  const boundary = `warden_mime_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+/**
+ * Builds RFC 2387 compliant multipart/related MIME payload, nesting
+ * multipart/alternative for plain-text/HTML and embedding the Warden logo PNG
+ * inline under cid:warden-logo.
+ */
+export function buildMimePayload(
+  params: {
+    headerFrom: string;
+    to: string;
+    subject: string;
+    bodyText: string;
+    bodyHtml: string;
+    logoBuffer?: Buffer;
+  },
+  options: { dotStuff?: boolean } = { dotStuff: true }
+): string {
+  const relatedBoundary = `warden_rel_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  const altBoundary = `warden_alt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
   const textB64 = Buffer.from(params.bodyText.replace(/\r?\n/g, '\r\n'), 'utf8')
     .toString('base64')
     .replace(/(.{76})/g, '$1\r\n');
@@ -221,30 +290,47 @@ function buildMimePayload(params: {
     .toString('base64')
     .replace(/(.{76})/g, '$1\r\n');
 
+  const logoBuf = params.logoBuffer || getWardenLogoPngBuffer();
+  const logoB64 = logoBuf.toString('base64').replace(/(.{76})/g, '$1\r\n');
+
   const lines = [
     `From: ${params.headerFrom}`,
     `To: ${params.to}`,
     `Subject: =?UTF-8?B?${Buffer.from(params.subject, 'utf8').toString('base64')}?=`,
     `MIME-Version: 1.0`,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    `Content-Type: multipart/related; boundary="${relatedBoundary}"; type="multipart/alternative"`,
     ``,
-    `--${boundary}`,
+    `--${relatedBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    ``,
+    `--${altBoundary}`,
     `Content-Type: text/plain; charset=utf-8`,
     `Content-Transfer-Encoding: base64`,
     ``,
     textB64,
     ``,
-    `--${boundary}`,
+    `--${altBoundary}`,
     `Content-Type: text/html; charset=utf-8`,
     `Content-Transfer-Encoding: base64`,
     ``,
     htmlB64,
     ``,
-    `--${boundary}--`,
+    `--${altBoundary}--`,
+    ``,
+    `--${relatedBoundary}`,
+    `Content-Type: image/png; name="warden-logo.png"`,
+    `Content-Transfer-Encoding: base64`,
+    `Content-ID: <warden-logo>`,
+    `Content-Disposition: inline; filename="warden-logo.png"`,
+    ``,
+    logoB64,
+    ``,
+    `--${relatedBoundary}--`,
     ``,
   ];
 
-  return dotStuff(lines.join('\r\n'));
+  const rawMime = lines.join('\r\n');
+  return options?.dotStuff ? dotStuff(rawMime) : rawMime;
 }
 
 interface LineSocket {
@@ -338,14 +424,17 @@ export async function sendEmailMessage(
   }
 
   const safeSubject = subject.replace(/[\r\n]+/g, ' ').trim();
-  const htmlBody = renderBrandedEmailHtml(safeSubject, bodyText, options);
-  const mimePayload = buildMimePayload({
-    headerFrom,
-    to,
-    subject: safeSubject,
-    bodyText,
-    bodyHtml: htmlBody,
-  });
+  const htmlBody = options?.htmlOverride || renderBrandedEmailHtml(safeSubject, bodyText, options);
+  const mimePayload = buildMimePayload(
+    {
+      headerFrom,
+      to,
+      subject: safeSubject,
+      bodyText,
+      bodyHtml: htmlBody,
+    },
+    { dotStuff: true }
+  );
 
   const conn = wrapSocket(raw);
   try {
