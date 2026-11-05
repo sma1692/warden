@@ -40,7 +40,7 @@ import { authenticateRequest, handleAuthRoutes, isPublicPath } from '../auth/rou
 import { handleClientRoutes } from '../client/routes.js';
 import { handleSeoRoutes } from '../seo/seo.js';
 import { getUserById, onTokensRevoked } from '../auth/UserStore.js';
-import { sendEmailMessage } from '../auth/EmailSender.js';
+import { sendEmailMessage, type EmailRenderOptions } from '../auth/EmailSender.js';
 import { handleInboundLoginText } from '../auth/WhatsAppLinkLogin.js';
 import {
   createReminderFromText,
@@ -656,7 +656,8 @@ export class ControlPlaneServer {
   private async notifyUserByEmail(
     userId: string | null | undefined,
     subject: string,
-    bodyText: string
+    bodyText: string,
+    options?: EmailRenderOptions
   ): Promise<void> {
     if (!userId) return;
     try {
@@ -667,7 +668,7 @@ export class ControlPlaneServer {
           : '';
       const toEmail = (user?.email || formEmail || '').trim();
       if (!toEmail || !toEmail.includes('@')) return;
-      await sendEmailMessage(toEmail, subject, bodyText);
+      await sendEmailMessage(toEmail, subject, bodyText, options);
     } catch (err) {
       console.warn('[EmailNotify] Failed to send email notification:', err);
     }
@@ -1718,8 +1719,14 @@ export class ControlPlaneServer {
               doneItem.user_id ?? item.user_id,
               `[Warden] Task Completed: ${doneItem.title}`,
               `@${specialistAgent.slug} has finished executing "${doneItem.title}".\n\n` +
-                `Changes applied: ${patchResult.patchedFiles.join(', ')}\n` +
-                `${deployLine.replace(/\*\*/g, '')}`
+                `Changes applied: \`${patchResult.patchedFiles.join('`, `')}\`\n\n` +
+                `${deployLine.replace(/\*\*/g, '')}`,
+              {
+                badge: 'TASK COMPLETED · DEPLOYED',
+                heading: `Task Completed: ${doneItem.title}`,
+                ctaLabel: deployedUrlLabel ? 'View Live Demo' : 'Open Warden Dashboard',
+                ctaUrl: deployedUrlLabel || undefined,
+              }
             );
           }
         }
@@ -2993,7 +3000,12 @@ export class ControlPlaneServer {
                   `[Warden] @${routeResult.respondingAgent.slug} has a question for you`,
                   `@${routeResult.respondingAgent.slug} asked a clarifying question regarding your message ("${rawPrompt}"):\n\n` +
                     `${replyText}\n\n` +
-                    `Reply directly in Warden Chat or under NEEDS ACTION on your dashboard.`
+                    `Reply directly in Warden Chat or under **NEEDS ACTION** on your dashboard.`,
+                  {
+                    badge: 'NEEDS ACTION · AGENT QUESTION',
+                    heading: `@${routeResult.respondingAgent.slug} needs your input`,
+                    ctaLabel: 'Reply in Warden Chat',
+                  }
                 );
                 return;
               }
@@ -3056,7 +3068,12 @@ export class ControlPlaneServer {
               void this.notifyUserByEmail(
                 requestUserId,
                 `[Warden] @${routeResult.respondingAgent.slug} completed your activity`,
-                `Your request ("${rawPrompt}") has been completed by @${routeResult.respondingAgent.slug}:\n\n${replyText}`
+                `Your request ("${rawPrompt}") has been completed by @${routeResult.respondingAgent.slug}:\n\n${replyText}`,
+                {
+                  badge: 'ACTIVITY COMPLETED',
+                  heading: `@${routeResult.respondingAgent.slug} completed your request`,
+                  ctaLabel: 'Open Warden Command Center',
+                }
               );
             })
             .catch((err: unknown) => {
